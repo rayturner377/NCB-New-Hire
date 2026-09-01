@@ -1,5 +1,6 @@
 export * from './client.js';
 export * from './repositories/users.js';
+export * from './repositories/sessions.js';
 export * from './repositories/settings.js';
 export * from './repositories/candidates.js';
 export * from './repositories/cases.js';

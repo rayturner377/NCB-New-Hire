@@ -33,9 +33,28 @@ model AppUser {
   submissions            MedicalSubmission[]   @relation("SubmissionSubmittedBy")
   attachments            CaseAttachment[]      @relation("AttachmentUploadedBy")
   settingUpdates         ApplicationSetting[]  @relation("SettingUpdatedBy")
+  sessions               Session[]
 
   @@index([role, active], map: "idx_users_role_active")
   @@map("app_users")
+}
+
+/// Replaces the old in-memory `sessions = new Map()` in server.js (~L63) — a
+/// real scaling/HA bug (a restart logs everyone out, and it couldn't run more
+/// than one instance). Backed by Postgres so apps/web can run as more than a
+/// single process.
+model Session {
+  id        String   @id @db.VarChar(64)
+  userId    String   @map("user_id") @db.VarChar(80)
+  csrfToken String   @map("csrf_token") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_sessions_user")
+  @@index([expiresAt], map: "idx_sessions_expires")
+  @@map("sessions")
 }
 
 model PatientProfile {
