@@ -4,9 +4,20 @@
   "private": true,
   "description": "Secure new-hire medical assessment intake and review platform.",
   "main": "server.js",
+  "packageManager": "npm@11.17.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "start": "node server.js",
-    "user:upsert": "node scripts/upsert-user.js"
+    "user:upsert": "node scripts/upsert-user.js",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "test:integration": "turbo run test:integration",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
   },
   "dependencies": {
     "@netlify/blobs": "^10.0.11",
@@ -15,6 +26,10 @@
     "pdfkit": "^0.18.0",
     "pg": "^8.16.0",
     "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.3",
+    "typescript": "^5.6.3"
   },
   "engines": {
     "node": ">=20"

@@ -4,3 +4,7 @@ data/
 *.log
 .netlify/
 node_modules/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
