@@ -1,0 +1,91 @@
+import { describe, expect, it, vi } from 'vitest';
+
+const cookieStore = new Map<string, string>();
+const cookiesApi = {
+  set: vi.fn((name: string, value: string) => cookieStore.set(name, value)),
+  get: vi.fn((name: string) => (cookieStore.has(name) ? { value: cookieStore.get(name) } : undefined)),
+  delete: vi.fn((name: string) => cookieStore.delete(name)),
+  has: vi.fn((name: string) => cookieStore.has(name))
+};
+
+vi.mock('next/headers', () => ({ cookies: async () => cookiesApi }));
+
+const sessionsRepository = {
+  create: vi.fn(),
+  findById: vi.fn(),
+  touchExpiry: vi.fn(),
+  delete: vi.fn()
+};
+const usersRepository = { findById: vi.fn() };
+
+vi.mock('@ncb/database', () => ({ sessionsRepository, usersRepository }));
+
+const { createSession, destroySession, getSession, safeEqual } = await import('../../session');
+
+describe('safeEqual', () => {
+  it('returns true for identical strings', () => {
+    expect(safeEqual('csrf-token-value', 'csrf-token-value')).toBe(true);
+  });
+
+  it('returns false for different strings, including different lengths', () => {
+    expect(safeEqual('csrf-token-value', 'something-else')).toBe(false);
+    expect(safeEqual('short', 'much-longer-value')).toBe(false);
+  });
+});
+
+describe('createSession / getSession / destroySession', () => {
+  it('creates a session row and sets the sid cookie', async () => {
+    sessionsRepository.create.mockResolvedValue(undefined);
+
+    const { sessionId, csrfToken } = await createSession('user_1');
+
+    expect(sessionsRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ id: sessionId, userId: 'user_1', csrfToken })
+    );
+    expect(cookiesApi.set).toHaveBeenCalledWith(
+      'sid',
+      sessionId,
+      expect.objectContaining({ httpOnly: true, sameSite: 'strict' })
+    );
+  });
+
+  it('getSession returns null when there is no sid cookie', async () => {
+    cookieStore.clear();
+    expect(await getSession()).toBeNull();
+  });
+
+  it('getSession returns null when the session row does not exist', async () => {
+    cookieStore.set('sid', 'sid_missing');
+    sessionsRepository.findById.mockResolvedValue(null);
+
+    expect(await getSession()).toBeNull();
+  });
+
+  it('getSession returns null when the user is deactivated', async () => {
+    cookieStore.set('sid', 'sid_1');
+    sessionsRepository.findById.mockResolvedValue({ userId: 'user_1', csrfToken: 'csrf_1' });
+    usersRepository.findById.mockResolvedValue({ id: 'user_1', active: false });
+
+    expect(await getSession()).toBeNull();
+  });
+
+  it('getSession returns the user and refreshes expiry on a valid session', async () => {
+    cookieStore.set('sid', 'sid_1');
+    sessionsRepository.findById.mockResolvedValue({ userId: 'user_1', csrfToken: 'csrf_1' });
+    usersRepository.findById.mockResolvedValue({ id: 'user_1', active: true, displayName: 'Dr. Example' });
+
+    const session = await getSession();
+
+    expect(session?.user.displayName).toBe('Dr. Example');
+    expect(sessionsRepository.touchExpiry).toHaveBeenCalledWith('sid_1', expect.any(Date));
+  });
+
+  it('destroySession deletes the row and clears the cookie', async () => {
+    cookieStore.set('sid', 'sid_1');
+
+    await destroySession();
+
+    expect(sessionsRepository.delete).toHaveBeenCalledWith('sid_1');
+    expect(cookiesApi.delete).toHaveBeenCalledWith('sid');
+  });
+});

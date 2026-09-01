@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "generate": "prisma generate",
-    "build": "prisma generate && tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/generated','dist/generated',{recursive:true})\"",
     "test": "prisma generate && vitest run",
     "test:coverage": "prisma generate && vitest run --coverage",
     "test:integration": "prisma generate && vitest run --config vitest.integration.config.ts",

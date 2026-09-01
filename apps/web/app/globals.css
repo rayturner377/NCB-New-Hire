@@ -1,0 +1,70 @@
+/*
+ * Minimal placeholder styling for this first vertical slice (auth only).
+ * The real brand styling (public/styles.css, 5,426 lines, NCB blue/yellow
+ * theme) gets ported when the actual dashboard UIs are built — deferred
+ * deliberately rather than a wholesale copy-paste into a page that doesn't
+ * use most of it yet.
+ */
+
+:root {
+  color-scheme: light;
+  --ncb-blue: #003876;
+  --ncb-yellow: #ffd200;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #f5f6f8;
+  color: #1a1a1a;
+}
+
+.login-page {
+  max-width: 360px;
+  margin: 10vh auto;
+  padding: 2rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.login-form input {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.login-form button {
+  margin-top: 1rem;
+  padding: 0.6rem;
+  background: var(--ncb-blue);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.login-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-form-error {
+  color: #b3261e;
+  margin: 0;
+}
+
+.dashboard-placeholder {
+  max-width: 640px;
+  margin: 10vh auto;
+  padding: 2rem;
+}
