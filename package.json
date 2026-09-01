@@ -12,6 +12,7 @@
   "scripts": {
     "start": "node server.js",
     "user:upsert": "node scripts/upsert-user.js",
+    "dev": "dotenv -- turbo run dev",
     "build": "dotenv -- turbo run build",
     "test": "dotenv -- turbo run test",
     "test:coverage": "dotenv -- turbo run test:coverage",
