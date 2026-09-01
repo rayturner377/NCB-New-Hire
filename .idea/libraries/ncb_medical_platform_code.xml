@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="ncb-medical-platform-code">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/ncb-medical-platform-code.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

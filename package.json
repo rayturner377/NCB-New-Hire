@@ -1,0 +1,22 @@
+{
+  "name": "confidential-medical-review",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Secure new-hire medical assessment intake and review platform.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "user:upsert": "node scripts/upsert-user.js"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.0.11",
+    "@netlify/functions": "^4.2.5",
+    "mysql2": "^3.14.1",
+    "pdfkit": "^0.18.0",
+    "pg": "^8.16.0",
+    "sharp": "^0.34.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

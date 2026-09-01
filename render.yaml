@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: ncb-medical-platform
+    runtime: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server.js
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: COOKIE_SECURE
+        value: true
+      - key: APP_NAME
+        value: National Commercial Bank Jamaica Medical Platform
+      - key: PUBLIC_URL
+        sync: false
+      - key: APP_MASTER_KEY
+        generateValue: true
+      - key: REVIEW_NOTIFICATION_EMAIL
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_SECURE
+        value: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
