@@ -22,7 +22,8 @@
     "db:generate": "dotenv -- npm run generate -w @ncb/database",
     "db:migrate:dev": "dotenv -- npm run migrate:dev -w @ncb/database",
     "db:migrate:deploy": "dotenv -- npm run migrate:deploy -w @ncb/database",
-    "db:verify-audit-chain": "dotenv -- npm run verify-audit-chain -w @ncb/database"
+    "db:verify-audit-chain": "dotenv -- npm run verify-audit-chain -w @ncb/database",
+    "db:seed:users": "dotenv -- npm run seed:users -w @ncb/database"
   },
   "dependencies": {
     "@netlify/blobs": "^10.0.11",
