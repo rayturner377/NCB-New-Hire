@@ -14,6 +14,31 @@ On first run the app creates encrypted storage under `data/` and writes temporar
 
 Optional PostgreSQL, MySQL, and Google Cloud SQL connectors and automatic migrations are documented in [DATABASE.md](DATABASE.md). Database mode currently prepares and validates the SQL schema while the application continues using its encrypted file repositories pending the controlled repository cutover.
 
+## Run with Docker
+
+Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`. For local Docker, the app container overrides the host-specific database settings so it connects to `ncb-medical-postgres` on the Docker network. The `./data` folder is mounted into the app container at `/app/data`, keeping generated credentials, encrypted records, audit logs, and notification logs outside the image.
+
+Start Postgres only:
+
+```bash
+docker compose up -d ncb-medical-postgres
+docker compose exec ncb-medical-postgres pg_isready
+```
+
+Start the app and Postgres:
+
+```bash
+docker compose up -d --build
+```
+
+Open [http://localhost:8080](http://localhost:8080).
+
+View logs:
+
+```bash
+docker compose logs -f ncb-medical-app
+```
+
 ## What is included
 
 - Clinician and reviewer sign-in with PBKDF2 password hashing.

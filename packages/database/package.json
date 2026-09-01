@@ -1,0 +1,34 @@
+{
+  "name": "@ncb/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "test": "prisma generate && vitest run",
+    "test:coverage": "prisma generate && vitest run --coverage",
+    "test:integration": "prisma generate && vitest run --config vitest.integration.config.ts",
+    "lint": "eslint .",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "verify-audit-chain": "node dist/scripts/verify-audit-chain.js"
+  },
+  "dependencies": {
+    "@ncb/shared": "*",
+    "@prisma/client": "^5.20.0"
+  },
+  "devDependencies": {
+    "@ncb/eslint-config": "*",
+    "@ncb/tsconfig": "*",
+    "@ncb/vitest-config": "*",
+    "@vitest/coverage-v8": "^2.1.3",
+    "eslint": "^9.9.0",
+    "prisma": "^5.20.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.3"
+  }
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hashForAudit } from './audit-hash.js';
+import { hashForAudit } from '../../audit-hash.js';
 
 describe('audit-hash', () => {
   it('is deterministic for the same input', () => {

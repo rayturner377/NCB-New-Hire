@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makePasswordRecord, verifyPassword, type PasswordRecord } from './password.js';
+import { makePasswordRecord, verifyPassword, type PasswordRecord } from '../../password.js';
 
 describe('password', () => {
   it('verifies the correct password', () => {

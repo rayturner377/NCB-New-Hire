@@ -1,0 +1,53 @@
+name: ncbmedical
+
+services:
+  ncbmedical:
+    build:
+      context: .
+    image: ncbmedical:local
+    container_name: ncbmedical
+    restart: unless-stopped
+    depends_on:
+      ncbmedical-postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      PUBLIC_URL: http://localhost:8080
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgres
+      DATABASE_HOST: ncbmedical-postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: ncb_medical
+      DATABASE_USER: ncb_medical_app
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      DATABASE_SSL_MODE: disable
+      DATABASE_URL: postgresql://ncb_medical_app:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@ncbmedical-postgres:5432/ncb_medical?schema=public
+    volumes:
+      - ./data:/app/data
+
+  ncbmedical-postgres:
+    image: postgres:16-alpine
+    container_name: ncbmedical-postgres
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ncb_medical_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ncb_medical
+    volumes:
+      - ncb-medical-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ncb_medical_app -d ncb_medical"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  ncb-medical-postgres-data:
+    name: ncbmedical-postgres-data

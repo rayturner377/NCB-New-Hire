@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { decryptJson, encryptJson, type EncryptedRecord } from './crypto-box.js';
+import { decryptJson, encryptJson, type EncryptedRecord } from '../../crypto-box.js';
 
 describe('crypto-box', () => {
   const key = randomBytes(32);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRateLimited, recordFailedLogin, type RateLimitStore } from './rate-limiter.js';
+import { isRateLimited, recordFailedLogin, type RateLimitStore } from '../../rate-limiter.js';
 
 describe('rate-limiter', () => {
   it('does not limit under the threshold', () => {
