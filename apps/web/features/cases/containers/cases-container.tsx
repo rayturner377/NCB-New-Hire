@@ -19,6 +19,7 @@ export async function CasesContainer() {
 
   const canCreate = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_CREATE);
   const canTransition = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_UPDATE);
+  const canSubmitAssessment = hasPermission(session.user, PERMISSIONS.SUBMISSIONS_CREATE);
 
   const [cases, candidates] = await Promise.all([listCases(), canCreate ? listCandidates() : Promise.resolve([])]);
 
@@ -35,7 +36,7 @@ export async function CasesContainer() {
 
       <Card>
         <h2>All cases</h2>
-        <CaseList cases={cases} canTransition={canTransition} />
+        <CaseList cases={cases} canTransition={canTransition} canSubmitAssessment={canSubmitAssessment} />
       </Card>
     </div>
   );
