@@ -40,31 +40,128 @@ body {
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 1rem;
-}
-
-.login-form button {
-  margin-top: 1rem;
-  padding: 0.6rem;
-  background: var(--ncb-blue);
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.login-form button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.login-form-error {
-  color: #b3261e;
-  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .dashboard-placeholder {
   max-width: 640px;
   margin: 10vh auto;
   padding: 2rem;
+}
+
+/* --- Shared UI primitives (components/ui/*) --- */
+
+.ui-button {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.ui-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-button-primary {
+  background: var(--ncb-blue);
+  color: #fff;
+}
+
+.ui-button-secondary {
+  background: #e6e8eb;
+  color: #1a1a1a;
+}
+
+.ui-button-danger {
+  background: #b3261e;
+  color: #fff;
+}
+
+.ui-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  padding: 1.5rem;
+}
+
+.ui-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.ui-form-field label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.ui-alert {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.ui-alert-error {
+  color: #7a1913;
+  background: #fbeaea;
+}
+
+.ui-alert-success {
+  color: #1a5d33;
+  background: #eaf7ef;
+}
+
+.ui-alert-info {
+  color: #1a3a5d;
+  background: #eaf1fb;
+}
+
+.ui-status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.ui-status-badge-neutral {
+  background: #e6e8eb;
+  color: #3a3f45;
+}
+
+.ui-status-badge-success {
+  background: #eaf7ef;
+  color: #1a5d33;
+}
+
+.ui-status-badge-warning {
+  background: #fff6e0;
+  color: #7a5b00;
+}
+
+.ui-status-badge-danger {
+  background: #fbeaea;
+  color: #7a1913;
+}
+
+.ui-data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ui-data-table th,
+.ui-data-table td {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #e6e8eb;
+}
+
+.ui-data-table-empty {
+  color: #6b7280;
+  font-style: italic;
 }
