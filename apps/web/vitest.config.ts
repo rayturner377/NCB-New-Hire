@@ -11,7 +11,7 @@ export default mergeConfig(
         // apps/web has no src/ root (app/, lib/, features/ live at the package
         // root) — override the base config's src/**/*.ts scoping accordingly.
         include: ['lib/**/*.ts', 'features/**/*.ts'],
-        exclude: ['**/*.test.ts', '**/*.test.tsx', '**/tests/**']
+        exclude: ['**/*.test.ts', '**/*.test.tsx', '**/tests/**', '**/types.ts']
       }
     }
   })
