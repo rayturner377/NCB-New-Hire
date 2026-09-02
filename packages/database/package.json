@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@ncb/shared": "*",
-    "@prisma/client": "^5.20.0"
+    "@prisma/client": "^5.20.0",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@ncb/eslint-config": "*",
