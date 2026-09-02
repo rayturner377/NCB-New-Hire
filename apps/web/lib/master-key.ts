@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 
@@ -32,6 +32,7 @@ export function loadMasterKey(): Buffer {
   }
 
   const key = randomBytes(32);
+  mkdirSync(path.dirname(MASTER_KEY_PATH), { recursive: true });
   writeFileSync(MASTER_KEY_PATH, `${key.toString('base64')}\n`, { mode: 0o600 });
   console.log(`A local encryption key was generated at ${MASTER_KEY_PATH}`);
   cachedKey = key;

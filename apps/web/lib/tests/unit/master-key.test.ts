@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const existsSync = vi.fn();
 const readFileSync = vi.fn();
 const writeFileSync = vi.fn();
+const mkdirSync = vi.fn();
 
-vi.mock('node:fs', () => ({ existsSync, readFileSync, writeFileSync }));
+vi.mock('node:fs', () => ({ existsSync, readFileSync, writeFileSync, mkdirSync }));
 
 const originalEnv = { ...process.env };
 
@@ -19,6 +20,7 @@ describe('loadMasterKey', () => {
     existsSync.mockReset();
     readFileSync.mockReset();
     writeFileSync.mockReset();
+    mkdirSync.mockReset();
   });
 
   afterEach(() => {
@@ -69,6 +71,7 @@ describe('loadMasterKey', () => {
     const key = loadMasterKey();
 
     expect(key).toHaveLength(32);
+    expect(mkdirSync).toHaveBeenCalledWith(expect.stringContaining('data'), { recursive: true });
     expect(writeFileSync).toHaveBeenCalledTimes(1);
     const [, written] = writeFileSync.mock.calls[0] as [string, string];
     expect(Buffer.from(written.trim(), 'base64')).toEqual(key);
