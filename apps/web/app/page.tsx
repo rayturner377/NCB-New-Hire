@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSession } from '../lib/session';
 import { logout } from '../features/auth/actions/logout';
@@ -17,6 +18,9 @@ export default async function DashboardPage() {
     <main className="dashboard-placeholder">
       <h1>Signed in as {session.user.displayName}</h1>
       <p>Role: {session.user.role}</p>
+      <p>
+        <Link href="/candidates">Candidates</Link>
+      </p>
       <form action={logout}>
         <button type="submit">Sign out</button>
       </form>
