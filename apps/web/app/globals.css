@@ -211,3 +211,40 @@ body {
   font-size: 0.85rem;
   width: 8rem;
 }
+
+/* --- Cases feature --- */
+
+.cases-page {
+  max-width: 960px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.case-form {
+  display: flex;
+  flex-direction: column;
+  max-width: 420px;
+}
+
+.case-form input,
+.case-form select {
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.case-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.case-inline-form {
+  display: inline-block;
+}

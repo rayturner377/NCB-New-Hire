@@ -1,0 +1,62 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const getSessionMock = vi.fn();
+const createCaseMock = vi.fn();
+const revalidatePathMock = vi.fn();
+
+vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
+vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../services/cases-service', () => ({
+  createCase: (...args: unknown[]) => createCaseMock(...args)
+}));
+
+const { createCaseAction } = await import('../../create-case');
+
+function formData(fields: Record<string, string>): FormData {
+  const data = new FormData();
+  for (const [key, value] of Object.entries(fields)) data.set(key, value);
+  return data;
+}
+
+describe('createCaseAction', () => {
+  beforeEach(() => {
+    getSessionMock.mockReset();
+    createCaseMock.mockReset();
+    revalidatePathMock.mockClear();
+  });
+
+  it('rejects when there is no active session', async () => {
+    getSessionMock.mockResolvedValue(null);
+    const result = await createCaseAction(null, formData({ patientId: 'cand_1', route: 'patient' }));
+    expect(result.ok).toBe(false);
+    expect(createCaseMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the user's role lacks permission", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'user_1', role: 'clinician' } });
+    const result = await createCaseAction(null, formData({ patientId: 'cand_1', route: 'patient' }));
+    expect(result.ok).toBe(false);
+    expect(createCaseMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a doctor-routed case with no clinician assigned', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'user_1', role: 'reviewer' } });
+    const result = await createCaseAction(null, formData({ patientId: 'cand_1', route: 'doctor' }));
+    expect(result.ok).toBe(false);
+    expect(createCaseMock).not.toHaveBeenCalled();
+  });
+
+  it('creates the case and revalidates the list on success', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
+    createCaseMock.mockResolvedValue({ id: 'case_1' });
+
+    const result = await createCaseAction(null, formData({ patientId: 'cand_1', route: 'patient' }));
+
+    expect(result.ok).toBe(true);
+    expect(createCaseMock).toHaveBeenCalledWith(
+      expect.objectContaining({ patientId: 'cand_1', route: 'patient', createdBy: 'usr_reviewer_demo' })
+    );
+    expect(revalidatePathMock).toHaveBeenCalledWith('/cases');
+  });
+});
