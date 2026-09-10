@@ -27,22 +27,15 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '8mb'
     }
-  },
-  // Native OS file-change events (ReadDirectoryChangesW) are unreliable on
-  // Windows machines with corporate antivirus/EDR scanning every write, which
-  // is why the dev server compiles a change but never pushes the auto-reload
-  // — a manual browser refresh "finds" it because that request re-checks
-  // mtimes regardless of the watcher. Polling sidesteps that: opt in with
-  // WATCH_POLL=true rather than always paying the CPU cost of polling.
-  webpack: (config, { dev }) => {
-    if (dev && process.env.WATCH_POLL === 'true') {
-      config.watchOptions = {
-        poll: 1000,
-        aggregateTimeout: 300
-      };
-    }
-    return config;
   }
+  // No webpack() config: Turbopack is the default bundler as of Next.js 16,
+  // and next build refuses to run if a custom webpack config is present (to
+  // avoid silently ignoring it). The previous config here was a dev-only
+  // Windows/antivirus file-watcher polling workaround (WATCH_POLL=true) —
+  // Turbopack has no equivalent watchOptions.poll knob, so if the same
+  // "changes compile but don't trigger reload" symptom recurs under
+  // Turbopack, a manual browser refresh is the fallback until Turbopack adds
+  // one.
 };
 
 export default nextConfig;
