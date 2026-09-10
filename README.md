@@ -1,104 +1,86 @@
 # National Commercial Bank Jamaica Medical Platform
 
-A self-contained secure intake app for new-hire medical assessments. Clinicians complete the medical form in the browser, submit it into the platform, and reviewers receive a notification that a confidential form is ready to review.
+A secure new-hire medical assessment intake and review platform. Clinicians submit
+medical assessments for candidates, reviewers (HR) manage cases and communicate
+decisions, and administrators manage users, roles, and system settings.
+
+Next.js (App Router) monorepo managed with Turborepo and npm workspaces, backed by
+Postgres via Prisma.
+
+- `apps/web` — the Next.js application
+- `packages/database` — Prisma schema, migrations, and repositories
+- `packages/shared` — crypto/auth helpers shared across packages
 
 ## Run locally
 
+Requires Node 20+ and a running Postgres instance.
+
 ```bash
-node server.js
+npm install
+cp .env.example .env   # fill in POSTGRES_PASSWORD and DATABASE_URL
+docker compose up -d postgres   # or point DATABASE_URL at your own Postgres
+npm run db:migrate:deploy
+npm run dev
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+Open [http://localhost:3000](http://localhost:3000).
 
-On first run the app creates encrypted storage under `data/` and writes temporary local credentials to `data/bootstrap-credentials.txt`.
+On first run, `APP_MASTER_KEY` (used to encrypt data at rest) is generated
+automatically and persisted to `apps/web/data/master.key` if not set in `.env`.
 
-Optional PostgreSQL, MySQL, and Google Cloud SQL connectors and automatic migrations are documented in [DATABASE.md](DATABASE.md). Database mode currently prepares and validates the SQL schema while the application continues using its encrypted file repositories pending the controlled repository cutover.
+For local/demo accounts (one user per role, all sharing a demo password —
+**never use in production**):
+
+```bash
+npm run db:seed:users
+```
+
+> There is currently no CLI to bootstrap a real production admin account from
+> scratch. Until one exists, seed with `db:seed:users` and change the password
+> immediately, or create the first row directly against the database.
 
 ## Run with Docker
 
-Copy `.env.example` to `.env` and set `POSTGRES_PASSWORD`. For local Docker, the app container overrides the host-specific database settings so it connects to `ncb-medical-postgres` on the Docker network. The `./data` folder is mounted into the app container at `/app/data`, keeping generated credentials, encrypted records, audit logs, and notification logs outside the image.
-
-Start Postgres only:
-
 ```bash
-docker compose up -d ncb-medical-postgres
-docker compose exec ncb-medical-postgres pg_isready
-```
-
-Start the app and Postgres:
-
-```bash
+cp .env.example .env   # fill in POSTGRES_PASSWORD and APP_MASTER_KEY
 docker compose up -d --build
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+This starts Postgres, runs Prisma migrations via a one-shot `migrate`
+service, then starts the app. The `./data` folder is mounted into the app
+container at `/app/data`, keeping the generated master key outside the image.
 
-View logs:
+Open [http://localhost:3000](http://localhost:3000).
 
 ```bash
-docker compose logs -f ncb-medical-app
+docker compose logs -f web
 ```
 
 ## What is included
 
-- Clinician and reviewer sign-in with PBKDF2 password hashing.
-- HttpOnly, SameSite session cookies with CSRF protection.
-- Role-based access: clinicians submit records, reviewers review records.
-- Administrator site for portal wording, notification recipients, and user access.
-- Reviewer setup area for creating doctor accounts and assigned new-hire profiles.
-- Doctor-side assigned-candidate picker that auto-populates the candidate section.
-- Doctor profile defaults for medical facility, facility address, clinician name, and registration number.
-- Optional clinician signature image upload on medical submissions.
-- Candidate medication information editing and assigned-candidate withdrawal.
-- Monthly tracking of assigned candidates and submitted forms by doctor.
-- Forgot-password request flow that logs a reset request without exposing account details.
-- Separate reviewer submission notification and doctor assignment notification email settings.
-- AES-256-GCM encryption at rest for submitted medical forms.
-- No medical details in email notifications.
-- Local notification logging when SMTP is not configured.
-- Printable populated form view for authorized users.
-- Audit log without candidate medical details.
+- Role-based access: admin, HR reviewer, auditor (view-only), clinician/doctor, patient/candidate.
+- Per-user permission overrides on top of role defaults, editable from Settings → Permissions.
+- Case lifecycle management: intake, assignment to a doctor, submission, review, billing/payment confirmation.
+- Candidate and medical-office management.
+- Notification templates (rich-text editor) with configurable SMTP, sent on case events.
+- Message centre with resend support.
+- SLA tracking and configurable SLA definitions per case event.
+- Audit log of account and case actions.
+- AES-256-GCM encryption at rest for sensitive fields, keyed by `APP_MASTER_KEY`.
+- Session cookies with configurable inactivity timeout (`SESSION_TIMEOUT_MINUTES`).
 
-## Email notifications
+## Environment variables
 
-Copy `.env.example` to `.env` and set:
+See `.env.example`. The application itself only reads:
 
-```bash
-REVIEW_NOTIFICATION_EMAIL=hr-team@example.com
-FROM_EMAIL=no-reply@example.com
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-user
-SMTP_PASS=your-password
-PUBLIC_URL=https://your-secure-platform.example.com
-```
+- `APP_MASTER_KEY` — optional; a key is generated and persisted under `data/` if omitted.
+- `COOKIE_SECURE` — set `true` in any real deployment (served over HTTPS).
+- `SESSION_TIMEOUT_MINUTES` — inactivity timeout for authenticated sessions (5-480).
+- `DATABASE_URL` — standard Prisma/Postgres connection string.
 
-The email body intentionally includes only the submission ID and platform link.
-
-## Add or update a user
-
-```bash
-node scripts/upsert-user.js user@example.com "temporary-password" reviewer "Display Name"
-```
-
-Allowed roles are `clinician`, `reviewer`, and `admin`. Restart the app after changing users.
-
-## Administrator site
-
-Admins see an **Administration** page after sign-in. From there they can:
-
-- Update the doctor and reviewer page messages, confidentiality notice, NCB blue/yellow theme colors, support contact, and reviewer notification email list.
-- Create medical facility users, National Commercial Bank reviewers, and additional administrators.
-- Deactivate users, change roles, and reset passwords.
-
-Reviewers and admins also see **Doctor & new hire setup**. From there they can create doctor accounts with facility and registration defaults, enter new-hire candidate information, assign each candidate to a doctor, set notification email preferences, and track monthly candidate volumes by doctor.
-
-For this workspace, an admin account can be created or updated with:
-
-```bash
-node scripts/upsert-user.js admin@ncb.local "change-this-password" admin "System Administrator"
-```
+SMTP settings, notification templates, portal branding, and SLA definitions
+are configured through the Settings admin UI and stored in the database, not
+environment variables.
 
 ## Production checklist
 
@@ -106,13 +88,8 @@ Before using this with real medical data:
 
 - Serve only over HTTPS and set `COOKIE_SECURE=true`.
 - Store `APP_MASTER_KEY` in a managed secret vault, not in the project folder.
-- Replace local users with your organization's identity provider or enforce user lifecycle controls.
-- Restrict access by facility, reviewer group, and network policy where appropriate.
+- Solve the production admin-bootstrap gap noted above.
+- Restrict database access by facility, reviewer group, and network policy where appropriate.
 - Add secure backups, restore testing, retention rules, and deletion workflows.
 - Complete legal/privacy review for applicable health-data and employment regulations.
 - Run security testing before handling live records.
-
-## Customizing the exact medical form
-
-The current form is a practical structured version of the NCB medical assessment for secure browser completion. If the paper form is revised, update the visible fields in `public/app.js` and the matching validation fields in `server.js`.
-# NCB-New-Hire

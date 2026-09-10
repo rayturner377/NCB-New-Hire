@@ -9,6 +9,14 @@ export const metadata: Metadata = {
   title: 'National Commercial Bank Jamaica Medical Platform'
 };
 
+// This layout calls getPublicSettings() below, a live DB read, on every
+// render — so no route in the app can ever be safely static. Without this,
+// Next tries to statically prerender any page with no other dynamic marker
+// (e.g. /change-password) at build time, which fails outright wherever the
+// build runs without a reachable database (Docker, a bare CI build, Render's
+// build step before migrations have even created the settings table).
+export const dynamic = 'force-dynamic';
+
 /**
  * Reads only the public (branding/theme) slice of settings — see
  * settings-service.ts's getPublicSettings — so the login screen and every
