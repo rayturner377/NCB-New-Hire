@@ -1,0 +1,96 @@
+'use server';
+
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { assertSameOrigin } from '../../../lib/assert-same-origin';
+import { createActionRateLimiter } from '../../../lib/action-rate-limit';
+import { combineFullName } from '../../../lib/full-name';
+import { combineMedicalProfile } from '../../../lib/medical-profile';
+import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
+import { getSession } from '../../../lib/session';
+import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
+import { validatePasswordAgainstPolicy } from '../../settings/password-policy';
+import { getSettings } from '../../settings/services/settings-service';
+import { createUserSchema } from '../schemas/user';
+import { createUser, DuplicateEmailError } from '../services/users-service';
+
+export interface UserActionResult {
+  ok: boolean;
+  error?: string;
+  fieldErrors?: Record<string, string>;
+}
+
+/** 20 per 15 minutes per admin — staff accounts are created far less often than candidates/cases; also doubles as a brake on the account_created email that fires per creation. */
+const createUserLimiter = createActionRateLimiter(20, 15 * 60 * 1000);
+
+export async function createUserAction(
+  _prevState: UserActionResult | null,
+  formData: FormData
+): Promise<UserActionResult> {
+  await assertSameOrigin();
+
+  const session = await getSession();
+  if (!session) {
+    return { ok: false, error: 'Your session has expired. Please sign in again.' };
+  }
+
+  // Read straight off formData rather than waiting for createUserSchema's own validation below —
+  // an unauthorized request should be rejected before anything else, including telling the caller
+  // which other fields are invalid.
+  try {
+    requireCanManageUserAccount(session.user, String(formData.get('role') || ''));
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    throw error;
+  }
+
+  if (createUserLimiter.isLimited(session.user.id)) {
+    return { ok: false, error: 'Too many accounts created recently — please wait a few minutes and try again.' };
+  }
+  createUserLimiter.recordAttempt(session.user.id);
+
+  const parsed = createUserSchema.safeParse({
+    ...Object.fromEntries(formData.entries()),
+    displayName: combineFullName(formData)
+  });
+  if (!parsed.success) {
+    const flattened = parsed.error.flatten().fieldErrors;
+    const fieldErrors = Object.fromEntries(
+      Object.entries(flattened)
+        .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
+        .map(([field, messages]) => [field, messages[0]!])
+    );
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? 'Invalid user details.',
+      fieldErrors
+    };
+  }
+
+  const { userPolicy } = await getSettings();
+  const policyError = validatePasswordAgainstPolicy(parsed.data.password, userPolicy);
+  if (policyError) {
+    return { ok: false, error: policyError, fieldErrors: { password: policyError } };
+  }
+
+  let created;
+  try {
+    created = await createUser(
+      {
+        ...parsed.data,
+        medicalProfile: parsed.data.role === 'clinician' ? combineMedicalProfile(formData) : undefined,
+        mustChangePassword: formData.get('forcePasswordChange') != null
+      },
+      session.user.id
+    );
+  } catch (error) {
+    if (error instanceof DuplicateEmailError) {
+      return { ok: false, error: error.message, fieldErrors: { email: error.message } };
+    }
+    throw error;
+  }
+
+  const listPath = LIST_PATH_BY_ROLE[created.role] ?? '/cases';
+  revalidatePath(listPath);
+  redirect(listPath);
+}

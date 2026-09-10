@@ -29,9 +29,17 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
   const now = new Date().toISOString();
   const id = `med_${Date.now().toString(36)}_${randomToken(8)}`;
 
+  // A case sent back to the doctor for revision resubmits against the same case id — this has to
+  // be the actual next version, not a hardcoded 1, or the new submission ties with the old one and
+  // listSubmissionsForCase's ordering can no longer reliably tell which is newer (see
+  // packages/database's submissions repository — this was exactly why a HR reviewer could still see
+  // a doctor's earlier answers after a resubmission).
+  const existingSubmissions = await submissionsRepository.listForCase(input.caseId);
+  const nextVersion = (existingSubmissions[0]?.submissionVersion ?? 0) + 1;
+
   const payload: SubmissionPayload = {
     id,
-    version: 1,
+    version: nextVersion,
     status: 'submitted',
     submittedAt: now,
     submittedBy: input.submittedBy,
@@ -71,7 +79,10 @@ export async function createSubmission(input: CreateSubmissionInput): Promise<Su
     }
   };
 
-  await submissionsRepository.save({ id, caseId: input.caseId, submittedBy: input.submittedBy, payload }, masterKey);
+  await submissionsRepository.save(
+    { id, caseId: input.caseId, submittedBy: input.submittedBy, submissionVersion: nextVersion, payload },
+    masterKey
+  );
 
   return payload;
 }

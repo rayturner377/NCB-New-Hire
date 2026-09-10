@@ -18,8 +18,11 @@ model AppUser {
   displayName    String    @map("display_name") @db.VarChar(140)
   role           String    @db.VarChar(30)
   active         Boolean   @default(true)
+  mustChangePassword Boolean @default(false) @map("must_change_password")
   passwordRecord Json?     @map("password_record")
   medicalProfile Json      @default("{}") @map("medical_profile")
+  /// Per-user exceptions on top of their role's own permissions — `{ grant: string[], revoke: string[] }`. Revoke wins over grant if a permission is somehow in both. See lib/permissions.ts's getEffectivePermissions.
+  permissionOverrides Json @default("{}") @map("permission_overrides")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -37,6 +40,18 @@ model AppUser {
 
   @@index([role, active], map: "idx_users_role_active")
   @@map("app_users")
+}
+
+/// Admin-editable role -> permission grants (Settings -> Permissions) — replaces most of the old
+/// hardcoded ROLE_PERMISSIONS map in lib/permissions.ts. Deliberately excludes 'admin': that role
+/// always holds every permission, unconditionally, in code -- so an admin can never accidentally
+/// (or maliciously, via another admin) edit their way into locking every admin out of the system.
+model RolePermission {
+  role       String @db.VarChar(30)
+  permission String @db.VarChar(60)
+
+  @@id([role, permission])
+  @@map("role_permissions")
 }
 
 /// Replaces the old in-memory `sessions = new Map()` in server.js (~L63) — a
@@ -135,6 +150,7 @@ model MedicalCase {
   doctorSubmittedAt   DateTime? @map("doctor_submitted_at") @db.Timestamptz(6)
   reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz(6)
   reviewedBy          String?   @map("reviewed_by") @db.VarChar(80)
+  paymentConfirmedAt  DateTime? @map("payment_confirmed_at") @db.Timestamptz(6)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -147,10 +163,18 @@ model MedicalCase {
   submissions       MedicalSubmission[]
   attachments       CaseAttachment[]
 
+  // idx_cases_patient_created/idx_cases_office_status/idx_cases_payment_status
+  // don't match any query the repos run today (office routing and billing
+  // filters are deferred features — see cases-service.ts) but are kept for
+  // when those land; idx_cases_patient_updated/idx_cases_clinician_updated
+  // were added because casesRepository.listForPatient/listForClinician
+  // actually sort by updatedAt, not createdAt/status.
   @@index([patientId, createdAt(sort: Desc)], map: "idx_cases_patient_created")
+  @@index([patientId, updatedAt(sort: Desc)], map: "idx_cases_patient_updated")
   @@index([status, updatedAt(sort: Desc)], map: "idx_cases_status_updated")
   @@index([assignedOfficeId, status, updatedAt(sort: Desc)], map: "idx_cases_office_status")
   @@index([assignedClinicianId, status, updatedAt(sort: Desc)], map: "idx_cases_clinician_status")
+  @@index([assignedClinicianId, updatedAt(sort: Desc)], map: "idx_cases_clinician_updated")
   @@index([paymentStatus, updatedAt(sort: Desc)], map: "idx_cases_payment_status")
   @@map("medical_cases")
 }
@@ -222,4 +246,43 @@ model ApplicationSetting {
   updater AppUser? @relation("SettingUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
 
   @@map("application_settings")
+}
+
+/// Admin-editable subject/body/CC/BCC per notification type (see apps/web's features/notifications/registry.ts for the fixed set of keys) — no FK to AppUser for updatedBy, unlike ApplicationSetting, since this is a much smaller/simpler table and an audit event already records who changed which template.
+model NotificationTemplate {
+  key       String   @id @map("template_key") @db.VarChar(80)
+  label     String   @db.VarChar(200)
+  subject   String   @db.VarChar(500)
+  body      String   @db.Text
+  /// Which editor authored `body` last — "text" (TipTap WYSIWYG) or "code" (raw HTML/CSS textarea) — see template-editor-page.tsx. Determines which editor the page re-opens into, since round-tripping raw HTML through the WYSIWYG editor can reformat or drop markup it doesn't understand.
+  bodyMode  String   @default("text") @map("body_mode") @db.VarChar(10)
+  ccEmails  String?  @map("cc_emails") @db.VarChar(1000)
+  bccEmails String?  @map("bcc_emails") @db.VarChar(1000)
+  /// Only meaningful for email_footer (the one shared piece with no imposed background — see notification-email.tsx) — a `#rrggbb` value wraps the footer's own content in a colored, padded band; null means no wrapper at all, same as before this column existed.
+  backgroundColor String? @map("background_color") @db.VarChar(20)
+  enabled   Boolean  @default(true)
+  updatedBy String?  @map("updated_by") @db.VarChar(80)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("notification_templates")
+}
+
+/// One row per attempted send — the Message Centre's whole data source (apps/web's features/messages). `bodyHtml` is the fully-rendered email actually sent (variables already substituted), kept verbatim so viewing/resending a past message never depends on the template still existing or being unchanged.
+model EmailMessage {
+  id           String   @id @db.VarChar(80)
+  templateKey  String?  @map("template_key") @db.VarChar(80)
+  toEmail      String   @map("to_email") @db.VarChar(500)
+  ccEmails     String?  @map("cc_emails") @db.VarChar(1000)
+  bccEmails    String?  @map("bcc_emails") @db.VarChar(1000)
+  subject      String   @db.VarChar(500)
+  bodyHtml     String   @map("body_html") @db.Text
+  status       String   @db.VarChar(20)
+  errorMessage String?  @map("error_message") @db.Text
+  entityType   String?  @map("entity_type") @db.VarChar(60)
+  entityId     String?  @map("entity_id") @db.VarChar(80)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_email_status_time")
+  @@index([toEmail], map: "idx_email_to")
+  @@map("email_messages")
 }

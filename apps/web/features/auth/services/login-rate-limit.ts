@@ -1,4 +1,5 @@
 import { isRateLimited, recordFailedLogin, type RateLimitStore } from '@ncb/shared';
+import { getSettings } from '../../settings/services/settings-service';
 
 /**
  * Module-level store, same pattern server.js used (`loginAttempts = new
@@ -12,12 +13,15 @@ import { isRateLimited, recordFailedLogin, type RateLimitStore } from '@ncb/shar
  */
 const loginAttempts: RateLimitStore = new Map();
 
-export function isLoginRateLimited(key: string): boolean {
-  return isRateLimited(loginAttempts, key);
+/** Reads the admin-configured max attempts/window (Settings → User) on every call rather than caching them — login is low-frequency enough that the extra settings read is negligible, unlike sessionTtlMs which would otherwise run on every single authenticated page load. */
+export async function isLoginRateLimited(key: string): Promise<boolean> {
+  const settings = await getSettings();
+  return isRateLimited(loginAttempts, key, Date.now(), settings.userPolicy.loginMaxAttempts);
 }
 
-export function recordFailedLoginAttempt(key: string): void {
-  recordFailedLogin(loginAttempts, key);
+export async function recordFailedLoginAttempt(key: string): Promise<void> {
+  const settings = await getSettings();
+  recordFailedLogin(loginAttempts, key, Date.now(), settings.userPolicy.loginWindowMinutes * 60 * 1000);
 }
 
 export function clearLoginAttempts(key: string): void {

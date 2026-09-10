@@ -25,7 +25,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  // Authenticated pages show data another user's session can change at any
+  // moment (case status, a doctor's inbox) — an intermediate cache (a
+  // corporate proxy, or the browser itself) serving a stale copy on a plain
+  // refresh would look like the app failing to update in real time. This
+  // header is the actual instruction that stops that; app/(app)/layout.tsx's
+  // `force-dynamic` only stops Next's own server-side caching.
+  const response = NextResponse.next();
+  response.headers.set('Cache-Control', 'no-store, must-revalidate');
+  return response;
 }
 
 export const config = {

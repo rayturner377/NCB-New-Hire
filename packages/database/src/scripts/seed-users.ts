@@ -11,6 +11,7 @@ const DEV_PASSWORD = 'DevPassword123!';
 const SEED_USERS = [
   { id: 'usr_admin_demo', email: 'admin@ncb.local', displayName: 'Demo Admin', role: 'admin' },
   { id: 'usr_reviewer_demo', email: 'reviewer@ncb.local', displayName: 'Demo Reviewer', role: 'reviewer' },
+  { id: 'usr_auditor_demo', email: 'auditor@ncb.local', displayName: 'Demo Auditor', role: 'auditor' },
   { id: 'usr_doctor_demo', email: 'doctor@ncb.local', displayName: 'Demo Doctor', role: 'clinician' },
   { id: 'usr_patient_demo', email: 'patient@ncb.local', displayName: 'Demo Patient', role: 'patient' }
 ];

@@ -59,6 +59,13 @@ export interface ChainVerification {
   brokenAtId: bigint | null;
 }
 
+export interface AuditQueryFilters {
+  eventTypes?: string[];
+  entityType?: string;
+  from?: Date;
+  to?: Date;
+}
+
 export function createAuditRepository(db: PrismaClient) {
   return {
     async append(input: AuditEventInput): Promise<AuditEvent> {
@@ -112,6 +119,34 @@ export function createAuditRepository(db: PrismaClient) {
 
     list(limit = 250): Promise<AuditEvent[]> {
       return db.auditEvent.findMany({ orderBy: { id: 'desc' }, take: limit });
+    },
+
+    /** Backs a case's (or any other entity's) "History" tab — served by idx_audit_entity_time, already on the schema for exactly this. */
+    listForEntity(entityType: string, entityId: string, limit = 100): Promise<AuditEvent[]> {
+      return db.auditEvent.findMany({ where: { entityType, entityId }, orderBy: { occurredAt: 'desc' }, take: limit });
+    },
+
+    /** Backs the full /audit page's search+filter+pagination — served by idx_audit_type_time when `eventTypes` is set. `to` is treated as inclusive of the whole day. */
+    async query(filters: AuditQueryFilters, page: number, pageSize: number): Promise<{ rows: AuditEvent[]; total: number }> {
+      const where = {
+        ...(filters.eventTypes && filters.eventTypes.length ? { eventType: { in: filters.eventTypes } } : {}),
+        ...(filters.entityType ? { entityType: filters.entityType } : {}),
+        ...(filters.from || filters.to
+          ? {
+              occurredAt: {
+                ...(filters.from ? { gte: filters.from } : {}),
+                ...(filters.to ? { lte: filters.to } : {})
+              }
+            }
+          : {})
+      };
+
+      const [rows, total] = await Promise.all([
+        db.auditEvent.findMany({ where, orderBy: { occurredAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
+        db.auditEvent.count({ where })
+      ]);
+
+      return { rows, total };
     },
 
     /**

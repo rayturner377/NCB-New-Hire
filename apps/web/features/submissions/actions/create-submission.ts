@@ -1,6 +1,5 @@
 'use server';
 
-import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { parseNestedFormData } from '../../../lib/form-data-to-object';
@@ -8,7 +7,8 @@ import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/per
 import { getSession } from '../../../lib/session';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import type { CandidatePayload } from '../../candidates/types';
-import { getCaseById, transitionCase } from '../../cases/services/cases-service';
+import { ownsCase } from '../../cases/case-authorization';
+import { clearDoctorAssessmentDraft, getCaseById, setCaseBilling, transitionCase } from '../../cases/services/cases-service';
 import { createSubmissionSchema } from '../schemas/submission';
 import { createSubmission } from '../services/submissions-service';
 
@@ -66,6 +66,9 @@ export async function createSubmissionAction(
   if (!medicalCase) {
     return { ok: false, error: 'That case could not be found.' };
   }
+  if (!ownsCase(session.user, medicalCase)) {
+    return { ok: false, error: 'This case is not assigned to you.' };
+  }
 
   const candidate = await getCandidateById(medicalCase.patientId);
   if (!candidate) {
@@ -86,8 +89,22 @@ export async function createSubmissionAction(
     submittedByEmail: session.user.email
   });
 
+  // Snapshots the doctor's *current* rate onto the case at the moment they submit — a fixed
+  // amount from here on, independent of the doctor's own rate changing later (only an admin can
+  // adjust it after this point, see actions/update-case-billing.ts). A rate of 0 (unset, or a
+  // clinician/support account with no billable rate) leaves payableAmount alone rather than
+  // writing a misleading $0.00.
+  const medicalProfile = session.user.medicalProfile as { defaultMedicalFee?: number } | null;
+  const doctorRate = Number(medicalProfile?.defaultMedicalFee);
+  if (Number.isFinite(doctorRate) && doctorRate > 0) {
+    await setCaseBilling(caseId, doctorRate, 'unpaid');
+  }
+
   await transitionCase(caseId, expectedVersion, 'doctor_submitted', session.user.id);
+  // The draft's job is done — clearing it now means a future "send back to the doctor" on this
+  // same case starts from a blank assessment, not this now-superseded draft snapshot.
+  await clearDoctorAssessmentDraft(caseId, medicalCase.payload);
 
   revalidatePath('/cases');
-  redirect('/cases');
+  return { ok: true };
 }

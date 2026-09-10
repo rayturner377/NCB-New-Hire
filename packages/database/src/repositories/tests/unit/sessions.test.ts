@@ -40,6 +40,24 @@ describe('sessions repository', () => {
     expect(result).toBeNull();
   });
 
+  it('deleteAllForUser() removes every session for that user when no exceptId is given', async () => {
+    const deleteMany = vi.fn().mockResolvedValue({ count: 2 });
+    const db = { session: { deleteMany } } as unknown as PrismaClient;
+
+    await createSessionsRepository(db).deleteAllForUser('user_1');
+
+    expect(deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_1' } });
+  });
+
+  it('deleteAllForUser() excludes the given session id, keeping it alive', async () => {
+    const deleteMany = vi.fn().mockResolvedValue({ count: 1 });
+    const db = { session: { deleteMany } } as unknown as PrismaClient;
+
+    await createSessionsRepository(db).deleteAllForUser('user_1', 'sid_current');
+
+    expect(deleteMany).toHaveBeenCalledWith({ where: { userId: 'user_1', id: { not: 'sid_current' } } });
+  });
+
   it('deleteExpired() returns the number of rows removed', async () => {
     const deleteMany = vi.fn().mockResolvedValue({ count: 3 });
     const db = { session: { deleteMany } } as unknown as PrismaClient;

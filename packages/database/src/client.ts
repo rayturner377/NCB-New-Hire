@@ -21,7 +21,22 @@ loadDotenv({ path: path.join(here, '..', '..', '..', '.env') });
 /**
  * Singleton Prisma client. Reused across repositories rather than instantiated
  * per-call, so the connection pool isn't recreated on every request.
+ *
+ * In dev, Next.js's Fast Refresh re-evaluates this module on every relevant
+ * file change without the Node process ever exiting — a plain
+ * `new PrismaClient()` here would spin up a brand new connection pool on
+ * every reload, and old orphaned ones never get released until the process
+ * actually dies. Stashing the instance on `globalThis` (Prisma's documented
+ * pattern for this exact problem) makes reloads reuse the same client. In
+ * production this module only ever loads once per process anyway, so the
+ * global isn't needed there.
  */
-export const prisma = new PrismaClient();
+const globalForPrisma = globalThis as unknown as { prismaClient?: PrismaClient };
+
+export const prisma = globalForPrisma.prismaClient ?? new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prismaClient = prisma;
+}
 
 export type { PrismaClient } from './generated/client/index.js';

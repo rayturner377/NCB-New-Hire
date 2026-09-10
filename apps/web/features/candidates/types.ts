@@ -19,10 +19,18 @@ export interface CandidatePayload {
   dateOfBirth: string;
   email: string;
   contactNumber: string;
-  address: string;
+  /** Split into the same 5 parts AddressFields collects (line1/line2/city/state/country), not a single combined string — a candidate's real address on file is what a medical case's intake form pre-fills from (see case-detail-container.tsx), which needs the parts separately. Use lib/address.ts's formatAddress() for a single-line display. */
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  country: string;
   emergencyContactName: string;
   emergencyContactNumber: string;
-  primaryPhysician: string;
+  primaryPhysicianName: string;
+  primaryPhysicianNumber: string;
   position: string;
   medicationInformation: string;
+  /** Set once portal access has been granted — see features/users' createUser and old server.js's linkedUserId (~L693-694). */
+  linkedUserId: string;
 }

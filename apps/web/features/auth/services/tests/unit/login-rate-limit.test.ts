@@ -1,23 +1,28 @@
-import { describe, expect, it } from 'vitest';
-import {
-  clearLoginAttempts,
-  isLoginRateLimited,
-  recordFailedLoginAttempt
-} from '../../login-rate-limit';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const getSettingsMock = vi.fn();
+vi.mock('../../../../settings/services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));
+
+const { clearLoginAttempts, isLoginRateLimited, recordFailedLoginAttempt } = await import('../../login-rate-limit');
 
 describe('login rate limit', () => {
-  it('does not limit a fresh key', () => {
-    expect(isLoginRateLimited('203.0.113.1:fresh@ncb.local')).toBe(false);
+  beforeEach(() => {
+    getSettingsMock.mockReset();
+    getSettingsMock.mockResolvedValue({ userPolicy: { loginMaxAttempts: 8, loginWindowMinutes: 15 } });
   });
 
-  it('limits after 8 failed attempts and clears on success', () => {
-    const key = '203.0.113.2:someone@ncb.local';
-    for (let i = 0; i < 8; i += 1) recordFailedLoginAttempt(key);
+  it('does not limit a fresh key', async () => {
+    expect(await isLoginRateLimited('203.0.113.1:fresh@ncb.local')).toBe(false);
+  });
 
-    expect(isLoginRateLimited(key)).toBe(true);
+  it('limits after 8 failed attempts and clears on success', async () => {
+    const key = '203.0.113.2:someone@ncb.local';
+    for (let i = 0; i < 8; i += 1) await recordFailedLoginAttempt(key);
+
+    expect(await isLoginRateLimited(key)).toBe(true);
 
     clearLoginAttempts(key);
 
-    expect(isLoginRateLimited(key)).toBe(false);
+    expect(await isLoginRateLimited(key)).toBe(false);
   });
 });

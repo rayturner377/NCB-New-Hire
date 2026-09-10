@@ -84,7 +84,7 @@ describe('submissions repository', () => {
     expect(found).toEqual({ id: 'sub_1' });
   });
 
-  it('listForCase() orders submissions by version descending', async () => {
+  it('listForCase() orders submissions by version descending, then by submitted-at as a tiebreaker', async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const db = { medicalSubmission: { findMany } } as unknown as PrismaClient;
 
@@ -92,7 +92,7 @@ describe('submissions repository', () => {
 
     expect(findMany).toHaveBeenCalledWith({
       where: { caseId: 'case_1' },
-      orderBy: { submissionVersion: 'desc' }
+      orderBy: [{ submissionVersion: 'desc' }, { submittedAt: 'desc' }]
     });
   });
 });

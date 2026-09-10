@@ -26,7 +26,9 @@ const STATUS_INFO: Record<string, StatusInfo> = {
   needs_follow_up: { label: 'Needs follow-up', tone: 'warning' },
   unpaid: { label: 'Unpaid', tone: 'warning' },
   paid: { label: 'Paid', tone: 'success' },
-  not_payable: { label: 'Not payable', tone: 'neutral' }
+  not_payable: { label: 'Not payable', tone: 'neutral' },
+  active: { label: 'Active', tone: 'success' },
+  inactive: { label: 'Inactive', tone: 'danger' }
 };
 
 function toTitleCase(value: string): string {

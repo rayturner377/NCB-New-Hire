@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const cookieStore = new Map<string, string>();
 const cookiesApi = {
@@ -17,8 +17,9 @@ const sessionsRepository = {
   delete: vi.fn()
 };
 const usersRepository = { findById: vi.fn() };
+const rolePermissionsRepository = { listAll: vi.fn().mockResolvedValue([]) };
 
-vi.mock('@ncb/database', () => ({ sessionsRepository, usersRepository }));
+vi.mock('@ncb/database', () => ({ sessionsRepository, usersRepository, rolePermissionsRepository }));
 
 const { createSession, destroySession, getSession, safeEqual } = await import('../../session');
 
@@ -87,5 +88,41 @@ describe('createSession / getSession / destroySession', () => {
 
     expect(sessionsRepository.delete).toHaveBeenCalledWith('sid_1');
     expect(cookiesApi.delete).toHaveBeenCalledWith('sid');
+  });
+});
+
+describe('session cookie secure flag', () => {
+  const originalValue = process.env.COOKIE_SECURE;
+
+  afterEach(() => {
+    if (originalValue === undefined) delete process.env.COOKIE_SECURE;
+    else process.env.COOKIE_SECURE = originalValue;
+  });
+
+  it('defaults to secure when COOKIE_SECURE is not set at all', async () => {
+    delete process.env.COOKIE_SECURE;
+    sessionsRepository.create.mockResolvedValue(undefined);
+
+    const { sessionId } = await createSession('user_1');
+
+    expect(cookiesApi.set).toHaveBeenCalledWith('sid', sessionId, expect.objectContaining({ secure: true }));
+  });
+
+  it('is insecure only when COOKIE_SECURE is explicitly the literal string "false"', async () => {
+    process.env.COOKIE_SECURE = 'false';
+    sessionsRepository.create.mockResolvedValue(undefined);
+
+    const { sessionId } = await createSession('user_1');
+
+    expect(cookiesApi.set).toHaveBeenCalledWith('sid', sessionId, expect.objectContaining({ secure: false }));
+  });
+
+  it('stays secure for any other value, including the old "true"', async () => {
+    process.env.COOKIE_SECURE = 'true';
+    sessionsRepository.create.mockResolvedValue(undefined);
+
+    const { sessionId } = await createSession('user_1');
+
+    expect(cookiesApi.set).toHaveBeenCalledWith('sid', sessionId, expect.objectContaining({ secure: true }));
   });
 });

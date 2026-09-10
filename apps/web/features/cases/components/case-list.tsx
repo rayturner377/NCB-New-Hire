@@ -1,76 +1,82 @@
-import Link from 'next/link';
-import type { MedicalCase } from '@ncb/database';
+import type { CaseWithPatient } from '@ncb/database';
+import { Badge } from '../../../components/ui/badge';
 import { DataTable, type DataTableColumn } from '../../../components/ui/data-table';
+import { SlaBadge } from '../../../components/ui/sla-badge';
 import { StatusBadge } from '../../../components/ui/status-badge';
-import { transitionCaseAction } from '../actions/transition-case';
+import type { SlaDefinition } from '../../settings/types';
+import { caseRouteLabel, caseStageLabel } from '../case-stage';
+import { caseTypeLabel } from '../case-types';
+import { computeSlaStatus, overallSlaStatus } from '../sla';
+import type { CasePayload } from '../services/cases-service';
 
-export type CaseRow = MedicalCase & { payload: unknown };
+export type CaseRow = CaseWithPatient<CasePayload>;
 
 export interface CaseListProps {
   cases: CaseRow[];
-  canTransition: boolean;
-  /** Whether to show a "Complete assessment" link for sent_to_doctor cases (features/submissions). */
-  canSubmitAssessment: boolean;
+  /** Admin-configured SLA policies (Settings → SLA) — omit the column entirely rather than show a meaningless badge when there's nothing to measure against. */
+  slaDefinitions?: SlaDefinition[];
 }
 
-/**
- * sent_to_doctor -> doctor_submitted is deliberately NOT a quick-transition
- * button here — that transition now only happens as a side effect of
- * actually completing an assessment (features/submissions' createSubmission
- * action), so a reviewer/admin can't jump a case to "doctor submitted"
- * without a real submission existing.
- */
-function nextStatusFor(status: string): string | null {
-  if (status === 'doctor_submitted' || status === 'review_pending') return 'reviewed';
-  return null;
-}
-
-/** Each row's transition buttons are their own tiny no-JS-required form, same pattern as candidate assign/withdraw. */
-export function CaseList({ cases, canTransition, canSubmitAssessment }: CaseListProps) {
+/** Rows navigate to the case's tabbed workspace (/cases/[id]) — status changes/billing/review now live there, not inline in the list. */
+export function CaseList({ cases, slaDefinitions = [] }: CaseListProps) {
   const columns: DataTableColumn<CaseRow>[] = [
-    { key: 'patientId', header: 'Candidate', render: (row) => row.patientId },
-    { key: 'route', header: 'Route', render: (row) => row.route },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
     {
-      key: 'assignedClinicianId',
-      header: 'Assigned clinician',
-      render: (row) => row.assignedClinicianId || '—'
+      key: 'patient',
+      header: 'Candidate',
+      render: (row) => (
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold">{row.patient.fullName}</span>
+            {row.payload?.hidden ? (
+              <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
+                Hidden
+              </Badge>
+            ) : null}
+          </div>
+          {row.patient.employeeId ? <span className="text-[11px] text-muted-foreground">{row.patient.employeeId}</span> : null}
+        </div>
+      )
+    },
+    { key: 'stage', header: 'Stage', render: (row) => <span className="text-xs">{caseStageLabel(row.status)}</span> },
+    { key: 'caseType', header: 'Type', render: (row) => <span className="text-xs">{caseTypeLabel(row.payload?.caseType)}</span> },
+    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+    ...(slaDefinitions.length
+      ? [
+          {
+            key: 'sla',
+            header: 'SLA',
+            render: (row: CaseRow) => (
+              <SlaBadge
+                status={overallSlaStatus(
+                  computeSlaStatus(
+                    {
+                      createdAt: row.createdAt,
+                      assignedAt: row.assignedAt,
+                      doctorSubmittedAt: row.doctorSubmittedAt,
+                      reviewedAt: row.reviewedAt,
+                      paymentConfirmedAt: row.paymentConfirmedAt
+                    },
+                    slaDefinitions
+                  )
+                )}
+              />
+            )
+          } satisfies DataTableColumn<CaseRow>
+        ]
+      : []),
+    {
+      key: 'route',
+      header: 'Initial routing',
+      render: (row) => <span className="text-xs text-muted-foreground">{caseRouteLabel(row.route)}</span>
+    },
+    {
+      key: 'updatedAt',
+      header: 'Updated',
+      render: (row) => <span className="text-xs text-muted-foreground">{new Date(row.updatedAt).toLocaleDateString()}</span>
     }
   ];
 
-  if (canTransition || canSubmitAssessment) {
-    columns.push({
-      key: 'actions',
-      header: 'Actions',
-      render: (row) => {
-        const nextStatus = nextStatusFor(row.status);
-        const canArchive = canTransition && row.status !== 'archived' && row.status !== 'withdrawn';
-        return (
-          <div className="case-row-actions">
-            {canSubmitAssessment && row.status === 'sent_to_doctor' ? (
-              <Link href={`/submissions/new?caseId=${row.id}`}>Complete assessment</Link>
-            ) : null}
-            {canTransition && nextStatus ? (
-              <form action={transitionCaseAction} className="case-inline-form">
-                <input type="hidden" name="caseId" value={row.id} />
-                <input type="hidden" name="version" value={row.version} />
-                <input type="hidden" name="newStatus" value={nextStatus} />
-                <button type="submit">Mark reviewed</button>
-              </form>
-            ) : null}
-            {canArchive ? (
-              <form action={transitionCaseAction} className="case-inline-form">
-                <input type="hidden" name="caseId" value={row.id} />
-                <input type="hidden" name="version" value={row.version} />
-                <input type="hidden" name="newStatus" value="archived" />
-                <button type="submit">Archive</button>
-              </form>
-            ) : null}
-          </div>
-        );
-      }
-    });
-  }
-
-  return <DataTable columns={columns} rows={cases} getRowKey={(row) => row.id} emptyMessage="No cases yet." />;
+  return (
+    <DataTable columns={columns} rows={cases} getRowKey={(row) => row.id} emptyMessage="No cases yet." getRowHref={(row) => `/cases/${row.id}`} />
+  );
 }

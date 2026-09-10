@@ -4,8 +4,15 @@ const getSessionMock = vi.fn();
 const createCandidateMock = vi.fn();
 const revalidatePathMock = vi.fn();
 const assertSameOriginMock = vi.fn();
+const redirectMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
+vi.mock('next/navigation', () => ({
+  redirect: (path: string) => {
+    redirectMock(path);
+    throw new Error('NEXT_REDIRECT');
+  }
+}));
 vi.mock('../../../../../lib/assert-same-origin', () => ({
   assertSameOrigin: (...args: unknown[]) => assertSameOriginMock(...args)
 }));
@@ -27,13 +34,14 @@ describe('createCandidateAction', () => {
     getSessionMock.mockReset();
     createCandidateMock.mockReset();
     revalidatePathMock.mockClear();
+    redirectMock.mockClear();
     assertSameOriginMock.mockReset().mockResolvedValue(undefined);
   });
 
   it('rejects when there is no active session', async () => {
     getSessionMock.mockResolvedValue(null);
 
-    const result = await createCandidateAction(null, formData({ fullName: 'Jane', position: 'Teller' }));
+    const result = await createCandidateAction(null, formData({ firstName: 'Jane', position: 'Teller' }));
 
     expect(result.ok).toBe(false);
     expect(createCandidateMock).not.toHaveBeenCalled();
@@ -44,34 +52,54 @@ describe('createCandidateAction', () => {
 
     const result = await createCandidateAction(
       null,
-      formData({ fullName: 'Jane', position: 'Teller', dateOfBirth: '1990-01-01' })
+      formData({ firstName: 'Jane', lastName: 'Doe', position: 'Teller', dateOfBirth: '1990-01-01' })
     );
 
     expect(result.ok).toBe(false);
     expect(createCandidateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects invalid form input without creating anything', async () => {
+  it('rejects invalid form input (no name given) and reports it as a field error', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'user_1', role: 'reviewer' } });
 
-    const result = await createCandidateAction(null, formData({ fullName: '', position: 'Teller' }));
+    const result = await createCandidateAction(null, formData({ position: 'Teller', dateOfBirth: '1990-01-01' }));
+
+    expect(result.ok).toBe(false);
+    expect(result.fieldErrors?.fullName).toBeTruthy();
+    expect(createCandidateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a password with no email (portal access needs a login email)', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'user_1', role: 'reviewer' } });
+
+    const result = await createCandidateAction(
+      null,
+      formData({
+        firstName: 'Jane',
+        lastName: 'Doe',
+        position: 'Teller',
+        dateOfBirth: '1990-01-01',
+        password: 'a-very-long-password'
+      })
+    );
 
     expect(result.ok).toBe(false);
     expect(createCandidateMock).not.toHaveBeenCalled();
   });
 
-  it('creates the candidate and revalidates the list on success', async () => {
+  it('creates the candidate, revalidates the list, and redirects to the new candidate on success', async () => {
     getSessionMock.mockResolvedValue({
       user: { id: 'usr_reviewer_demo', displayName: 'Demo Reviewer', role: 'reviewer' }
     });
     createCandidateMock.mockResolvedValue({ id: 'cand_1' });
 
-    const result = await createCandidateAction(
-      null,
-      formData({ fullName: 'Jane Doe', position: 'Teller', dateOfBirth: '1990-01-01' })
-    );
+    await expect(
+      createCandidateAction(
+        null,
+        formData({ firstName: 'Jane', lastName: 'Doe', position: 'Teller', dateOfBirth: '1990-01-01' })
+      )
+    ).rejects.toThrow('NEXT_REDIRECT');
 
-    expect(result.ok).toBe(true);
     expect(createCandidateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         fullName: 'Jane Doe',
@@ -80,5 +108,6 @@ describe('createCandidateAction', () => {
       })
     );
     expect(revalidatePathMock).toHaveBeenCalledWith('/candidates');
+    expect(redirectMock).toHaveBeenCalledWith('/candidates/cand_1');
   });
 });

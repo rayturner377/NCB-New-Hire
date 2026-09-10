@@ -78,4 +78,13 @@ describe('cases repository', () => {
     const found = await repository.findById('case_1', masterKey);
     expect(found?.payload).toEqual({ notes: 'x' });
   });
+
+  it('setBilling() writes payableAmount/paymentStatus directly, independent of any encrypted payload', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'case_1', payableAmount: 150, paymentStatus: 'unpaid' });
+    const db = { medicalCase: { update } } as unknown as PrismaClient;
+
+    await createCasesRepository(db).setBilling('case_1', 150, 'unpaid');
+
+    expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { payableAmount: 150, paymentStatus: 'unpaid' } });
+  });
 });

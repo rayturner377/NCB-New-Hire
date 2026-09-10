@@ -36,7 +36,7 @@ export async function login(_prevState: LoginResult | null, formData: FormData):
   const ip = await getClientIp();
   const attemptKey = `${ip}:${email || 'unknown'}`;
 
-  if (isLoginRateLimited(attemptKey)) {
+  if (await isLoginRateLimited(attemptKey)) {
     return { ok: false, error: 'Too many login attempts. Try again later.' };
   }
 
@@ -44,7 +44,7 @@ export async function login(_prevState: LoginResult | null, formData: FormData):
   const passwordRecord = user?.passwordRecord as Parameters<typeof verifyPassword>[1];
 
   if (!user || user.active === false || !verifyPassword(password, passwordRecord)) {
-    recordFailedLoginAttempt(attemptKey);
+    await recordFailedLoginAttempt(attemptKey);
     await auditRepository.append({
       eventType: 'login_failed',
       sourceIp: ip,

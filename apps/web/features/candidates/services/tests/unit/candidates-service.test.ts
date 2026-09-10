@@ -19,6 +19,11 @@ vi.mock('@ncb/database', () => ({
 const masterKey = randomBytes(32);
 vi.mock('../../../../../lib/master-key', () => ({ loadMasterKey: () => masterKey }));
 
+const createUser = vi.fn();
+vi.mock('../../../../users/services/users-service', () => ({
+  createUser: (...args: unknown[]) => createUser(...args)
+}));
+
 const { createCandidate, getCandidateById, listCandidates, listCandidatesForUser, updateCandidate } = await import(
   '../../candidates-service'
 );
@@ -42,10 +47,15 @@ function samplePayload(overrides: Partial<CandidatePayload> = {}): CandidatePayl
     dateOfBirth: '1990-01-01',
     email: '',
     contactNumber: '',
-    address: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    country: '',
     emergencyContactName: '',
     emergencyContactNumber: '',
-    primaryPhysician: '',
+    primaryPhysicianName: '',
+    primaryPhysicianNumber: '',
     position: 'Teller',
     medicationInformation: '',
     ...overrides
@@ -58,6 +68,7 @@ describe('candidates service', () => {
     listAll.mockReset();
     listForUser.mockReset();
     findById.mockReset();
+    createUser.mockReset();
   });
 
   it('createCandidate builds the full payload and persists it', async () => {
@@ -73,10 +84,36 @@ describe('candidates service', () => {
 
     expect(created.status).toBe('assigned');
     expect(created.id).toMatch(/^cand_/);
+    expect(created.linkedUserId).toBe('');
+    expect(createUser).not.toHaveBeenCalled();
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ id: created.id, fullName: 'Jane Doe' }),
       masterKey
     );
+  });
+
+  it('createCandidate grants portal access when a password is given, linking the new account', async () => {
+    save.mockResolvedValue(undefined);
+    createUser.mockResolvedValue({ id: 'usr_new_patient' });
+
+    const created = await createCandidate({
+      fullName: 'Jane Doe',
+      position: 'Teller',
+      dateOfBirth: '1990-01-01',
+      email: 'jane@example.com',
+      password: 'a-very-long-password',
+      createdBy: 'usr_reviewer_demo',
+      createdByName: 'Demo Reviewer'
+    });
+
+    expect(createUser).toHaveBeenCalledWith({
+      email: 'jane@example.com',
+      displayName: 'Jane Doe',
+      role: 'patient',
+      password: 'a-very-long-password'
+    });
+    expect(created.linkedUserId).toBe('usr_new_patient');
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ linkedUserId: 'usr_new_patient' }), masterKey);
   });
 
   it('listCandidates filters out rows with no payload', async () => {

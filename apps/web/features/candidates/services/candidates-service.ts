@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { candidatesRepository } from '@ncb/database';
 import { loadMasterKey } from '../../../lib/master-key';
+import { createUser } from '../../users/services/users-service';
 import type { CreateCandidateSchemaInput, UpdateCandidateSchemaInput } from '../schemas/candidate';
 import type { CandidatePayload } from '../types';
 
@@ -12,6 +13,8 @@ function randomToken(bytes: number): string {
 export interface CreateCandidateInput extends CreateCandidateSchemaInput {
   createdBy: string;
   createdByName: string;
+  /** Forces the change-password wizard on next login — only meaningful alongside `password`. */
+  mustChangePassword?: boolean;
 }
 
 async function persist(payload: CandidatePayload): Promise<void> {
@@ -25,15 +28,34 @@ async function persist(payload: CandidatePayload): Promise<void> {
       dateOfBirth: new Date(payload.dateOfBirth),
       contactNumber: payload.contactNumber || undefined,
       createdBy: payload.createdBy,
+      linkedUserId: payload.linkedUserId || undefined,
       payload
     },
     masterKey
   );
 }
 
-/** Ported from server.js sanitizeCandidate (~L3011-3039). */
+/**
+ * Ported from server.js sanitizeCandidate (~L3011-3039). A password grants
+ * portal access at creation time (old app.js did this as a separate later
+ * step, POST /api/candidates/:id/user — see createUser/DuplicateEmailError,
+ * reused here so both flows create the account identically).
+ */
 export async function createCandidate(input: CreateCandidateInput): Promise<CandidatePayload> {
   const now = new Date().toISOString();
+
+  let linkedUserId = '';
+  if (input.password) {
+    const user = await createUser({
+      email: input.email,
+      displayName: input.fullName,
+      role: 'patient',
+      password: input.password,
+      mustChangePassword: input.mustChangePassword
+    });
+    linkedUserId = user.id;
+  }
+
   const payload: CandidatePayload = {
     id: `cand_${Date.now().toString(36)}_${randomToken(8)}`,
     createdAt: now,
@@ -52,12 +74,18 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
     dateOfBirth: input.dateOfBirth,
     email: input.email ?? '',
     contactNumber: input.contactNumber ?? '',
-    address: input.address ?? '',
+    addressLine1: input.addressLine1 ?? '',
+    addressLine2: input.addressLine2 ?? '',
+    city: input.city ?? '',
+    state: input.state ?? '',
+    country: input.country ?? '',
     emergencyContactName: input.emergencyContactName ?? '',
     emergencyContactNumber: input.emergencyContactNumber ?? '',
-    primaryPhysician: input.primaryPhysician ?? '',
+    primaryPhysicianName: input.primaryPhysicianName ?? '',
+    primaryPhysicianNumber: input.primaryPhysicianNumber ?? '',
     position: input.position,
-    medicationInformation: input.medicationInformation ?? ''
+    medicationInformation: input.medicationInformation ?? '',
+    linkedUserId
   };
 
   await persist(payload);
@@ -96,10 +124,15 @@ export async function updateCandidate(id: string, patch: UpdateCandidateSchemaIn
   if (patch.dateOfBirth !== undefined) updated.dateOfBirth = patch.dateOfBirth;
   if (patch.email !== undefined) updated.email = patch.email;
   if (patch.contactNumber !== undefined) updated.contactNumber = patch.contactNumber;
-  if (patch.address !== undefined) updated.address = patch.address;
+  if (patch.addressLine1 !== undefined) updated.addressLine1 = patch.addressLine1;
+  if (patch.addressLine2 !== undefined) updated.addressLine2 = patch.addressLine2;
+  if (patch.city !== undefined) updated.city = patch.city;
+  if (patch.state !== undefined) updated.state = patch.state;
+  if (patch.country !== undefined) updated.country = patch.country;
   if (patch.emergencyContactName !== undefined) updated.emergencyContactName = patch.emergencyContactName;
   if (patch.emergencyContactNumber !== undefined) updated.emergencyContactNumber = patch.emergencyContactNumber;
-  if (patch.primaryPhysician !== undefined) updated.primaryPhysician = patch.primaryPhysician;
+  if (patch.primaryPhysicianName !== undefined) updated.primaryPhysicianName = patch.primaryPhysicianName;
+  if (patch.primaryPhysicianNumber !== undefined) updated.primaryPhysicianNumber = patch.primaryPhysicianNumber;
   if (patch.position !== undefined) updated.position = patch.position;
   if (patch.medicationInformation !== undefined) updated.medicationInformation = patch.medicationInformation;
   if (patch.withdrawalReason !== undefined) updated.withdrawalReason = patch.withdrawalReason;

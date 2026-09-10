@@ -17,7 +17,32 @@ loadEnvConfig(path.join(dirname, '..', '..'));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true
+  reactStrictMode: true,
+  experimental: {
+    // Server Actions default to a 1MB request body cap — too tight for the settings page's logo
+    // uploads (see logo-upload-field.tsx), which submit the small AND large logo as inline base64
+    // data URLs in the same request alongside the rest of the General tab's fields. Exceeding the
+    // default silently failed the whole submission (the request never even reached the action),
+    // which read as "I uploaded a logo, it disappeared" rather than a clear error.
+    serverActions: {
+      bodySizeLimit: '8mb'
+    }
+  },
+  // Native OS file-change events (ReadDirectoryChangesW) are unreliable on
+  // Windows machines with corporate antivirus/EDR scanning every write, which
+  // is why the dev server compiles a change but never pushes the auto-reload
+  // — a manual browser refresh "finds" it because that request re-checks
+  // mtimes regardless of the watcher. Polling sidesteps that: opt in with
+  // WATCH_POLL=true rather than always paying the CPU cost of polling.
+  webpack: (config, { dev }) => {
+    if (dev && process.env.WATCH_POLL === 'true') {
+      config.watchOptions = {
+        poll: 1000,
+        aggregateTimeout: 300
+      };
+    }
+    return config;
+  }
 };
 
 export default nextConfig;

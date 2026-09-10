@@ -76,6 +76,7 @@ describe('submissions service', () => {
 
   it('createSubmission builds the full payload, defaults review to pending, and persists against the real case id', async () => {
     save.mockResolvedValue(undefined);
+    listForCase.mockResolvedValue([]);
 
     const submission = await createSubmission(baseInput());
 
@@ -87,10 +88,21 @@ describe('submissions service', () => {
       reviewedByName: ''
     });
     expect(submission.caseId).toBe('case_1');
+    expect(submission.version).toBe(1);
     expect(save).toHaveBeenCalledWith(
-      expect.objectContaining({ caseId: 'case_1', submittedBy: 'usr_doctor_demo' }),
+      expect.objectContaining({ caseId: 'case_1', submittedBy: 'usr_doctor_demo', submissionVersion: 1 }),
       masterKey
     );
+  });
+
+  it('a resubmission (case sent back to the doctor) gets the next version, not another 1 — otherwise it ties with the earlier row and a reviewer can end up seeing stale answers', async () => {
+    save.mockResolvedValue(undefined);
+    listForCase.mockResolvedValue([{ submissionVersion: 1 }]);
+
+    const submission = await createSubmission(baseInput());
+
+    expect(submission.version).toBe(2);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ submissionVersion: 2 }), masterKey);
   });
 
   it('listSubmissions decrypts every row', async () => {

@@ -13,20 +13,21 @@ export interface RateLimitEntry {
 
 export type RateLimitStore = Map<string, RateLimitEntry>;
 
-export function isRateLimited(store: RateLimitStore, key: string, now: number = Date.now()): boolean {
+/** `maxAttempts`/`windowMs` default to the original hard-coded constants — apps/web's login-rate-limit.ts passes the admin-configured Settings → User values instead. */
+export function isRateLimited(store: RateLimitStore, key: string, now: number = Date.now(), maxAttempts: number = MAX_ATTEMPTS): boolean {
   const item = store.get(key);
   if (!item) return false;
   if (item.resetAt < now) {
     store.delete(key);
     return false;
   }
-  return item.count >= MAX_ATTEMPTS;
+  return item.count >= maxAttempts;
 }
 
-export function recordFailedLogin(store: RateLimitStore, key: string, now: number = Date.now()): void {
+export function recordFailedLogin(store: RateLimitStore, key: string, now: number = Date.now(), windowMs: number = LOCKOUT_MS): void {
   const current = store.get(key);
   if (!current || current.resetAt < now) {
-    store.set(key, { count: 1, resetAt: now + LOCKOUT_MS });
+    store.set(key, { count: 1, resetAt: now + windowMs });
     return;
   }
   current.count += 1;

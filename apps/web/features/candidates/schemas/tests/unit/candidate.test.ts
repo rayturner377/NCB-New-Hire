@@ -24,6 +24,25 @@ describe('createCandidateSchema', () => {
   it('rejects an invalid date of birth', () => {
     expect(createCandidateSchema.safeParse({ ...valid, dateOfBirth: 'not-a-date' }).success).toBe(false);
   });
+
+  it('accepts no password (portal access stays ungranted)', () => {
+    const result = createCandidateSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.password).toBe('');
+  });
+
+  it('rejects a password shorter than 12 characters', () => {
+    expect(createCandidateSchema.safeParse({ ...valid, email: 'jane@example.com', password: 'short' }).success).toBe(false);
+  });
+
+  it('rejects a password with no email to log in with', () => {
+    expect(createCandidateSchema.safeParse({ ...valid, password: 'a-very-long-password' }).success).toBe(false);
+  });
+
+  it('accepts a valid password paired with an email', () => {
+    const result = createCandidateSchema.safeParse({ ...valid, email: 'jane@example.com', password: 'a-very-long-password' });
+    expect(result.success).toBe(true);
+  });
 });
 
 describe('updateCandidateSchema', () => {

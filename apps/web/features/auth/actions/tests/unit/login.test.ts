@@ -7,6 +7,9 @@ const redirectMock = vi.fn((path: string) => {
   throw new Error(`NEXT_REDIRECT:${path}`);
 });
 const createSessionMock = vi.fn();
+const isLoginRateLimitedMock = vi.fn();
+const recordFailedLoginAttemptMock = vi.fn();
+const clearLoginAttemptsMock = vi.fn();
 
 vi.mock('@ncb/database', () => ({
   usersRepository: { findByEmail: (...args: unknown[]) => findByEmail(...args) },
@@ -15,6 +18,11 @@ vi.mock('@ncb/database', () => ({
 vi.mock('next/navigation', () => ({ redirect: (path: string) => redirectMock(path) }));
 vi.mock('../../../../../lib/client-ip', () => ({ getClientIp: async () => '203.0.113.5' }));
 vi.mock('../../../../../lib/session', () => ({ createSession: (...args: unknown[]) => createSessionMock(...args) }));
+vi.mock('../../../services/login-rate-limit', () => ({
+  isLoginRateLimited: (...args: unknown[]) => isLoginRateLimitedMock(...args),
+  recordFailedLoginAttempt: (...args: unknown[]) => recordFailedLoginAttemptMock(...args),
+  clearLoginAttempts: (...args: unknown[]) => clearLoginAttemptsMock(...args)
+}));
 
 const { login } = await import('../../login');
 
@@ -30,6 +38,10 @@ describe('login action', () => {
     auditAppend.mockReset();
     redirectMock.mockClear();
     createSessionMock.mockReset();
+    isLoginRateLimitedMock.mockReset();
+    isLoginRateLimitedMock.mockResolvedValue(false);
+    recordFailedLoginAttemptMock.mockReset();
+    clearLoginAttemptsMock.mockReset();
   });
 
   it('rejects invalid input without querying the database', async () => {

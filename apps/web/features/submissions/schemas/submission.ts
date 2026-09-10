@@ -1,4 +1,21 @@
 import { z } from 'zod';
+import { parseAndValidateImageDataUrl } from '../../../lib/image-data-url';
+
+/** Canvas-captured signatures (signature-field.tsx's toDataURL('image/png')) are small — a generous cap that still catches something malformed/oversized rather than trusting an unbounded string. */
+const MAX_SIGNATURE_IMAGE_BYTES = 500 * 1024;
+const signatureDataUrlSchema = z
+  .string()
+  .max(2_000_000)
+  .optional()
+  .default('')
+  .superRefine((value, ctx) => {
+    if (!value) return;
+    try {
+      parseAndValidateImageDataUrl(value, MAX_SIGNATURE_IMAGE_BYTES);
+    } catch (error) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: error instanceof Error ? error.message : 'Invalid signature image.' });
+    }
+  });
 
 export const determinationStatusSchema = z.enum([
   'fit',
@@ -55,7 +72,7 @@ export const createSubmissionSchema = z.object({
       signedBy: z.string().trim().min(1, 'Clinician attestation name is required').max(140),
       signatureDate: validDateString,
       consentConfirmed: z.coerce.boolean(),
-      signatureDataUrl: z.string().optional().default('')
+      signatureDataUrl: signatureDataUrlSchema
     })
     .refine((data) => data.consentConfirmed === true, {
       message: 'Consent confirmation is required before submission.',
@@ -66,7 +83,7 @@ export const createSubmissionSchema = z.object({
       accepted: z.coerce.boolean().optional().default(false),
       signedBy: z.string().trim().max(140).optional().default(''),
       signedAt: z.string().optional().default(''),
-      signatureDataUrl: z.string().optional().default('')
+      signatureDataUrl: signatureDataUrlSchema
     })
     .optional()
     .default({ accepted: false, signedBy: '', signedAt: '', signatureDataUrl: '' })

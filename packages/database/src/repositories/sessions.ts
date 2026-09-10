@@ -43,6 +43,18 @@ export function createSessionsRepository(db: PrismaClient) {
       await db.session.deleteMany({ where: { id } });
     },
 
+    /**
+     * Every session belonging to a user, not just one — used when a password
+     * changes (an old, possibly-compromised session token should stop working
+     * immediately, not just the browser that changed it) and for a "sign out
+     * of all other devices" self-service action. `exceptId` lets a caller keep
+     * the session making the request alive (e.g. the browser that just
+     * changed its own password) rather than logging itself out too.
+     */
+    async deleteAllForUser(userId: string, exceptId?: string): Promise<void> {
+      await db.session.deleteMany({ where: { userId, ...(exceptId ? { id: { not: exceptId } } : {}) } });
+    },
+
     async deleteExpired(now: Date = new Date()): Promise<number> {
       const result = await db.session.deleteMany({ where: { expiresAt: { lte: now } } });
       return result.count;

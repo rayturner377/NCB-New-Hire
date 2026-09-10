@@ -31,14 +31,28 @@ export function createSubmissionsRepository(db: PrismaClient) {
     },
 
     listForCase(caseId: string): Promise<MedicalSubmission[]> {
+      // submittedAt is a tiebreaker, not the primary key of the sort — two rows can otherwise share
+      // a submissionVersion (see the comment on `save`'s default below for how that happened
+      // historically), and without it Postgres doesn't guarantee which of them sorts first, which
+      // is exactly how a resubmission could show up as "older" than the assessment it replaced.
       return db.medicalSubmission.findMany({
         where: { caseId },
-        orderBy: { submissionVersion: 'desc' }
+        orderBy: [{ submissionVersion: 'desc' }, { submittedAt: 'desc' }]
       });
     },
 
     decrypt: decryptSubmission,
 
+    /**
+     * A resubmission (case sent back to the doctor, who edits and submits
+     * again) never updates the earlier row — each submit is its own
+     * immutable record, `submissionVersion` ordering them. `input.submissionVersion`
+     * defaulting to 1 here is only ever right for a case's very first
+     * submission; callers resubmitting the same case MUST pass the actual
+     * next version (see submissions-service.ts's createSubmission, which
+     * derives it from listForCase) — otherwise two rows tie at version 1 and
+     * `listForCase`'s ordering can no longer tell which one is newer.
+     */
     async save(input: SubmissionInput, masterKey: Buffer): Promise<MedicalSubmission> {
       const record = encryptJson(masterKey, input.payload);
       const encryptedPayload = Buffer.from(JSON.stringify(record), 'utf8');
