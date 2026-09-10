@@ -100,11 +100,11 @@ export function DateField({
             setOpen(false);
           }}
           disabled={disabled}
-          captionLayout="dropdown-buttons"
-          fromYear={fromYear}
-          toYear={toYear ?? new Date().getFullYear()}
+          captionLayout="dropdown"
+          startMonth={new Date(fromYear, 0)}
+          endMonth={new Date(toYear ?? new Date().getFullYear(), 11)}
           defaultMonth={date ?? defaultMonth ?? new Date(toYear ?? new Date().getFullYear() - 30, 0)}
-          initialFocus
+          autoFocus
         />
       </PopoverContent>
       <input
