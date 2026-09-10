@@ -1,6 +1,6 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { AddressFields } from '../../../components/form/address-fields';
 import { ContactFields } from '../../../components/form/contact-fields';
 import { DateField } from '../../../components/form/date-field';
@@ -14,6 +14,7 @@ import { Label } from '../../../components/ui/label';
 import { Separator } from '../../../components/ui/separator';
 import { updateOwnProfileAction } from '../../candidates/actions/update-own-profile';
 import type { CandidatePayload } from '../../candidates/types';
+import { useActionState } from 'react';
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -37,7 +38,7 @@ export interface PatientProfileFormProps {
  * are HR-managed identity fields, edited only through /candidates/[id].
  */
 export function PatientProfileForm({ candidate, email }: PatientProfileFormProps) {
-  const [state, formAction] = useFormState(updateOwnProfileAction, null);
+  const [state, formAction] = useActionState(updateOwnProfileAction, null);
 
   return (
     <form action={formAction} className="flex flex-col gap-8">

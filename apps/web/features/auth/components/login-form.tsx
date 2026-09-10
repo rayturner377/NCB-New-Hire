@@ -1,12 +1,13 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { PasswordInput } from '../../../components/ui/password-input';
 import { login, type LoginResult } from '../actions/login';
+import { useActionState } from 'react';
 
 const initialState: LoginResult | null = null;
 
@@ -20,7 +21,7 @@ function SubmitButton() {
 }
 
 export function LoginForm() {
-  const [state, formAction] = useFormState(login, initialState);
+  const [state, formAction] = useActionState(login, initialState);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">

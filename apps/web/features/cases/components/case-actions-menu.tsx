@@ -1,8 +1,8 @@
 'use client';
 
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import {
@@ -77,13 +77,13 @@ export function CaseActionsMenu({
   const quickFormRef = useRef<HTMLFormElement>(null);
   const hideFormRef = useRef<HTMLFormElement>(null);
 
-  const [applyState, applyFormAction] = useFormState(applyCaseActionAction, applyInitialState);
-  const [reassignState, reassignFormAction] = useFormState(reassignClinicianAction, reassignInitialState);
-  const [setHiddenState, setHiddenFormAction] = useFormState(setCaseHiddenAction, setHiddenInitialState);
+  const [applyState, applyFormAction] = useActionState(applyCaseActionAction, applyInitialState);
+  const [reassignState, reassignFormAction] = useActionState(reassignClinicianAction, reassignInitialState);
+  const [setHiddenState, setHiddenFormAction] = useActionState(setCaseHiddenAction, setHiddenInitialState);
 
   // A no-picker action (nothing to choose, just confirm) submits this
   // always-present hidden form rather than calling applyFormAction directly
-  // as a plain function — a real submit is what makes useFormState's
+  // as a plain function — a real submit is what makes useActionState's
   // returned `applyState` reliably reflect the result, the same reason
   // session-idle-manager.tsx's sign-out fix exists.
   useEffect(() => {

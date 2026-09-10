@@ -1,12 +1,13 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { sendTestEmailAction } from '../actions/send-test-email';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { NOTIFICATION_TEMPLATES } from '../../notifications/registry';
+import { useActionState } from 'react';
 
 /** Only the real sendable notification types — email_header/email_footer are shared wrapper pieces with no subject/variables of their own, not something you'd pick to "send a test of". */
 const TESTABLE_TEMPLATES = NOTIFICATION_TEMPLATES.filter((template) => !template.isStructural);
@@ -26,7 +27,7 @@ export interface SendTestEmailButtonProps {
 
 /** Separate `<form>` from the main Mail settings form — sending a test uses whatever's already saved (see send-test-email.ts), not this page's currently-unsaved field values, so mixing the two forms would be misleading. */
 export function SendTestEmailButton({ defaultRecipient }: SendTestEmailButtonProps) {
-  const [state, formAction] = useFormState(sendTestEmailAction, null);
+  const [state, formAction] = useActionState(sendTestEmailAction, null);
 
   return (
     <form action={formAction} className="flex flex-col gap-2 rounded-md border p-3">

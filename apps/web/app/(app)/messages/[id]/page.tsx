@@ -1,5 +1,6 @@
 import { MessageDetailContainer } from '../../../../features/messages/containers/message-detail-container';
 
-export default function MessageDetailPage({ params }: { params: { id: string } }) {
+export default async function MessageDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return <MessageDetailContainer messageId={params.id} />;
 }

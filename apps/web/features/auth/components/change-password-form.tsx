@@ -1,17 +1,17 @@
 'use client';
 
-import { useFormState } from 'react-dom';
 import { ValidatedSubmitButton } from '../../../components/form/submit-button';
 import { Alert } from '../../../components/ui/alert';
 import { Label } from '../../../components/ui/label';
 import { PasswordInput } from '../../../components/ui/password-input';
 import { useValidatedForm } from '../../../lib/hooks/use-validated-form';
 import { changePasswordAction, type ChangePasswordResult } from '../actions/change-password';
+import { useActionState } from 'react';
 
 const initialState: ChangePasswordResult | null = null;
 
 export function ChangePasswordForm() {
-  const [state, formAction] = useFormState(changePasswordAction, initialState);
+  const [state, formAction] = useActionState(changePasswordAction, initialState);
   const { formRef, formValid, refreshValidity, handleSubmit, fieldError } = useValidatedForm(state?.fieldErrors);
 
   return (

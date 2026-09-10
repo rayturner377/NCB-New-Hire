@@ -1,9 +1,10 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { signOutOtherSessionsAction } from '../../auth/actions/sign-out-other-sessions';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
+import { useActionState } from 'react';
 
 function SignOutButton() {
   const { pending } = useFormStatus();
@@ -21,7 +22,7 @@ function SignOutButton() {
  * from stays signed in (see sign-out-other-sessions.ts's `exceptId`).
  */
 export function SignOutOtherSessionsButton() {
-  const [state, formAction] = useFormState(signOutOtherSessionsAction, null);
+  const [state, formAction] = useActionState(signOutOtherSessionsAction, null);
 
   return (
     <form action={formAction} className="flex flex-col gap-2">

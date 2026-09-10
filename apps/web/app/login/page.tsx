@@ -5,7 +5,8 @@ import { getPublicSettings } from '../../features/settings/services/settings-ser
 import { getSession } from '../../lib/session';
 import { LoginForm } from '../../features/auth/components/login-form';
 
-export default async function LoginPage({ searchParams }: { searchParams: { reason?: string } }) {
+export default async function LoginPage(props: { searchParams: Promise<{ reason?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (session) {
     redirect('/');

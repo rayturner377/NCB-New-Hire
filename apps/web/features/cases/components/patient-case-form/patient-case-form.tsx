@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { ActionSuccessDialog } from '../../../../components/feedback/action-success-dialog';
 import { AutosaveIndicator } from '../../../../components/form/autosave-indicator';
 import { TabbedFormShell, type TabbedFormShellTab } from '../../../../components/form/tabbed-form-shell';
@@ -81,7 +81,7 @@ function SubmitButton({ canSubmit }: { canSubmit: boolean }) {
  */
 export function PatientCaseForm({ caseId, version, data, employeeId, email, doctors, readOnly }: PatientCaseFormProps) {
   const router = useRouter();
-  const [state, formAction] = useFormState(savePatientCaseAction, initialState);
+  const [state, formAction] = useActionState(savePatientCaseAction, initialState);
   const [showSubmittedDialog, setShowSubmittedDialog] = useState(false);
 
   useEffect(() => {
@@ -136,7 +136,6 @@ export function PatientCaseForm({ caseId, version, data, employeeId, email, doct
 
   useEffect(() => {
     recomputeActiveSectionCompletion(tab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   const consentComplete = consentAccepted && Boolean(signedBy.trim()) && Boolean(signatureDataUrl) && Boolean(assignedClinicianId);

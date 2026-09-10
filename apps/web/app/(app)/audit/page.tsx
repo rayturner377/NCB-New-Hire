@@ -1,5 +1,8 @@
 import { AuditLogContainer } from '../../../features/audit/containers/audit-log-container';
 
-export default function AuditPage({ searchParams }: { searchParams: { type?: string; from?: string; to?: string; page?: string } }) {
+export default async function AuditPage(
+  props: { searchParams: Promise<{ type?: string; from?: string; to?: string; page?: string }> }
+) {
+  const searchParams = await props.searchParams;
   return <AuditLogContainer searchParams={searchParams} />;
 }

@@ -24,7 +24,7 @@ export interface CaseAttachmentUploadProps {
  * `<form>` is invalid HTML — browsers handle it unpredictably. Calling the
  * server action directly (the same function a `<form action={...}>` would
  * call) sidesteps that entirely; this component owns its own pending/error
- * state instead of getting it from `useFormState`.
+ * state instead of getting it from `useActionState`.
  */
 export function CaseAttachmentUpload({ caseId, lockedMessage }: CaseAttachmentUploadProps) {
   const router = useRouter();

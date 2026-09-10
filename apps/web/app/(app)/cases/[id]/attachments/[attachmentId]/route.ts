@@ -13,7 +13,11 @@ import { getSession } from '../../../../../../lib/session';
  * visibility, a clinician restricted to a case actually assigned to them, a
  * patient restricted to their own case.
  */
-export async function GET(_request: Request, { params }: { params: { id: string; attachmentId: string } }) {
+export async function GET(
+  _request: Request,
+  props: { params: Promise<{ id: string; attachmentId: string }> }
+) {
+  const params = await props.params;
   const session = await getSession();
   if (!session) {
     return new NextResponse('Unauthorized', { status: 401 });

@@ -1,10 +1,11 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import type { SettingsActionResult } from '../types-action';
+import { useActionState } from 'react';
 
 function SaveButton() {
   const { pending } = useFormStatus();
@@ -23,12 +24,12 @@ export interface SettingsSectionFormProps {
 /**
  * Shared shell for every settings tab's form — each tab is otherwise
  * independent (its own schema, its own server action, its own section of the
- * settings object), but they all need the same useFormState wiring plus a
+ * settings object), but they all need the same useActionState wiring plus a
  * save button and a saved/error banner, so that plumbing lives here once
  * instead of copied into all seven tabs.
  */
 export function SettingsSectionForm({ action, children }: SettingsSectionFormProps) {
-  const [state, formAction] = useFormState(action, null);
+  const [state, formAction] = useActionState(action, null);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
