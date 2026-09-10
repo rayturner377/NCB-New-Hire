@@ -35,9 +35,12 @@ For local/demo accounts (one user per role, all sharing a demo password —
 npm run db:seed:users
 ```
 
-> There is currently no CLI to bootstrap a real production admin account from
-> scratch. Until one exists, seed with `db:seed:users` and change the password
-> immediately, or create the first row directly against the database.
+To bootstrap the first real admin account (a random password is generated and
+printed once; `mustChangePassword` forces them to set their own on first login):
+
+```bash
+npm run db:create-admin -- admin@example.com "Display Name"
+```
 
 ## Run with Docker
 
@@ -88,7 +91,6 @@ Before using this with real medical data:
 
 - Serve only over HTTPS and set `COOKIE_SECURE=true`.
 - Store `APP_MASTER_KEY` in a managed secret vault, not in the project folder.
-- Solve the production admin-bootstrap gap noted above.
 - Restrict database access by facility, reviewer group, and network policy where appropriate.
 - Add secure backups, restore testing, retention rules, and deletion workflows.
 - Complete legal/privacy review for applicable health-data and employment regulations.

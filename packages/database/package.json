@@ -16,7 +16,8 @@
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "verify-audit-chain": "node dist/scripts/verify-audit-chain.js",
-    "seed:users": "node dist/scripts/seed-users.js"
+    "seed:users": "node dist/scripts/seed-users.js",
+    "create-admin": "node dist/scripts/create-admin.js"
   },
   "dependencies": {
     "@ncb/shared": "*",
