@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useFormState } from 'react-dom';
 import { CredentialsFields } from '../../../components/form/credentials-fields';
 import { DoctorProfileFields, type DoctorProfileFieldsOffice } from '../../../components/form/doctor-profile-fields';
 import { ForcePasswordChangeField } from '../../../components/form/force-password-change-field';
@@ -14,6 +13,7 @@ import { Separator } from '../../../components/ui/separator';
 import { useValidatedForm } from '../../../lib/hooks/use-validated-form';
 import { createUserAction, type UserActionResult } from '../actions/create-user';
 import type { Role } from '../../../lib/permissions';
+import { useActionState } from 'react';
 
 const initialState: UserActionResult | null = null;
 
@@ -35,7 +35,7 @@ export interface UserFormProps {
  * (components/form/submit-button.tsx + lib/hooks/use-validated-form.ts).
  */
 export function UserForm({ role, roleLabel, cancelHref, offices = [] }: UserFormProps) {
-  const [state, formAction] = useFormState(createUserAction, initialState);
+  const [state, formAction] = useActionState(createUserAction, initialState);
   const { formRef, formValid, refreshValidity, handleSubmit, fieldError, hasClientErrors } = useValidatedForm(state?.fieldErrors);
 
   return (

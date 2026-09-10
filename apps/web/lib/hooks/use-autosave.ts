@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export type AutosaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
 export interface UseAutosaveOptions {
-  formRef: React.RefObject<HTMLFormElement>;
+  formRef: React.RefObject<HTMLFormElement | null>;
   /** Skip entirely — e.g. a read-only/submitted form. */
   disabled?: boolean;
   /** How long to wait after the last change before saving (default 2s). */
@@ -68,7 +68,6 @@ export function useAutosave({ formRef, disabled = false, debounceMs = 2000, maxW
         void runSave();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled, formRef, onSave]);
 
   const notifyChange = useCallback(() => {

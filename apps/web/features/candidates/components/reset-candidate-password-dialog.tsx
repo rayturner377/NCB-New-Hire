@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useFormState } from 'react-dom';
+import { useActionState, useEffect, useState } from 'react';
 import { ForcePasswordChangeField } from '../../../components/form/force-password-change-field';
 import { ValidatedSubmitButton } from '../../../components/form/submit-button';
 import { Alert } from '../../../components/ui/alert';
@@ -36,7 +35,7 @@ const initialState: ResetCandidatePasswordResult | null = null;
  */
 export function ResetCandidatePasswordDialog({ candidateId }: ResetCandidatePasswordDialogProps) {
   const [open, setOpen] = useState(false);
-  const [state, formAction] = useFormState(resetCandidatePasswordAction, initialState);
+  const [state, formAction] = useActionState(resetCandidatePasswordAction, initialState);
   const { formRef, formValid, refreshValidity, handleSubmit, fieldError } = useValidatedForm(state?.fieldErrors);
 
   useEffect(() => {

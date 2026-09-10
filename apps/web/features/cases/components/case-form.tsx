@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'nextjs-toploader/app';
-import { useEffect, useMemo, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useEffect, useMemo, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { ActionSuccessDialog } from '../../../components/feedback/action-success-dialog';
 import { FormSection } from '../../../components/form/form-section';
 import { Alert } from '../../../components/ui/alert';
@@ -60,7 +60,7 @@ const NO_DOCTOR = '__none__';
  */
 export function CaseForm({ candidates, doctors }: CaseFormProps) {
   const router = useRouter();
-  const [state, formAction] = useFormState(createCaseAction, initialState);
+  const [state, formAction] = useActionState(createCaseAction, initialState);
   const [candidateId, setCandidateId] = useState('');
   const [clinicianId, setClinicianId] = useState(NO_DOCTOR);
   const [positionAppliedFor, setPositionAppliedFor] = useState('');

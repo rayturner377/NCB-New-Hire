@@ -15,11 +15,12 @@ function defaultDateRange(): { from: string; to: string } {
 }
 
 /** Role-based landing page — every role's dashboard is wired to real data (doctor/patient services, reviewer-dashboard-service.ts for reviewer/admin/auditor). */
-export default async function DashboardPage({
-  searchParams
-}: {
-  searchParams: { from?: string; to?: string; status?: string; page?: string };
-}) {
+export default async function DashboardPage(
+  props: {
+    searchParams: Promise<{ from?: string; to?: string; status?: string; page?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getSession();
   if (!session) {
     redirect('/login');

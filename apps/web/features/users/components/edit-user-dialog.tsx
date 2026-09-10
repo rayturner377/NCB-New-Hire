@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useEffect, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { DoctorProfileFields, type DoctorProfileFieldsOffice } from '../../../components/form/doctor-profile-fields';
 import { NameFields } from '../../../components/form/name-fields';
 import { Alert } from '../../../components/ui/alert';
@@ -42,7 +42,7 @@ export interface EditUserDialogProps {
 
 export function EditUserDialog({ user, offices = [], allPermissions }: EditUserDialogProps) {
   const [open, setOpen] = useState(false);
-  const [state, formAction] = useFormState(updateUserAction, initialState);
+  const [state, formAction] = useActionState(updateUserAction, initialState);
   const { firstName, lastName } = splitFullName(user.displayName);
   const profile = user.medicalProfile as {
     officeUserType?: 'doctor' | 'clinician';

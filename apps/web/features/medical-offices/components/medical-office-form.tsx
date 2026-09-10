@@ -1,12 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import { FormField } from '../../../components/ui/form-field';
 import { Input } from '../../../components/ui/input';
 import { createMedicalOfficeAction, type MedicalOfficeActionResult } from '../actions/create-medical-office';
+import { useActionState } from 'react';
 
 const initialState: MedicalOfficeActionResult | null = null;
 
@@ -21,7 +22,7 @@ function SubmitButton() {
 
 /** A medical facility a doctor can be assigned to (see doctor-profile-fields.tsx's facility picker) — name/address/phone/email plus a default per-medical rate new doctors at this facility can start from. */
 export function MedicalOfficeForm() {
-  const [state, formAction] = useFormState(createMedicalOfficeAction, initialState);
+  const [state, formAction] = useActionState(createMedicalOfficeAction, initialState);
 
   return (
     <form action={formAction} className="flex flex-col gap-6">

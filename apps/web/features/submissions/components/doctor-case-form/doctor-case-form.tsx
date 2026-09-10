@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useEffect, useRef, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { AutosaveIndicator } from '../../../../components/form/autosave-indicator';
 import { TabbedFormShell, type TabbedFormShellTab } from '../../../../components/form/tabbed-form-shell';
 import { Alert } from '../../../../components/ui/alert';
@@ -93,7 +93,7 @@ function SubmitButton({ canSubmit }: { canSubmit: boolean }) {
  * No local "submitted!" dialog here on purpose: a successful submit changes
  * the case's status away from sent_to_doctor, and calling a Server Action
  * from a form always re-renders the invoking route's Server Components as
- * part of resolving useFormState's result — new-submission-container.tsx
+ * part of resolving useActionState's result — new-submission-container.tsx
  * immediately stops rendering this component in that same update (its
  * status guard no longer matches), so any local state set from `state.ok`
  * never gets a chance to paint. The actual "assessment submitted" dialog
@@ -111,7 +111,7 @@ export function DoctorCaseForm({
   draft,
   attachments
 }: DoctorCaseFormProps) {
-  const [state, formAction] = useFormState(createSubmissionAction, initialState);
+  const [state, formAction] = useActionState(createSubmissionAction, initialState);
 
   const [tab, setTab] = useState<TabValue>('patient');
   const formRef = useRef<HTMLFormElement>(null);
@@ -153,7 +153,6 @@ export function DoctorCaseForm({
 
   useEffect(() => {
     recomputeActiveSectionCompletion(tab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   function handleFormChange() {

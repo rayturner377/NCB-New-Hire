@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation';
 import { NewSubmissionContainer } from '../../../../features/submissions/containers/new-submission-container';
 
-export default function NewSubmissionPage({
-  searchParams
-}: {
-  searchParams: { caseId?: string };
-}) {
+export default async function NewSubmissionPage(
+  props: {
+    searchParams: Promise<{ caseId?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const caseId = searchParams.caseId;
   if (!caseId) {
     redirect('/cases');

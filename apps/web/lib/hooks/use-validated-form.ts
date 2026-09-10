@@ -53,7 +53,6 @@ export function useValidatedForm(serverErrors?: Record<string, string>) {
 
   useEffect(() => {
     refreshValidity();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function fieldError(name: string): string | undefined {

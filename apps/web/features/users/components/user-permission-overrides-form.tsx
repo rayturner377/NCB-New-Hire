@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useFormState } from 'react-dom';
+import { useActionState, useState } from 'react';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import { Checkbox } from '../../../components/ui/checkbox';
@@ -23,7 +22,7 @@ export interface UserPermissionOverridesFormProps {
  * Only ever rendered for a viewer holding ROLES_MANAGE — see users-table.tsx.
  */
 export function UserPermissionOverridesForm({ userId, allPermissions, grant, revoke }: UserPermissionOverridesFormProps) {
-  const [state, formAction] = useFormState(updateUserPermissionOverridesAction, null);
+  const [state, formAction] = useActionState(updateUserPermissionOverridesAction, null);
   const [grantSet, setGrantSet] = useState(new Set(grant));
   const [revokeSet, setRevokeSet] = useState(new Set(revoke));
 

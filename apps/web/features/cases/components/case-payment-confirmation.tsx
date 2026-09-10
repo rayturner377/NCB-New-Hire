@@ -1,12 +1,13 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Label } from '../../../components/ui/label';
 import { DateField } from '../../../components/form/date-field';
 import { confirmCasePaymentAction, type ConfirmCasePaymentResult } from '../actions/confirm-case-payment';
+import { useActionState } from 'react';
 
 export interface CasePaymentConfirmationProps {
   caseId: string;
@@ -33,7 +34,7 @@ function SubmitButton() {
  * in is plain tab content, not a bigger submission form.
  */
 export function CasePaymentConfirmation({ caseId, lockedMessage }: CasePaymentConfirmationProps) {
-  const [state, formAction] = useFormState(confirmCasePaymentAction, initialState);
+  const [state, formAction] = useActionState(confirmCasePaymentAction, initialState);
 
   return (
     <Card>

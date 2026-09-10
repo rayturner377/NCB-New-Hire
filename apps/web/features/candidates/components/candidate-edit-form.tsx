@@ -1,6 +1,5 @@
 'use client';
 
-import { useFormState } from 'react-dom';
 import { useFormStatus } from 'react-dom';
 import { AddressFields } from '../../../components/form/address-fields';
 import { ContactFields } from '../../../components/form/contact-fields';
@@ -15,6 +14,7 @@ import { Separator } from '../../../components/ui/separator';
 import { updateCandidateAction } from '../actions/update-candidate';
 import type { CandidateActionResult } from '../actions/create-candidate';
 import type { CandidatePayload } from '../types';
+import { useActionState } from 'react';
 
 const initialState: CandidateActionResult | null = null;
 
@@ -45,7 +45,7 @@ export interface CandidateEditFormProps {
  * creation, and isn't wired up yet.
  */
 export function CandidateEditForm({ candidate }: CandidateEditFormProps) {
-  const [state, formAction] = useFormState(updateCandidateAction, initialState);
+  const [state, formAction] = useActionState(updateCandidateAction, initialState);
 
   return (
     <form action={formAction} className="flex flex-col gap-8">

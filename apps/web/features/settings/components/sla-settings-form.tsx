@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useMemo, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { updateSlaSettingsAction } from '../actions/update-settings';
 import type { SlaDefinition } from '../types';
@@ -214,7 +214,7 @@ function SlaDefinitionCard({
  */
 export function SlaSettingsForm({ definitions }: SlaSettingsFormProps) {
   const [rows, setRows] = useState<SlaDefinition[]>(definitions);
-  const [state, formAction] = useFormState(updateSlaSettingsAction, null);
+  const [state, formAction] = useActionState(updateSlaSettingsAction, null);
 
   const definitionsJson = useMemo(() => JSON.stringify(rows), [rows]);
   const hasInvalidOrder = rows.some((row) => !isValidEventOrder(row.startEvent, row.endEvent));

@@ -1,9 +1,10 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { resendMessageAction } from '../actions/resend-message';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
+import { useActionState } from 'react';
 
 function ResendButton() {
   const { pending } = useFormStatus();
@@ -19,7 +20,7 @@ export interface ResendMessageButtonProps {
 }
 
 export function ResendMessageButton({ id }: ResendMessageButtonProps) {
-  const [state, formAction] = useFormState(resendMessageAction, null);
+  const [state, formAction] = useActionState(resendMessageAction, null);
 
   return (
     <form action={formAction} className="flex flex-col gap-2">

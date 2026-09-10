@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { useFormState } from 'react-dom';
+import { useActionState, useState } from 'react';
 import { AddressFields } from '../../../components/form/address-fields';
 import { ContactFields } from '../../../components/form/contact-fields';
 import { CredentialsFields } from '../../../components/form/credentials-fields';
@@ -37,7 +36,7 @@ const TEXTAREA_CLASS =
  * still-deferred feature), not here.
  */
 export function CandidateForm() {
-  const [state, formAction] = useFormState(createCandidateAction, initialState);
+  const [state, formAction] = useActionState(createCandidateAction, initialState);
   const { formRef, formValid, refreshValidity, handleSubmit, fieldError, hasClientErrors } = useValidatedForm(state?.fieldErrors);
   const [email, setEmail] = useState('');
 

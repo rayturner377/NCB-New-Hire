@@ -1,10 +1,11 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { applyCaseActionAction, type ApplyCaseActionResult } from '../actions/apply-case-action';
+import { useActionState } from 'react';
 
 export interface CompleteReviewCardProps {
   caseId: string;
@@ -34,7 +35,7 @@ function SubmitButton() {
  * unlocks the fields sitting just below it.
  */
 export function CompleteReviewCard({ caseId, version }: CompleteReviewCardProps) {
-  const [state, formAction] = useFormState(applyCaseActionAction, initialState);
+  const [state, formAction] = useActionState(applyCaseActionAction, initialState);
 
   return (
     <Card>
