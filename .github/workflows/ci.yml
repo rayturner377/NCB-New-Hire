@@ -15,6 +15,14 @@ jobs:
       # enough. The real Postgres instance is only used by the
       # integration-tests job below.
       DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
+      # `npm run build`'s next build step really imports/evaluates every
+      # route module (unlike tsc, which only type-checks) to collect page
+      # data, reaching @ncb/auth's and @ncb/redis's eager client
+      # construction — both throw if these are unset, regardless of whether
+      # anything real happens with them. Unit tests mock @ncb/redis
+      # entirely, so these are only needed for the build step below.
+      REDIS_URL: redis://placeholder:6379
+      BETTER_AUTH_SECRET: ci-build-placeholder-not-a-real-secret
     steps:
       - uses: actions/checkout@v4
 
