@@ -22,8 +22,7 @@
     "db:migrate:deploy": "dotenv -- npm run migrate:deploy -w @ncb/database",
     "db:verify-audit-chain": "dotenv -- npm run verify-audit-chain -w @ncb/database",
     "db:seed:users": "dotenv -- npm run seed:users -w @ncb/database",
-    "db:create-admin": "dotenv -- npm run create-admin -w @ncb/database --",
-    "db:migrate-users-to-better-auth": "dotenv -- npm run migrate-users-to-better-auth -w @ncb/database"
+    "db:create-admin": "dotenv -- npm run create-admin -w @ncb/database --"
   },
   "devDependencies": {
     "dotenv-cli": "^7.4.2",

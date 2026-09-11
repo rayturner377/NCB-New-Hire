@@ -6,8 +6,6 @@ export interface NewUserInput {
   email: string;
   displayName: string;
   role: string;
-  /** Legacy PBKDF2 record — optional now that Better Auth's Account row (packages/auth's setUserPassword) is what actually gates sign-in. Left in only for the transitional legacy-verify fallback (packages/auth/src/password.ts). */
-  passwordRecord?: unknown;
   medicalProfile?: unknown;
   /** Forces the change-password wizard on next login — defaults to false (matches existing rows) when omitted. */
   mustChangePassword?: boolean;
@@ -17,7 +15,6 @@ export interface UserPatch {
   displayName?: string;
   role?: string;
   active?: boolean;
-  passwordRecord?: unknown;
   medicalProfile?: unknown;
   mustChangePassword?: boolean;
   /** `{ grant: string[], revoke: string[] }` — see lib/permissions.ts's getEffectivePermissions. */
@@ -51,8 +48,6 @@ export function createUsersRepository(db: PrismaClient) {
           displayName: input.displayName,
           role: input.role,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          passwordRecord: input.passwordRecord as any,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           medicalProfile: (input.medicalProfile ?? {}) as any,
           mustChangePassword: input.mustChangePassword ?? false
         }
@@ -66,8 +61,6 @@ export function createUsersRepository(db: PrismaClient) {
           ...(patch.displayName !== undefined && { displayName: patch.displayName }),
           ...(patch.role !== undefined && { role: patch.role }),
           ...(patch.active !== undefined && { active: patch.active }),
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ...(patch.passwordRecord !== undefined && { passwordRecord: patch.passwordRecord as any }),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...(patch.medicalProfile !== undefined && { medicalProfile: patch.medicalProfile as any }),
           ...(patch.mustChangePassword !== undefined && { mustChangePassword: patch.mustChangePassword }),

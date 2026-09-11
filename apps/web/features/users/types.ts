@@ -1,4 +1,4 @@
-/** AppUser minus passwordRecord — the shape safe to pass to client components. */
+/** AppUser projected down to the shape safe to pass to client components. */
 export interface UserSummary {
   id: string;
   email: string;
