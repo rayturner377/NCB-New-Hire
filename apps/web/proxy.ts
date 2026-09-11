@@ -1,28 +1,38 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { auth } from '@ncb/auth';
 
-const SESSION_COOKIE = 'sid';
 const PUBLIC_PATHS = ['/login', '/forgot-password'];
 
 /**
- * Lightweight, cookie-presence-only gate. Renamed from `middleware` to
- * `proxy` for Next.js 16 (the `middleware` convention is deprecated); this
- * now always runs on the Node runtime rather than Edge (Next 16 no longer
- * supports Edge for this file), so it could reach Postgres/Prisma, but
- * deliberately still doesn't — it only checks that a sid cookie exists and
- * redirects to /login if not, matching server.js's coarse route-protection
- * (~L3455). The actual session/expiry/user lookup (lib/session.ts's
- * getSession()) still runs in each Server Component/Action and is the real
- * authorization boundary; this is a fast-path redirect only.
+ * Full session check, not just cookie-presence — renamed from `middleware`
+ * to `proxy` for Next.js 16 (the `middleware` convention is deprecated),
+ * which also dropped Edge runtime support for this file in favor of Node
+ * only. That's exactly what makes the real check affordable here now: this
+ * used to only check that a `sid` cookie existed (Edge couldn't reach
+ * Postgres), leaving the actual session/expiry/user lookup entirely to
+ * lib/session.ts's getSession() in each Server Component/Action. Better
+ * Auth's own session lookup (Redis-backed, no Postgres round-trip) is cheap
+ * enough to run here too, so an expired or revoked session now gets caught
+ * at this gate instead of one layer in.
+ *
+ * getSession() (lib/session.ts) is still the real authorization boundary —
+ * it additionally re-checks `active` and resolves permissions, neither of
+ * which this proxy needs to know about just to decide "redirect to /login
+ * or not."
  */
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.some((path) => pathname.startsWith(path)) || pathname.startsWith('/api/public')) {
+  if (
+    PUBLIC_PATHS.some((path) => pathname.startsWith(path)) ||
+    pathname.startsWith('/api/public') ||
+    pathname.startsWith('/api/auth')
+  ) {
     return NextResponse.next();
   }
 
-  const hasSession = request.cookies.has(SESSION_COOKIE);
-  if (!hasSession) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) {
     const loginUrl = new URL('/login', request.url);
     return NextResponse.redirect(loginUrl);
   }

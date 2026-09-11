@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { auditRepository, sessionsRepository, usersRepository, type AppUser } from '@ncb/database';
-import { makePasswordRecord } from '@ncb/shared';
+import { auditRepository, usersRepository, type AppUser } from '@ncb/database';
+import { setUserPassword, revokeAllSessionsForUser } from '@ncb/auth/utils';
 import { sendNotification } from '../../notifications/services/notification-service';
 import type { CreateUserSchemaInput, UpdateUserSchemaInput } from '../schemas/user';
 import type { UserSummary } from '../types';
@@ -60,7 +60,6 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
       email,
       displayName: input.displayName,
       role: input.role,
-      passwordRecord: makePasswordRecord(input.password),
       medicalProfile: input.medicalProfile,
       mustChangePassword: input.mustChangePassword
     });
@@ -70,6 +69,11 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
     }
     throw error;
   }
+
+  // Creates the Better Auth credential Account row — without this, the new
+  // user would have no way to actually sign in at all (Better Auth's
+  // sign-in only ever checks the Account row, never AppUser directly).
+  await setUserPassword(created.id, input.password);
 
   await auditRepository.append({
     eventType: 'user_created',
@@ -144,21 +148,18 @@ export async function deleteUser(id: string, actorId?: string): Promise<void> {
   });
 }
 
-/** Sets a new password and clears the forced-change flag — the change-password wizard's only job. */
 /**
- * `exceptSessionId` keeps the caller's own current session alive (they just
- * proved they know the new password, no need to also log them out) while
- * killing every other session for this account — if the account had been
- * compromised and the old password leaked, that attacker's session dies the
- * instant the real user changes it, rather than staying valid until it
- * naturally expires.
+ * Sets a new password and clears the forced-change flag — the
+ * change-password wizard's only job. Session revocation (killing every
+ * *other* session on the account, keeping the caller's own alive) happens in
+ * the caller (features/auth/actions/change-password.ts) via Better Auth's
+ * auth.api.revokeOtherSessions(), which needs the request's own
+ * headers/cookie to know which session is "current" — context this service
+ * function doesn't have and shouldn't need.
  */
-export async function changePassword(id: string, newPassword: string, exceptSessionId?: string): Promise<void> {
-  await usersRepository.update(id, {
-    passwordRecord: makePasswordRecord(newPassword),
-    mustChangePassword: false
-  });
-  await sessionsRepository.deleteAllForUser(id, exceptSessionId);
+export async function changePassword(id: string, newPassword: string): Promise<void> {
+  await usersRepository.update(id, { mustChangePassword: false });
+  await setUserPassword(id, newPassword);
 }
 
 /**
@@ -175,11 +176,9 @@ export async function changePassword(id: string, newPassword: string, exceptSess
  * session an attacker was using dies immediately instead of staying valid.
  */
 export async function resetUserPassword(id: string, newPassword: string, mustChangePassword = true, actorId?: string): Promise<void> {
-  const updated = await usersRepository.update(id, {
-    passwordRecord: makePasswordRecord(newPassword),
-    mustChangePassword
-  });
-  await sessionsRepository.deleteAllForUser(id);
+  const updated = await usersRepository.update(id, { mustChangePassword });
+  await setUserPassword(id, newPassword);
+  await revokeAllSessionsForUser(id);
 
   await auditRepository.append({
     eventType: 'user_password_reset',

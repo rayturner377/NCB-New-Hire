@@ -26,6 +26,16 @@ function sessionTimeoutSeconds(): number {
 }
 
 /**
+ * Secure by default, same reasoning and same env var as the pre-Better-Auth
+ * lib/session.ts's cookieIsSecure() — only plain local HTTP dev opts out
+ * explicitly via COOKIE_SECURE=false; an unset var stays secure rather than
+ * silently degrading in a real deployment that forgot to set it.
+ */
+function cookieIsSecure(): boolean {
+  return process.env.COOKIE_SECURE !== 'false';
+}
+
+/**
  * `user` here intentionally declares no additionalFields. role,
  * active, mustChangePassword, medicalProfile, and permissionOverrides all
  * stay exactly where they already live on AppUser — apps/web's session
@@ -47,6 +57,17 @@ export const auth = betterAuth({
     expiresIn: sessionTimeoutSeconds(),
     updateAge: 60
   },
+  advanced: {
+    // Better Auth's own default is SameSite=Lax — this app's CSRF posture
+    // (see packages/auth's retirement of the old hand-rolled csrfToken)
+    // explicitly relies on SameSite=Strict as one of its layers, so this
+    // isn't optional. secure mirrors the same COOKIE_SECURE env var and
+    // default-safe reasoning the old hand-rolled session cookie used.
+    defaultCookieAttributes: {
+      sameSite: 'strict',
+      secure: cookieIsSecure()
+    }
+  },
   emailAndPassword: {
     enabled: true,
     password: { hash, verify }
@@ -54,6 +75,23 @@ export const auth = betterAuth({
   databaseHooks: {
     session: {
       create: {
+        /**
+         * Better Auth has no concept of this app's own `active` flag —
+         * without this, a deactivated account's credentials would still
+         * pass emailAndPassword's verify() and get a real session. Mirrors
+         * the pre-Better-Auth login.ts's inline `user.active === false`
+         * rejection, just centralized here so every path that can create a
+         * session (not just the one sign-in action) is covered. Returning
+         * `false` aborts session creation — Better Auth then reports the
+         * same generic invalid-credentials failure to the caller as a wrong
+         * password would, not a distinct "account disabled" message (this
+         * app doesn't want to reveal account status to whoever's typing the
+         * password, only to the account's own legitimate owner elsewhere).
+         */
+        before: async (session) => {
+          const user = await prisma.appUser.findFirst({ where: { id: session.userId } });
+          if (!user || user.active === false) return false;
+        },
         /**
          * Lazy legacy-PBKDF2-to-scrypt upgrade, on next successful login,
          * targeted at this specific session's userId — not by matching on
@@ -102,5 +140,8 @@ export const auth = betterAuth({
   plugins: [nextCookies()]
 });
 
-export { hash as hashPassword } from './password.js';
+// hashPassword/setUserPassword/revokeAllSessionsForUser live at the
+// '@ncb/auth/utils' subpath instead of here — see utils.ts's docstring on
+// why importing them shouldn't force this file's betterAuth() construction
+// (and its BETTER_AUTH_SECRET requirement) to run too.
 

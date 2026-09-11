@@ -6,7 +6,8 @@ export interface NewUserInput {
   email: string;
   displayName: string;
   role: string;
-  passwordRecord: unknown;
+  /** Legacy PBKDF2 record — optional now that Better Auth's Account row (packages/auth's setUserPassword) is what actually gates sign-in. Left in only for the transitional legacy-verify fallback (packages/auth/src/password.ts). */
+  passwordRecord?: unknown;
   medicalProfile?: unknown;
   /** Forces the change-password wizard on next login — defaults to false (matches existing rows) when omitted. */
   mustChangePassword?: boolean;
