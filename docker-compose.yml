@@ -19,6 +19,26 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: ncbmedical-redis
+    restart: unless-stopped
+    # requirepass even for local dev — an unauthenticated Redis holding
+    # session data shouldn't ship by default, same posture as requiring
+    # POSTGRES_PASSWORD above rather than leaving Postgres open.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--maxmemory-policy", "noeviction"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    ports:
+      - "6380:6379"
+    volumes:
+      - ncb-medical-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # One-shot: applies Prisma migrations before the app starts. Kept separate
   # from `web` so a migration failure is visible on its own, matching how
   # .github/workflows/ci.yml's integration-tests job separates the two.
@@ -49,6 +69,7 @@ services:
       # binds to — environment: here wins over whatever env_file loaded.
       PORT: 3000
       DATABASE_URL: postgresql://ncb_medical_app:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ncb_medical?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
     volumes:
       # npm workspace commands (npm run start -w @ncb/web) run with cwd set
       # to the workspace directory, so master-key.ts's process.cwd()-relative
@@ -57,9 +78,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
 
 volumes:
   ncb-medical-postgres-data:
     name: ncbmedical-postgres-data
+  ncb-medical-redis-data:
+    name: ncbmedical-redis-data
