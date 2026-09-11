@@ -26,6 +26,17 @@ vi.mock('../../../services/users-service', async () => {
   };
 });
 vi.mock('../../../../settings/services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));
+// Covers both this test's own action-rate-limit.ts import and
+// users-service.ts's transitive @ncb/auth/utils -> revoke-sessions.ts
+// import — both ultimately depend on @ncb/redis's client, which throws at
+// construction if REDIS_URL isn't set. Neither path is actually exercised
+// by this test's assertions, so the stubs just need to exist and load.
+vi.mock('@ncb/redis', () => ({
+  redis: {},
+  isRateLimited: async () => false,
+  recordFailedAttempt: async () => undefined,
+  clearAttempts: async () => undefined
+}));
 
 const { createUserAction } = await import('../../create-user');
 

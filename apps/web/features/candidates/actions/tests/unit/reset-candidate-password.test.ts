@@ -16,6 +16,14 @@ vi.mock('../../../../users/services/users-service', () => ({
   resetUserPassword: (...args: unknown[]) => resetUserPasswordMock(...args)
 }));
 vi.mock('../../../../settings/services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));
+// reset-candidate-password.ts's own createActionRateLimiter() ultimately
+// depends on @ncb/redis's client, which throws at construction if
+// REDIS_URL isn't set — not exercised by this test's assertions, so the
+// stub just needs to load.
+vi.mock('@ncb/redis', () => ({
+  isRateLimited: async () => false,
+  recordFailedAttempt: async () => undefined
+}));
 
 const { resetCandidatePasswordAction } = await import('../../reset-candidate-password');
 

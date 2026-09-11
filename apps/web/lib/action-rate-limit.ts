@@ -1,19 +1,18 @@
-import { isRateLimited, recordFailedLogin, type RateLimitStore } from '@ncb/shared';
+import { isRateLimited, recordFailedAttempt } from '@ncb/redis';
 
 /**
  * Generic per-action rate limiting for authenticated Server Actions beyond
  * login (file uploads, password resets, outbound email triggers) — reuses
- * the exact same fixed-window primitives login-rate-limit.ts already relies
- * on (isRateLimited/recordFailedLogin from @ncb/shared don't actually know
- * anything about "login" specifically, they're just a generic counter).
+ * the exact same Redis-backed fixed-window primitives login-rate-limit.ts
+ * relies on (isRateLimited/recordFailedAttempt from @ncb/redis don't
+ * actually know anything about "login" specifically, they're just a generic
+ * counter).
  *
- * Each call to createActionRateLimiter gets its own module-level store, so
- * one action's limiter can't be exhausted by traffic on a different one.
- * Same in-memory caveat as login's own limiter — lost on restart, doesn't
- * work across more than one server process — acceptable for the same reason
- * documented there: a reset counter after a redeploy is a minor availability
- * nicety, not a security or data-integrity issue. Revisit with a persistent
- * (DB-backed) store if this app ever runs as more than one instance.
+ * `namespace` keeps each call site's counters in their own Redis key space —
+ * unlike the old in-memory version, where each createActionRateLimiter()
+ * call got its own module-level Map "for free," every instance here shares
+ * the same Redis instance, so without a distinct namespace two different
+ * actions' rate limits for the same userId would collide.
  *
  * Keyed by the acting user's id, not IP — these are all authenticated
  * actions, and the actual abuse scenario is one compromised/malicious
@@ -21,14 +20,14 @@ import { isRateLimited, recordFailedLogin, type RateLimitStore } from '@ncb/shar
  * IP+email keying does need to worry about, since login has no session yet).
  */
 export interface ActionRateLimiter {
-  isLimited(userId: string): boolean;
-  recordAttempt(userId: string): void;
+  isLimited(userId: string): Promise<boolean>;
+  recordAttempt(userId: string): Promise<void>;
 }
 
-export function createActionRateLimiter(maxAttempts: number, windowMs: number): ActionRateLimiter {
-  const store: RateLimitStore = new Map();
+export function createActionRateLimiter(namespace: string, maxAttempts: number, windowMs: number): ActionRateLimiter {
+  const keyFor = (userId: string) => `action-rate-limit:${namespace}:${userId}`;
   return {
-    isLimited: (userId) => isRateLimited(store, userId, Date.now(), maxAttempts),
-    recordAttempt: (userId) => recordFailedLogin(store, userId, Date.now(), windowMs)
+    isLimited: (userId) => isRateLimited(keyFor(userId), maxAttempts),
+    recordAttempt: (userId) => recordFailedAttempt(keyFor(userId), windowMs)
   };
 }

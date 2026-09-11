@@ -18,7 +18,7 @@ export interface ResetCandidatePasswordResult {
 }
 
 /** 10 resets per 15 minutes per acting user — a real HR workflow never needs to reset more than a handful of candidate passwords in a burst; bounds what a compromised/malicious admin session could do. */
-const resetPasswordLimiter = createActionRateLimiter(10, 15 * 60 * 1000);
+const resetPasswordLimiter = createActionRateLimiter('reset-candidate-password', 10, 15 * 60 * 1000);
 
 /**
  * HR setting a new temporary password on a candidate's portal account —
@@ -45,10 +45,10 @@ export async function resetCandidatePasswordAction(
     throw error;
   }
 
-  if (resetPasswordLimiter.isLimited(session.user.id)) {
+  if (await resetPasswordLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many password resets — please wait a few minutes and try again.' };
   }
-  resetPasswordLimiter.recordAttempt(session.user.id);
+  await resetPasswordLimiter.recordAttempt(session.user.id);
 
   const candidateId = String(formData.get('candidateId') || '');
   if (!candidateId) {

@@ -20,7 +20,7 @@ import type { SettingsActionResult } from '../types-action';
 const testRecipientSchema = z.string().trim().min(1, 'Enter a recipient email address').email('Enter a valid email address');
 
 /** 10 per 15 minutes per admin — plenty for actually verifying SMTP settings, bounds an authenticated account being used to spam a mail server or a target inbox. */
-const testEmailLimiter = createActionRateLimiter(10, 15 * 60 * 1000);
+const testEmailLimiter = createActionRateLimiter('send-test-email', 10, 15 * 60 * 1000);
 
 /**
  * Sends one real email through the already-saved SMTP settings — save the
@@ -62,10 +62,10 @@ export async function sendTestEmailAction(
     throw error;
   }
 
-  if (testEmailLimiter.isLimited(session.user.id)) {
+  if (await testEmailLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many test emails sent — please wait a few minutes and try again.' };
   }
-  testEmailLimiter.recordAttempt(session.user.id);
+  await testEmailLimiter.recordAttempt(session.user.id);
 
   const parsed = testRecipientSchema.safeParse(formData.get('testRecipient'));
   if (!parsed.success) {

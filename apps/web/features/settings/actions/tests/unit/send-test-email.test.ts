@@ -15,6 +15,13 @@ vi.mock('../../../services/settings-service', () => ({ getSettings: (...args: un
 vi.mock('../../../../notifications/services/notification-service', () => ({
   renderNotificationEmail: (...args: unknown[]) => renderNotificationEmailMock(...args)
 }));
+// send-test-email.ts's own createActionRateLimiter() ultimately depends on
+// @ncb/redis's client, which throws at construction if REDIS_URL isn't set
+// — not exercised by this test's assertions, so the stub just needs to load.
+vi.mock('@ncb/redis', () => ({
+  isRateLimited: async () => false,
+  recordFailedAttempt: async () => undefined
+}));
 
 const { sendTestEmailAction } = await import('../../send-test-email');
 

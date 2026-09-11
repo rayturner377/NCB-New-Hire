@@ -13,7 +13,7 @@ export interface ResendMessageResult {
 }
 
 /** 20 per 15 minutes per admin — generous for genuinely retrying a batch of failed sends, still bounded. */
-const resendLimiter = createActionRateLimiter(20, 15 * 60 * 1000);
+const resendLimiter = createActionRateLimiter('resend-message', 20, 15 * 60 * 1000);
 
 /** Re-attempts a past send exactly as it was originally rendered — see notification-service.ts's resendEmailMessage. */
 export async function resendMessageAction(_prevState: ResendMessageResult | null, formData: FormData): Promise<ResendMessageResult> {
@@ -31,10 +31,10 @@ export async function resendMessageAction(_prevState: ResendMessageResult | null
     throw error;
   }
 
-  if (resendLimiter.isLimited(session.user.id)) {
+  if (await resendLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many resend attempts — please wait a few minutes and try again.' };
   }
-  resendLimiter.recordAttempt(session.user.id);
+  await resendLimiter.recordAttempt(session.user.id);
 
   const id = String(formData.get('id') || '');
   if (!id) {
