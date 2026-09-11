@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.netlify
+.turbo
+coverage
+data
+dist
+node_modules
+packages/*/node_modules
+packages/*/.turbo
+packages/database/src/generated
+.env
+.DS_Store
+*.log
+*.tsbuildinfo

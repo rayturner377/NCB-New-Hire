@@ -1,93 +1,134 @@
 # National Commercial Bank Jamaica Medical Platform
 
-A self-contained secure intake app for new-hire medical assessments. Clinicians complete the medical form in the browser, submit it into the platform, and reviewers receive a notification that a confidential form is ready to review.
+A secure new-hire medical assessment intake and review platform. Clinicians submit
+medical assessments for candidates, reviewers (HR) manage cases and communicate
+decisions, and administrators manage users, roles, and system settings.
+
+Next.js (App Router) monorepo managed with Turborepo and npm workspaces, backed by
+Postgres via Prisma, Redis-backed sessions via Better Auth, and Redis-backed
+rate limiting.
+
+- `apps/web` — the Next.js application
+- `packages/database` — Prisma schema, migrations, and repositories
+- `packages/auth` — Better Auth configuration (email/password, Redis-backed sessions)
+- `packages/redis` — shared ioredis client and rate-limiter helpers
+- `packages/shared` — crypto helpers shared across packages
 
 ## Run locally
 
+Requires Node 20+, a running Postgres instance, and a running Redis instance.
+
 ```bash
-node server.js
+npm install
+cp .env.example .env   # fill in POSTGRES_PASSWORD, DATABASE_URL, REDIS_PASSWORD, REDIS_URL, BETTER_AUTH_SECRET
+docker compose up -d postgres redis   # or point DATABASE_URL/REDIS_URL at your own instances
+npm run db:migrate:deploy
+npm run dev
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+Open [http://localhost:3000](http://localhost:3000).
 
-On first run the app creates encrypted storage under `data/` and writes temporary local credentials to `data/bootstrap-credentials.txt`.
+On first run, `APP_MASTER_KEY` (used to encrypt data at rest) is generated
+automatically and persisted to `apps/web/data/master.key` if not set in `.env`.
+`BETTER_AUTH_SECRET` and `REDIS_PASSWORD`/`REDIS_URL` have no such fallback —
+`.env` must set them (see `.env.example`, which includes a one-liner to
+generate `BETTER_AUTH_SECRET`).
 
-Optional PostgreSQL, MySQL, and Google Cloud SQL connectors and automatic migrations are documented in [DATABASE.md](DATABASE.md). Database mode currently prepares and validates the SQL schema while the application continues using its encrypted file repositories pending the controlled repository cutover.
+For local/demo accounts (one user per role, all sharing a demo password —
+**never use in production**):
+
+```bash
+npm run db:seed:users
+```
+
+To bootstrap the first real admin account (a random password is generated and
+printed once; `mustChangePassword` forces them to set their own on first login):
+
+```bash
+npm run db:create-admin -- admin@example.com "Display Name"
+```
+
+## End-to-end tests
+
+Real-browser coverage (`e2e/role-access.spec.ts`) of the five seeded demo
+roles — each one logs in, reaches its own pages, and is verifiably blocked
+(not just at the HTTP layer, but genuinely never shown the page) from the
+ones it doesn't hold permission for. Requires `npm run db:seed:users` to
+have been run first, and Postgres/Redis reachable.
+
+```bash
+npx playwright install chromium   # first time only
+npm run test:e2e
+```
+
+If `npx playwright install` can't reach `cdn.playwright.dev` (a
+network-restricted environment), point Playwright at an already-installed
+browser instead of downloading its own:
+
+```bash
+PLAYWRIGHT_BROWSER_CHANNEL=msedge npm run test:e2e   # or: chrome
+```
+
+## Run with Docker
+
+```bash
+cp .env.example .env   # fill in POSTGRES_PASSWORD, REDIS_PASSWORD, BETTER_AUTH_SECRET, and APP_MASTER_KEY
+docker compose up -d --build
+```
+
+This starts Postgres and Redis, runs Prisma migrations via a one-shot
+`migrate` service, then starts the app. The `./data` folder is mounted into
+the app container at `/app/data`, keeping the generated master key outside
+the image.
+
+Open [http://localhost:3000](http://localhost:3000).
+
+```bash
+docker compose logs -f web
+```
 
 ## What is included
 
-- Clinician and reviewer sign-in with PBKDF2 password hashing.
-- HttpOnly, SameSite session cookies with CSRF protection.
-- Role-based access: clinicians submit records, reviewers review records.
-- Administrator site for portal wording, notification recipients, and user access.
-- Reviewer setup area for creating doctor accounts and assigned new-hire profiles.
-- Doctor-side assigned-candidate picker that auto-populates the candidate section.
-- Doctor profile defaults for medical facility, facility address, clinician name, and registration number.
-- Optional clinician signature image upload on medical submissions.
-- Candidate medication information editing and assigned-candidate withdrawal.
-- Monthly tracking of assigned candidates and submitted forms by doctor.
-- Forgot-password request flow that logs a reset request without exposing account details.
-- Separate reviewer submission notification and doctor assignment notification email settings.
-- AES-256-GCM encryption at rest for submitted medical forms.
-- No medical details in email notifications.
-- Local notification logging when SMTP is not configured.
-- Printable populated form view for authorized users.
-- Audit log without candidate medical details.
+- Role-based access: admin, HR reviewer, auditor (view-only), clinician/doctor, patient/candidate.
+- Per-user permission overrides on top of role defaults, editable from Settings → Permissions.
+- Case lifecycle management: intake, assignment to a doctor, submission, review, billing/payment confirmation.
+- Candidate and medical-office management.
+- Notification templates (rich-text editor) with configurable SMTP, sent on case events.
+- Message centre with resend support.
+- SLA tracking and configurable SLA definitions per case event.
+- Audit log of account and case actions.
+- AES-256-GCM encryption at rest for sensitive fields, keyed by `APP_MASTER_KEY`.
+- Authentication via Better Auth (native email/password), sessions and login/action
+  rate limiting backed by Redis, with a configurable inactivity timeout
+  (`SESSION_TIMEOUT_MINUTES`).
 
-## Email notifications
+## Environment variables
 
-Copy `.env.example` to `.env` and set:
+See `.env.example`. The application itself only reads:
 
-```bash
-REVIEW_NOTIFICATION_EMAIL=hr-team@example.com
-FROM_EMAIL=no-reply@example.com
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-user
-SMTP_PASS=your-password
-PUBLIC_URL=https://your-secure-platform.example.com
-```
+- `APP_MASTER_KEY` — optional; a key is generated and persisted under `data/` if omitted.
+- `COOKIE_SECURE` — set `true` in any real deployment (served over HTTPS).
+- `SESSION_TIMEOUT_MINUTES` — inactivity timeout for authenticated sessions (5-480).
+- `DATABASE_URL` — standard Prisma/Postgres connection string.
+- `REDIS_URL` — standard Redis connection string (sessions, login/action rate limiting).
+- `BETTER_AUTH_SECRET` — Better Auth's own signing secret; required, no fallback.
 
-The email body intentionally includes only the submission ID and platform link.
+`POSTGRES_PASSWORD`/`REDIS_PASSWORD` are read only by `docker-compose.yml`
+itself (to configure the Postgres/Redis containers) — the app reads the
+resulting `DATABASE_URL`/`REDIS_URL` instead.
 
-## Add or update a user
-
-```bash
-node scripts/upsert-user.js user@example.com "temporary-password" reviewer "Display Name"
-```
-
-Allowed roles are `clinician`, `reviewer`, and `admin`. Restart the app after changing users.
-
-## Administrator site
-
-Admins see an **Administration** page after sign-in. From there they can:
-
-- Update the doctor and reviewer page messages, confidentiality notice, NCB blue/yellow theme colors, support contact, and reviewer notification email list.
-- Create medical facility users, National Commercial Bank reviewers, and additional administrators.
-- Deactivate users, change roles, and reset passwords.
-
-Reviewers and admins also see **Doctor & new hire setup**. From there they can create doctor accounts with facility and registration defaults, enter new-hire candidate information, assign each candidate to a doctor, set notification email preferences, and track monthly candidate volumes by doctor.
-
-For this workspace, an admin account can be created or updated with:
-
-```bash
-node scripts/upsert-user.js admin@ncb.local "change-this-password" admin "System Administrator"
-```
+SMTP settings, notification templates, portal branding, and SLA definitions
+are configured through the Settings admin UI and stored in the database, not
+environment variables.
 
 ## Production checklist
 
 Before using this with real medical data:
 
 - Serve only over HTTPS and set `COOKIE_SECURE=true`.
-- Store `APP_MASTER_KEY` in a managed secret vault, not in the project folder.
-- Replace local users with your organization's identity provider or enforce user lifecycle controls.
-- Restrict access by facility, reviewer group, and network policy where appropriate.
+- Store `APP_MASTER_KEY` and `BETTER_AUTH_SECRET` in a managed secret vault, not in the project folder.
+- Require a password and TLS on Redis, and restrict network access to it the same way as Postgres — it holds live session tokens.
+- Restrict database access by facility, reviewer group, and network policy where appropriate.
 - Add secure backups, restore testing, retention rules, and deletion workflows.
 - Complete legal/privacy review for applicable health-data and employment regulations.
 - Run security testing before handling live records.
-
-## Customizing the exact medical form
-
-The current form is a practical structured version of the NCB medical assessment for secure browser completion. If the paper form is revised, update the visible fields in `public/app.js` and the matching validation fields in `server.js`.
-# NCB-New-Hire

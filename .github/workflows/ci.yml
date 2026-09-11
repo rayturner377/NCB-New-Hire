@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, foundation, postgres-cutover]
+  pull_request:
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-latest
+    env:
+      # @ncb/database's Prisma schema resolves DATABASE_URL at `prisma generate`
+      # time even though nothing in this job opens a real connection (unit
+      # tests mock the Prisma client) — a syntactically valid placeholder is
+      # enough. The real Postgres instance is only used by the
+      # integration-tests job below.
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
+      # `npm run build`'s next build step really imports/evaluates every
+      # route module (unlike tsc, which only type-checks) to collect page
+      # data, reaching @ncb/auth's and @ncb/redis's eager client
+      # construction — both throw if these are unset, regardless of whether
+      # anything real happens with them. Unit tests mock @ncb/redis
+      # entirely, so these are only needed for the build step below.
+      REDIS_URL: redis://placeholder:6379
+      BETTER_AUTH_SECRET: ci-build-placeholder-not-a-real-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm run test:coverage
+
+      - run: npm run build
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ncb_medical_app
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: ncb_medical_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ncb_medical_app -d ncb_medical_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ncb_medical_app:ci_test_password@localhost:5432/ncb_medical_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run migrate:deploy -w @ncb/database
+
+      - run: npm run test:integration -w @ncb/database

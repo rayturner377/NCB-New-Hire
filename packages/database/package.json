@@ -1,0 +1,38 @@
+{
+  "name": "@ncb/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.json && node -e \"require('node:fs').cpSync('src/generated','dist/generated',{recursive:true})\"",
+    "test": "prisma generate && vitest run",
+    "test:coverage": "prisma generate && vitest run --coverage",
+    "test:integration": "prisma generate && vitest run --config vitest.integration.config.ts",
+    "lint": "eslint .",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "verify-audit-chain": "node dist/scripts/verify-audit-chain.js",
+    "seed:users": "node dist/scripts/seed-users.js",
+    "create-admin": "node dist/scripts/create-admin.js"
+  },
+  "dependencies": {
+    "@ncb/shared": "*",
+    "@prisma/client": "^5.20.0",
+    "better-auth": "^1.7.4",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@ncb/eslint-config": "*",
+    "@ncb/tsconfig": "*",
+    "@ncb/vitest-config": "*",
+    "@vitest/coverage-v8": "^5.0.0",
+    "eslint": "^9.9.0",
+    "prisma": "^5.20.0",
+    "typescript": "^5.6.3",
+    "vitest": "^5.0.0"
+  }
+}

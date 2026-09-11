@@ -1,0 +1,304 @@
+// Prisma schema mirroring database/migrations/postgres/001-initial-schema.js exactly
+// (table/column names preserved via @map/@@map) so it can be pointed at a database
+// already migrated by the legacy runner, or manage migrations itself going forward.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AppUser {
+  id             String    @id @db.VarChar(80)
+  email          String    @unique @db.VarChar(254)
+  displayName    String    @map("display_name") @db.VarChar(140)
+  role           String    @db.VarChar(30)
+  active         Boolean   @default(true)
+  mustChangePassword Boolean @default(false) @map("must_change_password")
+  /// Required by Better Auth's own core user schema (unconditional, not a plugin) — this app has
+  /// no email-verification flow (emailAndPassword.requireEmailVerification stays off), so this
+  /// stays false/unused, but the column has to exist for the Prisma adapter's field-selection to
+  /// work at all: it reads/writes every field Better Auth's schema declares for this model.
+  emailVerified  Boolean   @default(false) @map("email_verified")
+  /// Same reasoning as emailVerified — part of Better Auth's core user schema, unused by this app.
+  image          String?   @db.Text
+  medicalProfile Json      @default("{}") @map("medical_profile")
+  /// Per-user exceptions on top of their role's own permissions — `{ grant: string[], revoke: string[] }`. Revoke wins over grant if a permission is somehow in both. See lib/permissions.ts's getEffectivePermissions.
+  permissionOverrides Json @default("{}") @map("permission_overrides")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  createdPatientProfiles PatientProfile[]      @relation("PatientCreatedBy")
+  linkedPatientProfiles  PatientProfile[]      @relation("PatientLinkedUser")
+  officeMemberships      MedicalOfficeMember[]
+  createdCases           MedicalCase[]         @relation("CaseCreatedBy")
+  assignedCases          MedicalCase[]         @relation("CaseAssignedClinician")
+  reviewedCases          MedicalCase[]         @relation("CaseReviewedBy")
+  submissions            MedicalSubmission[]   @relation("SubmissionSubmittedBy")
+  attachments            CaseAttachment[]      @relation("AttachmentUploadedBy")
+  settingUpdates         ApplicationSetting[]  @relation("SettingUpdatedBy")
+  accounts               Account[]
+
+  @@index([role, active], map: "idx_users_role_active")
+  @@map("app_users")
+}
+
+/// Better Auth's credential storage. One row per
+/// AppUser with providerId 'credential' holds the password hash; Better Auth's own session and
+/// verification tables are intentionally NOT modelled here — secondaryStorage (Redis) handles
+/// both entirely, so those tables never get written to and don't need to exist. Field names/types
+/// match Better Auth's own schema exactly (see @better-auth/core's getAuthTables) since the
+/// Prisma adapter maps to this model by field name, not by our own convention.
+model Account {
+  id                    String    @id @db.VarChar(80)
+  accountId             String    @map("account_id") @db.VarChar(255)
+  providerId            String    @map("provider_id") @db.VarChar(60)
+  userId                String    @map("user_id") @db.VarChar(80)
+  accessToken           String?   @map("access_token") @db.Text
+  refreshToken          String?   @map("refresh_token") @db.Text
+  idToken               String?   @map("id_token") @db.Text
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(6)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(6)
+  scope                 String?   @db.VarChar(255)
+  /// Better Auth's own scrypt format ("salt:hash").
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_accounts_user")
+  @@map("accounts")
+}
+
+/// Admin-editable role -> permission grants (Settings -> Permissions) — replaces most of the old
+/// hardcoded ROLE_PERMISSIONS map in lib/permissions.ts. Deliberately excludes 'admin': that role
+/// always holds every permission, unconditionally, in code -- so an admin can never accidentally
+/// (or maliciously, via another admin) edit their way into locking every admin out of the system.
+model RolePermission {
+  role       String @db.VarChar(30)
+  permission String @db.VarChar(60)
+
+  @@id([role, permission])
+  @@map("role_permissions")
+}
+
+model PatientProfile {
+  id                String    @id @db.VarChar(80)
+  linkedUserId      String?   @map("linked_user_id") @db.VarChar(80)
+  fullName          String    @map("full_name") @db.VarChar(140)
+  email             String?   @db.VarChar(254)
+  employeeId        String?   @map("employee_id") @db.VarChar(80)
+  nationalIdHash    String?   @map("national_id_hash") @db.Char(64)
+  dateOfBirth       DateTime? @map("date_of_birth") @db.Date
+  contactNumber     String?   @map("contact_number") @db.VarChar(50)
+  profilePayload    Bytes?    @map("profile_payload")
+  payloadKeyVersion  Int       @default(1) @map("payload_key_version") @db.SmallInt
+  createdBy         String?   @map("created_by") @db.VarChar(80)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  linkedUser AppUser? @relation("PatientLinkedUser", fields: [linkedUserId], references: [id], onDelete: SetNull)
+  creator    AppUser? @relation("PatientCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  cases      MedicalCase[]
+
+  @@index([email], map: "idx_patients_email")
+  @@index([employeeId], map: "idx_patients_employee_id")
+  @@index([linkedUserId], map: "idx_patients_linked_user")
+  @@map("patient_profiles")
+}
+
+model MedicalOffice {
+  id                String    @id @db.VarChar(80)
+  name              String    @db.VarChar(180)
+  address           String?   @db.VarChar(500)
+  phone             String?   @db.VarChar(50)
+  email             String?   @db.VarChar(254)
+  defaultMedicalFee Decimal   @default(0) @map("default_medical_fee") @db.Decimal(12, 2)
+  active            Boolean   @default(true)
+  metadata          Json      @default("{}")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  members       MedicalOfficeMember[]
+  assignedCases MedicalCase[]
+
+  @@map("medical_offices")
+}
+
+model MedicalOfficeMember {
+  officeId   String   @map("office_id") @db.VarChar(80)
+  userId     String   @map("user_id") @db.VarChar(80)
+  memberType String   @map("member_type") @db.VarChar(20)
+  canSubmit  Boolean  @default(false) @map("can_submit")
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  office MedicalOffice @relation(fields: [officeId], references: [id], onDelete: Cascade)
+  user   AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([officeId, userId])
+  @@index([userId, officeId], map: "idx_office_members_user")
+  @@map("medical_office_members")
+}
+
+model MedicalCase {
+  id                  String    @id @db.VarChar(80)
+  patientId           String    @map("patient_id") @db.VarChar(80)
+  createdBy           String?   @map("created_by") @db.VarChar(80)
+  assignedOfficeId    String?   @map("assigned_office_id") @db.VarChar(80)
+  assignedClinicianId String?   @map("assigned_clinician_id") @db.VarChar(80)
+  route               String    @db.VarChar(20)
+  status              String    @db.VarChar(40)
+  paymentStatus       String?   @map("payment_status") @db.VarChar(20)
+  payableAmount       Decimal?  @map("payable_amount") @db.Decimal(12, 2)
+  casePayload         Bytes?    @map("case_payload")
+  payloadKeyVersion    Int       @default(1) @map("payload_key_version") @db.SmallInt
+  version             Int       @default(1)
+  assignedAt          DateTime? @map("assigned_at") @db.Timestamptz(6)
+  patientSubmittedAt  DateTime? @map("patient_submitted_at") @db.Timestamptz(6)
+  doctorSubmittedAt   DateTime? @map("doctor_submitted_at") @db.Timestamptz(6)
+  reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  reviewedBy          String?   @map("reviewed_by") @db.VarChar(80)
+  paymentConfirmedAt  DateTime? @map("payment_confirmed_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  patient           PatientProfile  @relation(fields: [patientId], references: [id])
+  creator           AppUser?        @relation("CaseCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  assignedOffice    MedicalOffice?  @relation(fields: [assignedOfficeId], references: [id], onDelete: SetNull)
+  assignedClinician AppUser?        @relation("CaseAssignedClinician", fields: [assignedClinicianId], references: [id], onDelete: SetNull)
+  reviewer          AppUser?        @relation("CaseReviewedBy", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  submissions       MedicalSubmission[]
+  attachments       CaseAttachment[]
+
+  // idx_cases_patient_created/idx_cases_office_status/idx_cases_payment_status
+  // don't match any query the repos run today (office routing and billing
+  // filters are deferred features — see cases-service.ts) but are kept for
+  // when those land; idx_cases_patient_updated/idx_cases_clinician_updated
+  // were added because casesRepository.listForPatient/listForClinician
+  // actually sort by updatedAt, not createdAt/status.
+  @@index([patientId, createdAt(sort: Desc)], map: "idx_cases_patient_created")
+  @@index([patientId, updatedAt(sort: Desc)], map: "idx_cases_patient_updated")
+  @@index([status, updatedAt(sort: Desc)], map: "idx_cases_status_updated")
+  @@index([assignedOfficeId, status, updatedAt(sort: Desc)], map: "idx_cases_office_status")
+  @@index([assignedClinicianId, status, updatedAt(sort: Desc)], map: "idx_cases_clinician_status")
+  @@index([assignedClinicianId, updatedAt(sort: Desc)], map: "idx_cases_clinician_updated")
+  @@index([paymentStatus, updatedAt(sort: Desc)], map: "idx_cases_payment_status")
+  @@map("medical_cases")
+}
+
+model MedicalSubmission {
+  id                String    @id @db.VarChar(80)
+  caseId            String    @map("case_id") @db.VarChar(80)
+  submittedBy       String?   @map("submitted_by") @db.VarChar(80)
+  submissionVersion Int       @default(1) @map("submission_version")
+  encryptedPayload  Bytes     @map("encrypted_payload")
+  payloadKeyVersion  Int       @default(1) @map("payload_key_version") @db.SmallInt
+  payloadSha256     String    @map("payload_sha256") @db.Char(64)
+  submittedAt       DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  supersededAt      DateTime? @map("superseded_at") @db.Timestamptz(6)
+
+  case      MedicalCase @relation(fields: [caseId], references: [id])
+  submitter AppUser?    @relation("SubmissionSubmittedBy", fields: [submittedBy], references: [id], onDelete: SetNull)
+
+  @@index([caseId, submissionVersion(sort: Desc)], map: "idx_submissions_case_version")
+  @@map("medical_submissions")
+}
+
+model CaseAttachment {
+  id           String    @id @db.VarChar(80)
+  caseId       String    @map("case_id") @db.VarChar(80)
+  uploadedBy   String?   @map("uploaded_by") @db.VarChar(80)
+  storageKey   String    @map("storage_key") @db.VarChar(500)
+  originalName String    @map("original_name") @db.VarChar(255)
+  contentType  String    @map("content_type") @db.VarChar(100)
+  byteSize     BigInt    @map("byte_size")
+  sha256       String    @db.Char(64)
+  scanStatus   String    @default("pending") @map("scan_status") @db.VarChar(20)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  case     MedicalCase @relation(fields: [caseId], references: [id])
+  uploader AppUser?    @relation("AttachmentUploadedBy", fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@index([caseId, createdAt(sort: Desc)], map: "idx_attachments_case_created")
+  @@map("case_attachments")
+}
+
+model AuditEvent {
+  id           BigInt   @id @default(autoincrement())
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  actorUserId  String?  @map("actor_user_id") @db.VarChar(80)
+  eventType    String   @map("event_type") @db.VarChar(120)
+  entityType   String?  @map("entity_type") @db.VarChar(60)
+  entityId     String?  @map("entity_id") @db.VarChar(80)
+  requestId    String?  @map("request_id") @db.VarChar(80)
+  sourceIpHash String?  @map("source_ip_hash") @db.Char(64)
+  details      Json     @default("{}")
+  prevHash     String?  @map("prev_hash") @db.Char(64)
+  eventHash    String   @map("event_hash") @db.Char(64)
+
+  @@index([actorUserId, occurredAt(sort: Desc)], map: "idx_audit_actor_time")
+  @@index([entityType, entityId, occurredAt(sort: Desc)], map: "idx_audit_entity_time")
+  @@index([eventType, occurredAt(sort: Desc)], map: "idx_audit_type_time")
+  @@map("audit_events")
+}
+
+model ApplicationSetting {
+  settingKey        String   @id @map("setting_key") @db.VarChar(120)
+  encryptedValue    Bytes    @map("encrypted_value")
+  payloadKeyVersion  Int      @default(1) @map("payload_key_version") @db.SmallInt
+  updatedBy         String?  @map("updated_by") @db.VarChar(80)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  updater AppUser? @relation("SettingUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("application_settings")
+}
+
+/// Admin-editable subject/body/CC/BCC per notification type (see apps/web's features/notifications/registry.ts for the fixed set of keys) — no FK to AppUser for updatedBy, unlike ApplicationSetting, since this is a much smaller/simpler table and an audit event already records who changed which template.
+model NotificationTemplate {
+  key       String   @id @map("template_key") @db.VarChar(80)
+  label     String   @db.VarChar(200)
+  subject   String   @db.VarChar(500)
+  body      String   @db.Text
+  /// Which editor authored `body` last — "text" (TipTap WYSIWYG) or "code" (raw HTML/CSS textarea) — see template-editor-page.tsx. Determines which editor the page re-opens into, since round-tripping raw HTML through the WYSIWYG editor can reformat or drop markup it doesn't understand.
+  bodyMode  String   @default("text") @map("body_mode") @db.VarChar(10)
+  ccEmails  String?  @map("cc_emails") @db.VarChar(1000)
+  bccEmails String?  @map("bcc_emails") @db.VarChar(1000)
+  /// Only meaningful for email_footer (the one shared piece with no imposed background — see notification-email.tsx) — a `#rrggbb` value wraps the footer's own content in a colored, padded band; null means no wrapper at all, same as before this column existed.
+  backgroundColor String? @map("background_color") @db.VarChar(20)
+  enabled   Boolean  @default(true)
+  updatedBy String?  @map("updated_by") @db.VarChar(80)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("notification_templates")
+}
+
+/// One row per attempted send — the Message Centre's whole data source (apps/web's features/messages). `bodyHtml` is the fully-rendered email actually sent (variables already substituted), kept verbatim so viewing/resending a past message never depends on the template still existing or being unchanged.
+model EmailMessage {
+  id           String   @id @db.VarChar(80)
+  templateKey  String?  @map("template_key") @db.VarChar(80)
+  toEmail      String   @map("to_email") @db.VarChar(500)
+  ccEmails     String?  @map("cc_emails") @db.VarChar(1000)
+  bccEmails    String?  @map("bcc_emails") @db.VarChar(1000)
+  subject      String   @db.VarChar(500)
+  bodyHtml     String   @map("body_html") @db.Text
+  status       String   @db.VarChar(20)
+  errorMessage String?  @map("error_message") @db.Text
+  entityType   String?  @map("entity_type") @db.VarChar(60)
+  entityId     String?  @map("entity_id") @db.VarChar(80)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt(sort: Desc)], map: "idx_email_status_time")
+  @@index([toEmail], map: "idx_email_to")
+  @@map("email_messages")
+}

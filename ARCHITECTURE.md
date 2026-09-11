@@ -2,211 +2,124 @@
 
 ## 1. Purpose
 
-The National Commercial Bank Jamaica Medical Platform is an internal web application for managing new-hire medical assessments. It replaces the manual process where a medical facility completes a paper form, scans it, and emails it to the National Commercial Bank Jamaica team.
-
-The platform allows:
-
-- Reviewers to create doctor accounts and new-hire profiles.
-- Doctors to select assigned new hires, complete the medical assessment, and submit the form securely.
-- Reviewers to view, review, file/archive, and download submitted medical forms.
-- Administrators to manage users, notification settings, and platform wording.
+The National Commercial Bank Jamaica Medical Platform manages the pre-employment
+medical onboarding case lifecycle: HR creates a candidate and medical case, the
+candidate completes intake and consent, a medical office/doctor completes the
+physician assessment, HR reviews the completed medical, and billing is tracked
+through paid/unpaid status.
 
 ## 2. User Roles
 
 | Role | Description | Main Capabilities |
 | --- | --- | --- |
-| Doctor / Medical Clinician | External or internal medical professional completing assessments | Sign in, select assigned new hire, complete medical form, upload signature, submit assessment |
-| Reviewer | National Commercial Bank Jamaica team member reviewing submitted forms | Create doctor accounts, create new-hire profiles, assign profiles to doctors, review submissions, download forms, track monthly doctor volumes |
-| Administrator | System administrator / HR platform owner | Manage users, roles, passwords, portal settings, notification emails, and all reviewer functions |
+| Admin | System administrator | Full access except a hardened boundary on account management (can't create other admins or delete themself if that ever changes) and Settings, plus everything below |
+| Reviewer (HR) | NCB HR team member | Manage cases, candidates, doctors, medical offices, users (short of admin accounts), notifications, review queue |
+| Auditor | Read-only oversight tier | Same visibility as Reviewer, none of the write permissions |
+| Clinician / Doctor | Medical office user | Complete assigned assessments, manage assigned-candidate roster |
+| Patient | Candidate completing intake | Complete intake/consent for their own case only |
 
-## 3. Current Technology Stack
+Role defaults are defined in `apps/web/lib/permissions.ts` and `apps/web/lib/permission-groups.ts`.
+Admins can edit role defaults and grant/revoke per-user permission overrides from
+Settings → Permissions (`apps/web/features/settings/components/permissions-matrix.tsx`);
+a small set of permissions (`USERS_MANAGE`, `SETTINGS_MANAGE`, `ROLES_MANAGE`) are
+excluded from that editable surface and enforced server-side regardless of what's
+sent from the client.
+
+## 3. Technology Stack
 
 | Layer | Technology |
 | --- | --- |
 | Runtime | Node.js 20+ |
-| Backend | Native Node.js HTTP server |
-| Frontend | HTML, CSS, vanilla JavaScript |
-| Storage | Local encrypted JSON files under `data/` |
-| Encryption | AES-256-GCM for medical submissions and candidate profiles |
-| Authentication | Local user accounts with PBKDF2-SHA256 password hashing |
-| Sessions | HttpOnly SameSite cookies |
-| Email | SMTP integration, with local notification logging when SMTP is not configured |
-
-The current application is self-contained and does not require a database server. For production scale, the encrypted file storage can later be replaced by a managed database.
+| Framework | Next.js 16 (App Router), React 19, Turbopack |
+| Monorepo | npm workspaces + Turborepo (`apps/web`, `packages/database`, `packages/auth`, `packages/redis`, `packages/shared`) |
+| Database | PostgreSQL via Prisma (`packages/database`) |
+| Sessions / cache | Redis (`packages/redis`) — Better Auth sessions and login/action rate limiting |
+| Encryption at rest | AES-256-GCM, keyed by `APP_MASTER_KEY` (`packages/shared/src/crypto-box.ts`), applied in the candidates/cases/submissions/settings/audit/users repositories |
+| Authentication | Better Auth (`packages/auth`) — native email/password, Redis-backed sessions, HttpOnly/SameSite=Strict cookies |
+| Email | SMTP, configured through the Settings admin UI (not env vars) and stored in the database |
+| Styling/UI | Tailwind CSS, shadcn/ui-derived components (`apps/web/components/ui`) |
 
 ## 4. High-Level Architecture
 
 ```mermaid
 flowchart LR
-  Doctor["Doctor / Medical Facility"] --> Browser["Web Browser"]
-  Reviewer["NCB Reviewer / Admin"] --> Browser
-  Browser --> App["Node.js Web Application"]
-  App --> Auth["Authentication and Sessions"]
-  App --> Storage["Encrypted Local Storage"]
-  App --> Audit["Audit Log"]
-  App --> SMTP["SMTP Mail Server"]
-  Storage --> Users["data/users.json"]
-  Storage --> Candidates["data/candidates/*.json.enc"]
-  Storage --> Submissions["data/submissions/*.json.enc"]
-  Storage --> Settings["data/settings.json"]
-  SMTP --> Email["Reviewer / Doctor Email Notifications"]
+  User["Doctor / HR Reviewer / Auditor / Admin / Candidate"] --> Browser["Web Browser"]
+  Browser --> Proxy["apps/web/proxy.ts (real session check)"]
+  Proxy --> Next["Next.js App Router (apps/web)"]
+  Next --> Session["Session lookup (lib/session.ts -> packages/auth)"]
+  Session --> Redis[("Redis — sessions, rate limits")]
+  Next --> DB["packages/database (Prisma)"]
+  DB --> Postgres[("PostgreSQL")]
+  Next --> SMTP["SMTP (settings-driven)"]
+  SMTP --> Email["Notification emails"]
 ```
+
+`proxy.ts` (Next 16's `middleware` successor) runs a real `auth.api.getSession()`
+check and redirects to `/login` if it fails — it runs on the Node runtime, so
+it can reach Redis directly rather than only checking cookie presence. The
+real authorization boundary is `getSession()` (`apps/web/lib/session.ts`),
+which every Server Component/Action calls to resolve the user's actual
+permissions (role defaults plus any per-user overrides) before doing anything.
 
 ## 5. Main Data Flows
 
-### 5.1 New-Hire Setup Flow
+### 5.1 Case Intake
 
-1. Reviewer or administrator signs in.
-2. Reviewer opens **Doctor & new hire setup**.
-3. Reviewer creates or selects a doctor account.
-4. Reviewer creates a new-hire profile with candidate details.
-5. Reviewer assigns the new hire to a doctor.
-6. The candidate profile is encrypted and stored in `data/candidates/`.
-7. A doctor assignment notification is sent by SMTP, or logged locally if SMTP is not configured.
+1. HR reviewer creates a candidate profile and a medical case, assigning it to
+   a doctor/medical office.
+2. The candidate completes intake and consent (`apps/web/features/submissions`).
+3. The doctor completes the physician assessment (`apps/web/features/cases`,
+   `apps/web/features/submissions/components/doctor-case-form`).
 
-### 5.2 Doctor Assessment Flow
+### 5.2 Review and Billing
 
-1. Doctor signs in.
-2. Doctor opens **New assessment**.
-3. Doctor selects an assigned new hire.
-4. Candidate details auto-populate into the form.
-5. Doctor completes assessment details, determination, attestation, and optional signature upload.
-6. Doctor submits the assessment.
-7. The completed form is encrypted and stored in `data/submissions/`.
-8. The assigned candidate profile is marked as submitted.
-9. Reviewer notification is sent by SMTP, or logged locally if SMTP is not configured.
+1. HR reviewer opens the review queue, reviews the completed case
+   (`apps/web/features/cases/components/complete-review-card.tsx`), and
+   transitions its status.
+2. Billing is tracked through paid/unpaid confirmation
+   (`apps/web/features/cases/components/case-payment-confirmation.tsx`).
+3. Every write is recorded to the audit log (`packages/database/src/repositories/audit.ts`).
 
-### 5.3 Reviewer Review Flow
+### 5.3 Notifications
 
-1. Reviewer signs in.
-2. Reviewer opens **Review queue**.
-3. Reviewer selects a submitted assessment.
-4. Reviewer reviews the form content.
-5. Reviewer updates status to pending, reviewed, needs follow-up, or archived.
-6. Reviewer can download the populated assessment form.
+Notification templates (rich-text, DB-backed) fire on case events — assignment,
+submission, review outcome — via `apps/web/features/notifications`. SMTP
+settings are configured per-deployment through Settings → Mail, not environment
+variables; without SMTP configured, sends fail visibly rather than silently
+falling back (see `send-test-email` for verifying configuration before relying
+on it).
 
 ## 6. Data Storage
 
-| Data | Path | Protection |
+| Data | Where | Protection |
 | --- | --- | --- |
-| Users | `data/users.json` | File permissions, hashed passwords |
-| New-hire candidate profiles | `data/candidates/*.json.enc` | AES-256-GCM encrypted |
-| Medical submissions | `data/submissions/*.json.enc` | AES-256-GCM encrypted |
-| App settings | `data/settings.json` | File permissions |
-| Master encryption key | `data/master.key` or `APP_MASTER_KEY` | File permissions or environment secret |
-| Audit log | `data/audit.log` | No medical details by design |
-| Notification log | `data/notifications.log` | Used when SMTP is not configured |
+| Users, roles, permission overrides | Postgres (`AppUser`, `role_permissions`, per-user overrides) | Session-embedded permission snapshot, scrypt-hashed passwords |
+| Candidates, cases, submissions | Postgres | AES-256-GCM encrypted payload columns, indexed workflow metadata alongside |
+| Settings (branding, SLA, mail, templates) | Postgres | Encrypted where sensitive (e.g. SMTP password) |
+| Audit log | Postgres, append-only | No medical details by design |
+| Master encryption key | `APP_MASTER_KEY` env var, or generated and persisted to `apps/web/data/master.key` if unset | File permissions or environment secret |
 
 ## 7. Security Controls
 
-Current controls include:
+- Role-based access control with per-user permission overrides, resolved once
+  per session and embedded in it (avoids a DB round-trip per request).
+- HttpOnly, SameSite session cookies; `COOKIE_SECURE` for HTTPS deployments.
+- AES-256-GCM encryption at rest for candidate/case/submission payloads.
+- No medical details in email notifications.
+- Append-only audit log, kept separate from the encrypted medical data it references.
+- Auditor role provides read-only oversight without needing write access to anything.
 
-- Role-based access control for doctors, reviewers, and administrators.
-- Password hashing using PBKDF2-SHA256.
-- HttpOnly session cookies.
-- SameSite session cookies.
-- CSRF token validation for write operations.
-- AES-256-GCM encryption at rest for medical submissions and candidate profiles.
-- No medical details included in email notifications.
-- Audit logging for key events.
-- Security headers including `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and Content Security Policy.
-- Local data directory permissions are restricted where supported by the operating system.
+## 8. Deployment
 
-## 8. Email Notifications
+See [README.md](README.md) for local/Docker setup and [DATABASE.md](DATABASE.md)
+for the Postgres/Prisma details. `Dockerfile`/`docker-compose.yml` build and run
+the actual Next.js app, deployed onto the organization's own infrastructure —
+there is no third-party PaaS config in this repo. Migrations run as their own
+explicit step (a one-shot `migrate` service in Compose) rather than on every
+app start.
 
-The platform supports two notification paths:
+## 9. Known Gaps
 
-| Notification | Trigger | Recipient Setting |
-| --- | --- | --- |
-| Doctor assignment notification | New-hire profile assigned to doctor | Doctor account email plus optional doctor notification copy email(s) |
-| Reviewer submission notification | Doctor submits medical assessment | Reviewer notification email(s) |
-
-If SMTP is not configured, notifications are written to `data/notifications.log`.
-
-## 9. Deployment Architecture
-
-Recommended internal deployment:
-
-```mermaid
-flowchart LR
-  Users["Doctors / Reviewers"] --> HTTPS["Internal HTTPS URL"]
-  HTTPS --> Proxy["Reverse Proxy: Nginx / IIS / Apache"]
-  Proxy --> Node["Node.js App on 127.0.0.1:8081"]
-  Node --> Data["Encrypted data/ directory"]
-  Node --> SMTP["Internal SMTP Server"]
-  Backup["Secure Backup Job"] --> Data
-```
-
-Recommended internal URL example:
-
-```text
-https://ncb-medical.internal
-```
-
-The reverse proxy should terminate HTTPS and forward traffic to:
-
-```text
-http://127.0.0.1:8081
-```
-
-## 10. Production Configuration
-
-Recommended `.env` values:
-
-```bash
-HOST=127.0.0.1
-PORT=8081
-PUBLIC_URL=https://ncb-medical.internal
-COOKIE_SECURE=true
-APP_MASTER_KEY=<32-byte-base64-secret-from-vault>
-REVIEW_NOTIFICATION_EMAIL=hr-review@jncb.com
-FROM_EMAIL=no-reply@jncb.com
-SMTP_HOST=<internal-smtp-host>
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=<smtp-user-if-required>
-SMTP_PASS=<smtp-password-if-required>
-```
-
-## 11. Production Readiness Checklist
-
-Before live medical data is used:
-
-- Deploy behind HTTPS only.
-- Set `COOKIE_SECURE=true`.
-- Store `APP_MASTER_KEY` in a secure secret vault.
-- Do not rely on `data/master.key` for production secrets.
-- Restrict network access to approved users and facilities.
-- Configure SMTP for real notifications.
-- Create secure backups for the `data/` directory.
-- Test restore procedures.
-- Define retention and deletion rules for candidate profiles and medical forms.
-- Replace local user accounts with company SSO if required.
-- Conduct privacy, legal, and information-security reviews.
-- Run penetration/security testing before production rollout.
-
-## 12. Operational Notes
-
-The application can be started with:
-
-```bash
-node server.js
-```
-
-For production, IT should run it as a managed service using `systemd`, PM2, Windows Service Manager, or an approved enterprise service manager.
-
-The `data/` directory must be treated as confidential because it contains encrypted medical records, application users, audit logs, and configuration.
-
-## 13. Future Enhancements
-
-Potential future improvements:
-
-- Company single sign-on integration.
-- Database-backed encrypted storage.
-- Role-specific dashboards and analytics.
-- Formal password reset email workflow.
-- PDF generation instead of HTML downloads.
-- Facility-level access controls.
-- Automated retention and archival policies.
-- Admin audit report exports.
-- Integration with HR onboarding systems.
+- `packages/database/src/scripts/seed-users.ts` is a local-dev-only seed with a
+  hardcoded demo password — use `db:create-admin` (see README.md) for a real
+  first admin account instead.

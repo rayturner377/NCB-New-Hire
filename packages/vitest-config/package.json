@@ -1,0 +1,10 @@
+{
+  "name": "@ncb/vitest-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "base.js",
+  "dependencies": {
+    "vitest": "^5.0.0"
+  }
+}

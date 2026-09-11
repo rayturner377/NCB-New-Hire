@@ -1,0 +1,24 @@
+{
+  "name": "@ncb/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@ncb/eslint-config": "*",
+    "@ncb/tsconfig": "*",
+    "@ncb/vitest-config": "*",
+    "@vitest/coverage-v8": "^5.0.0",
+    "eslint": "^9.9.0",
+    "typescript": "^5.6.3",
+    "vitest": "^5.0.0"
+  }
+}

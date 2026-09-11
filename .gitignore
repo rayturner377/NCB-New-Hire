@@ -1,6 +1,25 @@
 data/
 .env
 .DS_Store
+Thumbs.db
 *.log
 .netlify/
 node_modules/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+packages/database/src/generated/
+.next/
+.idea/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Internal reference documents — not app code, never needed at build/runtime.
+/NCB Email Guide.pdf
+/NCB PreEmployment Medical Assessment 2 (1).pdf
+/The Data Protection Act, 2020.pdf
