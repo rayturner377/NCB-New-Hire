@@ -12,8 +12,7 @@ describe('users repository', () => {
       id: 'user_1',
       email: 'doctor@ncb.local',
       displayName: 'Dr. Example',
-      role: 'clinician',
-      passwordRecord: { alg: 'PBKDF2-SHA256' }
+      role: 'clinician'
     });
 
     expect(create).toHaveBeenCalledWith({

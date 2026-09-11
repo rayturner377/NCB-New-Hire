@@ -6,8 +6,6 @@
  * Prisma schema (Branch 2) is the source of truth for column-level shape.
  */
 
-import type { PasswordRecord } from '../password.js';
-
 export type UserRole = 'clinician' | 'reviewer' | 'admin';
 
 export interface MedicalProfile {
@@ -28,7 +26,6 @@ export interface AppUser {
   active: boolean;
   mustChangePassword: boolean;
   createdAt: string;
-  password: PasswordRecord;
   medicalProfile: MedicalProfile;
 }
 

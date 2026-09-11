@@ -4,7 +4,7 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { redisStorage } from '@better-auth/redis-storage';
 import { prisma } from '@ncb/database';
 import { redis } from '@ncb/redis';
-import { hash, verify, tryParseLegacyRecord } from './password.js';
+import { hash, verify } from './password.js';
 
 const secret = process.env.BETTER_AUTH_SECRET;
 if (!secret) {
@@ -91,30 +91,6 @@ export const auth = betterAuth({
         before: async (session) => {
           const user = await prisma.appUser.findFirst({ where: { id: session.userId } });
           if (!user || user.active === false) return false;
-        },
-        /**
-         * Lazy legacy-PBKDF2-to-scrypt upgrade, on next successful login,
-         * targeted at this specific session's userId — not by matching on
-         * password content, which multiple accounts can legitimately share
-         * byte-for-byte (see password.ts's docstring on verify()). Fires on
-         * every session creation, so bails immediately once an account is
-         * already on the native scrypt format.
-         */
-        after: async (session, context) => {
-          const password = (context as { body?: { password?: string } } | null)?.body?.password;
-          if (!password) return;
-
-          const account = await prisma.account.findFirst({
-            where: { userId: session.userId, providerId: 'credential' }
-          });
-          if (!account?.password || !tryParseLegacyRecord(account.password)) return;
-
-          try {
-            const newHash = await hash(password);
-            await prisma.account.update({ where: { id: account.id }, data: { password: newHash } });
-          } catch (error) {
-            console.error('Failed to upgrade legacy password hash:', error);
-          }
         }
       }
     }

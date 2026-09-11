@@ -19,7 +19,6 @@ model AppUser {
   role           String    @db.VarChar(30)
   active         Boolean   @default(true)
   mustChangePassword Boolean @default(false) @map("must_change_password")
-  passwordRecord Json?     @map("password_record")
   /// Required by Better Auth's own core user schema (unconditional, not a plugin) — this app has
   /// no email-verification flow (emailAndPassword.requireEmailVerification stays off), so this
   /// stays false/unused, but the column has to exist for the Prisma adapter's field-selection to
@@ -50,8 +49,7 @@ model AppUser {
   @@map("app_users")
 }
 
-/// Better Auth's credential storage — separate from AppUser.passwordRecord (which stays only
-/// as long as the legacy-PBKDF2 verify fallback needs it, see packages/auth). One row per
+/// Better Auth's credential storage. One row per
 /// AppUser with providerId 'credential' holds the password hash; Better Auth's own session and
 /// verification tables are intentionally NOT modelled here — secondaryStorage (Redis) handles
 /// both entirely, so those tables never get written to and don't need to exist. Field names/types
@@ -68,9 +66,7 @@ model Account {
   accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(6)
   refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(6)
   scope                 String?   @db.VarChar(255)
-  /// Better Auth's own scrypt format for anything hashed going forward, or (for
-  /// not-yet-relogged-in accounts) a JSON-serialized legacy PasswordRecord —
-  /// see packages/auth's custom verify().
+  /// Better Auth's own scrypt format ("salt:hash").
   password              String?   @db.Text
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)

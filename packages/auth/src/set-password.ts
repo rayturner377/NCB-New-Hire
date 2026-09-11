@@ -9,8 +9,7 @@ import { hash } from './password.js';
  * resetting someone else's — is admin/self-driven through this app's own
  * actions, never through Better Auth's own signUpEmail/changePassword API
  * surface, so none of those flows exist to do this automatically. Writing
- * here (not AppUser.passwordRecord, which Better Auth's sign-in never reads)
- * is what actually makes the password take effect.
+ * to this Account row is what actually makes the password take effect.
  */
 export async function setUserPassword(userId: string, newPassword: string): Promise<void> {
   const passwordHash = await hash(newPassword);

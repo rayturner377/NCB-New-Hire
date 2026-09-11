@@ -91,7 +91,7 @@ on it).
 
 | Data | Where | Protection |
 | --- | --- | --- |
-| Users, roles, permission overrides | Postgres (`AppUser`, `role_permissions`, per-user overrides) | Session-embedded permission snapshot, PBKDF2/scrypt-hashed passwords |
+| Users, roles, permission overrides | Postgres (`AppUser`, `role_permissions`, per-user overrides) | Session-embedded permission snapshot, scrypt-hashed passwords |
 | Candidates, cases, submissions | Postgres | AES-256-GCM encrypted payload columns, indexed workflow metadata alongside |
 | Settings (branding, SLA, mail, templates) | Postgres | Encrypted where sensitive (e.g. SMTP password) |
 | Audit log | Postgres, append-only | No medical details by design |

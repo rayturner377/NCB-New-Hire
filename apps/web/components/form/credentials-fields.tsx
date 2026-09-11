@@ -21,8 +21,8 @@ export interface CredentialsFieldsProps {
  * the Candidates "grant portal access" section. Rendered side by side (one
  * associated unit, not two stray fields) so the relationship between "the
  * email" and "the password for that email" reads at a glance. Keeping this
- * in one place also means the password rule (12-char minimum, matching
- * @ncb/shared's makePasswordRecord expectations) only has to be right once.
+ * in one place also means the password rule (12-char minimum) only has to
+ * be right once.
  */
 export function CredentialsFields({
   showEmail = true,
