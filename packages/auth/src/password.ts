@@ -1,6 +1,5 @@
 import { hashPassword as scryptHash, verifyPassword as scryptVerify } from 'better-auth/crypto';
 import { verifyPassword as verifyLegacyPassword, type PasswordRecord } from '@ncb/shared';
-import { prisma } from '@ncb/database';
 
 /**
  * Migration bridge from the pre-Better-Auth PBKDF2 password records
@@ -13,7 +12,7 @@ import { prisma } from '@ncb/database';
  * Distinguishing the two only needs a JSON.parse attempt: scrypt's
  * `salt:hash` format can never parse as JSON.
  */
-function tryParseLegacyRecord(stored: string): PasswordRecord | null {
+export function tryParseLegacyRecord(stored: string): PasswordRecord | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stored);
@@ -35,37 +34,21 @@ export async function hash(password: string): Promise<string> {
 }
 
 /**
- * On a successful legacy-format verify, re-hashes with scrypt and persists it
- * — lazy migration on next successful login, so no account needs a forced
- * password reset. Runs after responding to the caller's `verify()` (the
- * account row's own id isn't available inside `verify()` itself, only the
- * stored hash string, so this looks the row back up by its password value;
- * see the account row's uniqueness assumption below).
+ * Pure check, no side effects. The lazy re-hash-to-scrypt-on-success upgrade
+ * lives in index.ts's databaseHooks.session.create.after instead of here —
+ * this callback only ever receives the stored hash string and the plaintext
+ * password, neither of which safely identifies *which* account row to
+ * update (multiple accounts can legitimately share byte-identical legacy
+ * records, e.g. seed-users.ts's demo accounts, which all share one password
+ * and therefore one PasswordRecord — matching an update by password content
+ * would touch every row sharing that value, not just the one that just
+ * signed in). The session-creation hook has the actual userId to target
+ * precisely instead.
  */
-async function upgradeLegacyAccount(storedRecord: string, password: string): Promise<void> {
-  const newHash = await scryptHash(password);
-  // password isn't unique across rows in principle, but in practice every
-  // legacy record's salt makes its serialized JSON effectively unique to one
-  // account — this only ever touches the row(s) that verified successfully
-  // against this exact value a moment ago.
-  await prisma.account.updateMany({
-    where: { password: storedRecord, providerId: 'credential' },
-    data: { password: newHash }
-  });
-}
-
 export async function verify({ hash: stored, password }: { hash: string; password: string }): Promise<boolean> {
   const legacyRecord = tryParseLegacyRecord(stored);
   if (legacyRecord) {
-    const ok = verifyLegacyPassword(password, legacyRecord);
-    if (ok) {
-      // Fire-and-forget: the login itself must not fail or slow down because
-      // of this housekeeping write.
-      void upgradeLegacyAccount(stored, password).catch((error) => {
-        console.error('Failed to upgrade legacy password hash:', error);
-      });
-    }
-    return ok;
+    return verifyLegacyPassword(password, legacyRecord);
   }
   return scryptVerify({ hash: stored, password });
 }

@@ -1,12 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { makePasswordRecord } from '@ncb/shared';
-
-vi.mock('@ncb/database', () => ({
-  prisma: { account: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) } }
-}));
-
-const { hash, verify } = await import('../../password.js');
-const { prisma } = await import('@ncb/database');
+import { hash, verify, tryParseLegacyRecord } from '../../password.js';
 
 describe('hash', () => {
   it('produces a scrypt salt:hash string, never JSON', async () => {
@@ -26,34 +20,46 @@ describe('verify', () => {
     await expect(verify({ hash: hashed, password: 'WrongPassword!' })).resolves.toBe(false);
   });
 
-  it('accepts a correct password against a legacy PBKDF2 record and upgrades it', async () => {
-    const record = makePasswordRecord('LegacyPass123!');
-    const stored = JSON.stringify(record);
-
-    const ok = await verify({ hash: stored, password: 'LegacyPass123!' });
-    expect(ok).toBe(true);
-
-    // The upgrade write is fire-and-forget (deliberately not awaited by
-    // verify(), so a slow re-hash never delays the login response) and
-    // scrypt hashing takes real wall-clock time on the thread pool — poll
-    // rather than trust a single fixed delay.
-    await vi.waitFor(() => expect(prisma.account.updateMany).toHaveBeenCalled());
-    expect(prisma.account.updateMany).toHaveBeenCalledWith({
-      where: { password: stored, providerId: 'credential' },
-      data: { password: expect.stringMatching(/^[0-9a-f]+:[0-9a-f]+$/) }
-    });
+  it('accepts a correct password against a legacy PBKDF2 record', async () => {
+    const stored = JSON.stringify(makePasswordRecord('LegacyPass123!'));
+    await expect(verify({ hash: stored, password: 'LegacyPass123!' })).resolves.toBe(true);
   });
 
-  it('rejects a wrong password against a legacy PBKDF2 record without upgrading it', async () => {
-    const record = makePasswordRecord('LegacyPass123!');
-    const stored = JSON.stringify(record);
-    vi.mocked(prisma.account.updateMany).mockClear();
-
+  it('rejects a wrong password against a legacy PBKDF2 record', async () => {
+    const stored = JSON.stringify(makePasswordRecord('LegacyPass123!'));
     await expect(verify({ hash: stored, password: 'WrongPassword!' })).resolves.toBe(false);
-    expect(prisma.account.updateMany).not.toHaveBeenCalled();
   });
 
   it('treats a value that merely looks like JSON but isn\'t a legacy record as a native hash lookup, not a crash', async () => {
     await expect(verify({ hash: '{"not":"a password record"}', password: 'whatever' })).resolves.toBe(false);
+  });
+
+  // The legacy-to-scrypt upgrade itself lives in index.ts's
+  // databaseHooks.session.create.after, not here — verify() stays pure
+  // precisely because it never learns which account row it's checking (see
+  // this file's own docstring), so it has nothing to safely update. That
+  // hook is covered by a live integration test against a real Postgres
+  // instance, not a unit test here — the scenario it guards against (two
+  // accounts sharing a byte-identical legacy record only one of which just
+  // signed in) isn't meaningfully mockable without re-implementing Prisma.
+});
+
+describe('tryParseLegacyRecord', () => {
+  it('recognizes a real legacy PasswordRecord', () => {
+    const record = makePasswordRecord('Whatever123!');
+    expect(tryParseLegacyRecord(JSON.stringify(record))).toEqual(record);
+  });
+
+  it('returns null for a native scrypt hash', async () => {
+    const hashed = await hash('Whatever123!');
+    expect(tryParseLegacyRecord(hashed)).toBeNull();
+  });
+
+  it('returns null for JSON that is not a legacy record', () => {
+    expect(tryParseLegacyRecord('{"not":"a password record"}')).toBeNull();
+  });
+
+  it('returns null for garbage input without throwing', () => {
+    expect(tryParseLegacyRecord('not json at all')).toBeNull();
   });
 });
