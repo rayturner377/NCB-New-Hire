@@ -19,7 +19,8 @@ function SignOutButton() {
  * A self-service response to "I think my account is logged in somewhere I
  * don't recognize" — kills every other active session on this account
  * without needing an admin to step in. The browser this button is clicked
- * from stays signed in (see sign-out-other-sessions.ts's `exceptId`).
+ * from stays signed in (see sign-out-other-sessions.ts's
+ * auth.api.revokeOtherSessions() call).
  */
 export function SignOutOtherSessionsButton() {
   const [state, formAction] = useActionState(signOutOtherSessionsAction, null);
