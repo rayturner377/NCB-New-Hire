@@ -1,6 +1,7 @@
 data/
 .env
 .DS_Store
+Thumbs.db
 *.log
 .netlify/
 node_modules/
@@ -10,3 +11,9 @@ coverage/
 *.tsbuildinfo
 packages/database/src/generated/
 .next/
+.idea/
+
+# Internal reference documents — not app code, never needed at build/runtime.
+/NCB Email Guide.pdf
+/NCB PreEmployment Medical Assessment 2 (1).pdf
+/The Data Protection Act, 2020.pdf

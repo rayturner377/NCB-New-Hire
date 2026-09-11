@@ -20,19 +20,21 @@ DATABASE_URL=postgresql://ncb_medical_app:<password>@<host>:5432/ncb_medical?sch
 
 ```bash
 npm run db:migrate:dev      # create/apply a migration in local dev
-npm run db:migrate:deploy   # apply pending migrations (CI, Docker, Render)
+npm run db:migrate:deploy   # apply pending migrations (CI, Docker, production)
 ```
 
 `docker-compose.yml` runs `db:migrate:deploy` in a one-shot `migrate` service
-before the app starts. `render.yaml`'s `buildCommand` does the same during
-deploy. `.github/workflows/ci.yml`'s `integration-tests` job runs it against
-a real Postgres service container before running integration tests.
+before the app starts — the same explicit-step approach any other deployment
+onto the organization's infrastructure should follow, rather than running
+migrations on every app start. `.github/workflows/ci.yml`'s `integration-tests`
+job runs it against a real Postgres service container before running
+integration tests.
 
 ## Generating the Prisma client
 
 `npm run db:generate` (or just `npm run build`, which runs it as part of
 `packages/database`'s build step). Needed after pulling schema changes, and
-run automatically in CI/Docker/Render builds.
+run automatically in CI/Docker builds.
 
 ## Security requirements
 

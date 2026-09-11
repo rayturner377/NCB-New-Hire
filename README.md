@@ -5,20 +5,23 @@ medical assessments for candidates, reviewers (HR) manage cases and communicate
 decisions, and administrators manage users, roles, and system settings.
 
 Next.js (App Router) monorepo managed with Turborepo and npm workspaces, backed by
-Postgres via Prisma.
+Postgres via Prisma, Redis-backed sessions via Better Auth, and Redis-backed
+rate limiting.
 
 - `apps/web` — the Next.js application
 - `packages/database` — Prisma schema, migrations, and repositories
-- `packages/shared` — crypto/auth helpers shared across packages
+- `packages/auth` — Better Auth configuration (email/password, Redis-backed sessions)
+- `packages/redis` — shared ioredis client and rate-limiter helpers
+- `packages/shared` — crypto helpers shared across packages
 
 ## Run locally
 
-Requires Node 20+ and a running Postgres instance.
+Requires Node 20+, a running Postgres instance, and a running Redis instance.
 
 ```bash
 npm install
-cp .env.example .env   # fill in POSTGRES_PASSWORD and DATABASE_URL
-docker compose up -d postgres   # or point DATABASE_URL at your own Postgres
+cp .env.example .env   # fill in POSTGRES_PASSWORD, DATABASE_URL, REDIS_PASSWORD, REDIS_URL, BETTER_AUTH_SECRET
+docker compose up -d postgres redis   # or point DATABASE_URL/REDIS_URL at your own instances
 npm run db:migrate:deploy
 npm run dev
 ```
@@ -27,6 +30,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 On first run, `APP_MASTER_KEY` (used to encrypt data at rest) is generated
 automatically and persisted to `apps/web/data/master.key` if not set in `.env`.
+`BETTER_AUTH_SECRET` and `REDIS_PASSWORD`/`REDIS_URL` have no such fallback —
+`.env` must set them (see `.env.example`, which includes a one-liner to
+generate `BETTER_AUTH_SECRET`).
 
 For local/demo accounts (one user per role, all sharing a demo password —
 **never use in production**):
@@ -45,13 +51,14 @@ npm run db:create-admin -- admin@example.com "Display Name"
 ## Run with Docker
 
 ```bash
-cp .env.example .env   # fill in POSTGRES_PASSWORD and APP_MASTER_KEY
+cp .env.example .env   # fill in POSTGRES_PASSWORD, REDIS_PASSWORD, BETTER_AUTH_SECRET, and APP_MASTER_KEY
 docker compose up -d --build
 ```
 
-This starts Postgres, runs Prisma migrations via a one-shot `migrate`
-service, then starts the app. The `./data` folder is mounted into the app
-container at `/app/data`, keeping the generated master key outside the image.
+This starts Postgres and Redis, runs Prisma migrations via a one-shot
+`migrate` service, then starts the app. The `./data` folder is mounted into
+the app container at `/app/data`, keeping the generated master key outside
+the image.
 
 Open [http://localhost:3000](http://localhost:3000).
 
@@ -70,7 +77,9 @@ docker compose logs -f web
 - SLA tracking and configurable SLA definitions per case event.
 - Audit log of account and case actions.
 - AES-256-GCM encryption at rest for sensitive fields, keyed by `APP_MASTER_KEY`.
-- Session cookies with configurable inactivity timeout (`SESSION_TIMEOUT_MINUTES`).
+- Authentication via Better Auth (native email/password), sessions and login/action
+  rate limiting backed by Redis, with a configurable inactivity timeout
+  (`SESSION_TIMEOUT_MINUTES`).
 
 ## Environment variables
 
@@ -80,6 +89,12 @@ See `.env.example`. The application itself only reads:
 - `COOKIE_SECURE` — set `true` in any real deployment (served over HTTPS).
 - `SESSION_TIMEOUT_MINUTES` — inactivity timeout for authenticated sessions (5-480).
 - `DATABASE_URL` — standard Prisma/Postgres connection string.
+- `REDIS_URL` — standard Redis connection string (sessions, login/action rate limiting).
+- `BETTER_AUTH_SECRET` — Better Auth's own signing secret; required, no fallback.
+
+`POSTGRES_PASSWORD`/`REDIS_PASSWORD` are read only by `docker-compose.yml`
+itself (to configure the Postgres/Redis containers) — the app reads the
+resulting `DATABASE_URL`/`REDIS_URL` instead.
 
 SMTP settings, notification templates, portal branding, and SLA definitions
 are configured through the Settings admin UI and stored in the database, not
@@ -90,7 +105,8 @@ environment variables.
 Before using this with real medical data:
 
 - Serve only over HTTPS and set `COOKIE_SECURE=true`.
-- Store `APP_MASTER_KEY` in a managed secret vault, not in the project folder.
+- Store `APP_MASTER_KEY` and `BETTER_AUTH_SECRET` in a managed secret vault, not in the project folder.
+- Require a password and TLS on Redis, and restrict network access to it the same way as Postgres — it holds live session tokens.
 - Restrict database access by facility, reviewer group, and network policy where appropriate.
 - Add secure backups, restore testing, retention rules, and deletion workflows.
 - Complete legal/privacy review for applicable health-data and employment regulations.

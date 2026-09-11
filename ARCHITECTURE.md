@@ -31,10 +31,11 @@ sent from the client.
 | --- | --- |
 | Runtime | Node.js 20+ |
 | Framework | Next.js 16 (App Router), React 19, Turbopack |
-| Monorepo | npm workspaces + Turborepo (`apps/web`, `packages/database`, `packages/shared`) |
+| Monorepo | npm workspaces + Turborepo (`apps/web`, `packages/database`, `packages/auth`, `packages/redis`, `packages/shared`) |
 | Database | PostgreSQL via Prisma (`packages/database`) |
+| Sessions / cache | Redis (`packages/redis`) — Better Auth sessions and login/action rate limiting |
 | Encryption at rest | AES-256-GCM, keyed by `APP_MASTER_KEY` (`packages/shared/src/crypto-box.ts`), applied in the candidates/cases/submissions/settings/audit/users repositories |
-| Authentication | Local accounts, session cookies (HttpOnly, SameSite) |
+| Authentication | Better Auth (`packages/auth`) — native email/password, Redis-backed sessions, HttpOnly/SameSite=Strict cookies |
 | Email | SMTP, configured through the Settings admin UI (not env vars) and stored in the database |
 | Styling/UI | Tailwind CSS, shadcn/ui-derived components (`apps/web/components/ui`) |
 
@@ -43,21 +44,22 @@ sent from the client.
 ```mermaid
 flowchart LR
   User["Doctor / HR Reviewer / Auditor / Admin / Candidate"] --> Browser["Web Browser"]
-  Browser --> Proxy["apps/web/proxy.ts (cookie-presence gate)"]
+  Browser --> Proxy["apps/web/proxy.ts (real session check)"]
   Proxy --> Next["Next.js App Router (apps/web)"]
-  Next --> Session["Session lookup (lib/session.ts)"]
+  Next --> Session["Session lookup (lib/session.ts -> packages/auth)"]
+  Session --> Redis[("Redis — sessions, rate limits")]
   Next --> DB["packages/database (Prisma)"]
   DB --> Postgres[("PostgreSQL")]
   Next --> SMTP["SMTP (settings-driven)"]
   SMTP --> Email["Notification emails"]
 ```
 
-`proxy.ts` (Next 16's `middleware` successor) only checks that a session cookie
-is present and redirects to `/login` if not — it runs on the Node runtime and
-can't reach Postgres directly. The real authorization boundary is `getSession()`
-(`apps/web/lib/session.ts`), which every Server Component/Action calls to
-resolve the user's actual permissions (role defaults plus any per-user
-overrides) before doing anything.
+`proxy.ts` (Next 16's `middleware` successor) runs a real `auth.api.getSession()`
+check and redirects to `/login` if it fails — it runs on the Node runtime, so
+it can reach Redis directly rather than only checking cookie presence. The
+real authorization boundary is `getSession()` (`apps/web/lib/session.ts`),
+which every Server Component/Action calls to resolve the user's actual
+permissions (role defaults plus any per-user overrides) before doing anything.
 
 ## 5. Main Data Flows
 
@@ -111,9 +113,10 @@ on it).
 
 See [README.md](README.md) for local/Docker setup and [DATABASE.md](DATABASE.md)
 for the Postgres/Prisma details. `Dockerfile`/`docker-compose.yml` build and run
-the actual Next.js app; `render.yaml` configures the same for Render. Both apply
-Prisma migrations as their own explicit step (a one-shot `migrate` service in
-Compose, part of the build command on Render) rather than on every app start.
+the actual Next.js app, deployed onto the organization's own infrastructure —
+there is no third-party PaaS config in this repo. Migrations run as their own
+explicit step (a one-shot `migrate` service in Compose) rather than on every
+app start.
 
 ## 9. Known Gaps
 
