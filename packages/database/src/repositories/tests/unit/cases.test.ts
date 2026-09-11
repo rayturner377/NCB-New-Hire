@@ -87,4 +87,106 @@ describe('cases repository', () => {
 
     expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { payableAmount: 150, paymentStatus: 'unpaid' } });
   });
+
+  const patientSelect = { select: { id: true, fullName: true, employeeId: true } };
+  const rowWithPatient = { id: 'case_1', casePayload: null, patient: { id: 'cand_1', fullName: 'Jane Doe', employeeId: 'EMP-1' } };
+
+  it('listAllWithPatient() joins the patient and excludes soft-deleted cases', async () => {
+    const findMany = vi.fn().mockResolvedValue([rowWithPatient]);
+    const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+    const rows = await createCasesRepository(db).listAllWithPatient(masterKey);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { deletedAt: null },
+      include: { patient: patientSelect },
+      orderBy: { updatedAt: 'desc' }
+    });
+    expect(rows[0]!.patient).toEqual(rowWithPatient.patient);
+    expect(rows[0]!.payload).toBeNull();
+  });
+
+  it('findByIdWithPatient() joins the patient for a single case', async () => {
+    const findFirst = vi.fn().mockResolvedValue(rowWithPatient);
+    const db = { medicalCase: { findFirst } } as unknown as PrismaClient;
+
+    const found = await createCasesRepository(db).findByIdWithPatient('case_1', masterKey);
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: 'case_1', deletedAt: null },
+      include: { patient: patientSelect }
+    });
+    expect(found?.patient).toEqual(rowWithPatient.patient);
+  });
+
+  it('findByIdWithPatient() returns null when no case matches', async () => {
+    const db = { medicalCase: { findFirst: vi.fn().mockResolvedValue(null) } } as unknown as PrismaClient;
+    expect(await createCasesRepository(db).findByIdWithPatient('missing', masterKey)).toBeNull();
+  });
+
+  it('listForClinician() scopes to the assigned clinician', async () => {
+    const findMany = vi.fn().mockResolvedValue([rowWithPatient]);
+    const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+    await createCasesRepository(db).listForClinician('clinician_1', masterKey);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { assignedClinicianId: 'clinician_1', deletedAt: null },
+      include: { patient: patientSelect },
+      orderBy: { updatedAt: 'desc' }
+    });
+  });
+
+  it('listForPatient() scopes to the patient profile id', async () => {
+    const findMany = vi.fn().mockResolvedValue([rowWithPatient]);
+    const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+    await createCasesRepository(db).listForPatient('cand_1', masterKey);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { patientId: 'cand_1', deletedAt: null },
+      include: { patient: patientSelect },
+      orderBy: { updatedAt: 'desc' }
+    });
+  });
+
+  it('setAssignedClinician() stamps assignedAt alongside the clinician id', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'case_1' });
+    const db = { medicalCase: { update } } as unknown as PrismaClient;
+
+    await createCasesRepository(db).setAssignedClinician('case_1', 'clinician_1');
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'case_1' },
+      data: { assignedClinicianId: 'clinician_1', assignedAt: expect.any(Date) }
+    });
+  });
+
+  it('setPaymentStatus() leaves payableAmount untouched', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'case_1', paymentStatus: 'paid' });
+    const db = { medicalCase: { update } } as unknown as PrismaClient;
+
+    await createCasesRepository(db).setPaymentStatus('case_1', 'paid');
+
+    expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { paymentStatus: 'paid' } });
+  });
+
+  it('setPaymentConfirmedAt() records the real payment instant', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'case_1' });
+    const db = { medicalCase: { update } } as unknown as PrismaClient;
+    const confirmedAt = new Date('2026-01-01T00:00:00.000Z');
+
+    await createCasesRepository(db).setPaymentConfirmedAt('case_1', confirmedAt);
+
+    expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { paymentConfirmedAt: confirmedAt } });
+  });
+
+  it('updatePayload() re-encrypts and overwrites only the payload column', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'case_1' });
+    const db = { medicalCase: { update } } as unknown as PrismaClient;
+
+    await createCasesRepository(db).updatePayload('case_1', { notes: 'updated' }, masterKey);
+
+    expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { casePayload: expect.any(Buffer) } });
+  });
 });
