@@ -17,7 +17,7 @@ export interface UpdateOwnProfileResult {
 }
 
 /** 20 per 10 minutes — a patient only ever has one profile to save, so this is purely a brake on repeated-submission spam, not a real workflow constraint. */
-const updateOwnProfileLimiter = createActionRateLimiter(20, 10 * 60 * 1000);
+const updateOwnProfileLimiter = createActionRateLimiter('update-own-profile', 20, 10 * 60 * 1000);
 
 /**
  * The "My profile" page's own save action, for a patient/candidate editing
@@ -47,10 +47,10 @@ export async function updateOwnProfileAction(
     throw error;
   }
 
-  if (updateOwnProfileLimiter.isLimited(session.user.id)) {
+  if (await updateOwnProfileLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many attempts — please wait a few minutes and try again.' };
   }
-  updateOwnProfileLimiter.recordAttempt(session.user.id);
+  await updateOwnProfileLimiter.recordAttempt(session.user.id);
 
   const own = (await listCandidatesForUser(session.user.id))[0];
   if (!own) {

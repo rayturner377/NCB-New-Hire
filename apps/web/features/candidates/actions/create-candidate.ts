@@ -20,7 +20,7 @@ export interface CandidateActionResult {
 }
 
 /** 30 per 10 minutes per user — generous for HR onboarding a real batch of candidates, still bounds runaway/scripted profile creation. */
-const createCandidateLimiter = createActionRateLimiter(30, 10 * 60 * 1000);
+const createCandidateLimiter = createActionRateLimiter('create-candidate', 30, 10 * 60 * 1000);
 
 /** On success this redirects to the new candidate's page (a dedicated /candidates/new page, not an inline form) and never returns. */
 export async function createCandidateAction(
@@ -41,10 +41,10 @@ export async function createCandidateAction(
     throw error;
   }
 
-  if (createCandidateLimiter.isLimited(session.user.id)) {
+  if (await createCandidateLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many candidates created recently — please wait a few minutes and try again.' };
   }
-  createCandidateLimiter.recordAttempt(session.user.id);
+  await createCandidateLimiter.recordAttempt(session.user.id);
 
   const fields = Object.fromEntries(formData.entries());
   const parsed = createCandidateSchema.safeParse({

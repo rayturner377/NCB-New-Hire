@@ -16,7 +16,7 @@ export interface MedicalOfficeActionResult {
 }
 
 /** 10 per 15 minutes per admin — medical offices are created rarely; a tight limit is appropriate. */
-const createMedicalOfficeLimiter = createActionRateLimiter(10, 15 * 60 * 1000);
+const createMedicalOfficeLimiter = createActionRateLimiter('create-medical-office', 10, 15 * 60 * 1000);
 
 export async function createMedicalOfficeAction(
   _prevState: MedicalOfficeActionResult | null,
@@ -36,10 +36,10 @@ export async function createMedicalOfficeAction(
     throw error;
   }
 
-  if (createMedicalOfficeLimiter.isLimited(session.user.id)) {
+  if (await createMedicalOfficeLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many facilities created recently — please wait a few minutes and try again.' };
   }
-  createMedicalOfficeLimiter.recordAttempt(session.user.id);
+  await createMedicalOfficeLimiter.recordAttempt(session.user.id);
 
   const parsed = createMedicalOfficeSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {

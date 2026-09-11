@@ -56,7 +56,7 @@ export async function login(_prevState: LoginResult | null, formData: FormData):
     return { ok: false, error: 'Invalid email or password.' };
   }
 
-  clearLoginAttempts(attemptKey);
+  await clearLoginAttempts(attemptKey);
 
   // Re-fetched rather than trusting Better Auth's own returned user shape —
   // this app's `role` lives on the same row but isn't something the auth

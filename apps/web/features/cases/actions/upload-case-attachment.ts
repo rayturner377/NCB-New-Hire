@@ -15,7 +15,7 @@ export interface UploadCaseAttachmentResult {
 }
 
 /** 20 uploads per 10 minutes per user — generous for the real workflow (stamping and re-uploading one case's assessment at a time) while still bounding how many times an authenticated user can hit disk/storage in a burst. */
-const uploadLimiter = createActionRateLimiter(20, 10 * 60 * 1000);
+const uploadLimiter = createActionRateLimiter('upload-case-attachment', 20, 10 * 60 * 1000);
 
 /**
  * Documents tab / doctor-form upload target — see features/cases/components/
@@ -41,10 +41,10 @@ export async function uploadCaseAttachmentAction(
     return { ok: false, error: 'Your account does not have permission to upload documents.' };
   }
 
-  if (uploadLimiter.isLimited(session.user.id)) {
+  if (await uploadLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many uploads — please wait a few minutes and try again.' };
   }
-  uploadLimiter.recordAttempt(session.user.id);
+  await uploadLimiter.recordAttempt(session.user.id);
 
   const caseId = String(formData.get('caseId') || '');
   if (!caseId) {

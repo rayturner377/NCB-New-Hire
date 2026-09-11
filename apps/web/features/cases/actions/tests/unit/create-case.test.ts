@@ -10,6 +10,13 @@ vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) 
 vi.mock('../../../services/cases-service', () => ({
   createCase: (...args: unknown[]) => createCaseMock(...args)
 }));
+// create-case.ts's own createActionRateLimiter() ultimately depends on
+// @ncb/redis's client, which throws at construction if REDIS_URL isn't set
+// — not exercised by this test's assertions, so the stub just needs to load.
+vi.mock('@ncb/redis', () => ({
+  isRateLimited: async () => false,
+  recordFailedAttempt: async () => undefined
+}));
 
 const { createCaseAction } = await import('../../create-case');
 

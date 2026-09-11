@@ -21,7 +21,7 @@ export interface UserActionResult {
 }
 
 /** 20 per 15 minutes per admin — staff accounts are created far less often than candidates/cases; also doubles as a brake on the account_created email that fires per creation. */
-const createUserLimiter = createActionRateLimiter(20, 15 * 60 * 1000);
+const createUserLimiter = createActionRateLimiter('create-user', 20, 15 * 60 * 1000);
 
 export async function createUserAction(
   _prevState: UserActionResult | null,
@@ -44,10 +44,10 @@ export async function createUserAction(
     throw error;
   }
 
-  if (createUserLimiter.isLimited(session.user.id)) {
+  if (await createUserLimiter.isLimited(session.user.id)) {
     return { ok: false, error: 'Too many accounts created recently — please wait a few minutes and try again.' };
   }
-  createUserLimiter.recordAttempt(session.user.id);
+  await createUserLimiter.recordAttempt(session.user.id);
 
   const parsed = createUserSchema.safeParse({
     ...Object.fromEntries(formData.entries()),
