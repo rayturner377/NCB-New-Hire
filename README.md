@@ -48,6 +48,27 @@ printed once; `mustChangePassword` forces them to set their own on first login):
 npm run db:create-admin -- admin@example.com "Display Name"
 ```
 
+## End-to-end tests
+
+Real-browser coverage (`e2e/role-access.spec.ts`) of the five seeded demo
+roles — each one logs in, reaches its own pages, and is verifiably blocked
+(not just at the HTTP layer, but genuinely never shown the page) from the
+ones it doesn't hold permission for. Requires `npm run db:seed:users` to
+have been run first, and Postgres/Redis reachable.
+
+```bash
+npx playwright install chromium   # first time only
+npm run test:e2e
+```
+
+If `npx playwright install` can't reach `cdn.playwright.dev` (a
+network-restricted environment), point Playwright at an already-installed
+browser instead of downloading its own:
+
+```bash
+PLAYWRIGHT_BROWSER_CHANNEL=msedge npm run test:e2e   # or: chrome
+```
+
 ## Run with Docker
 
 ```bash
