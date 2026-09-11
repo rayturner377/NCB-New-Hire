@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@ncb/database": "*",
+    "@ncb/redis": "*",
     "@ncb/shared": "*",
     "@next/env": "15.5.25",
     "@radix-ui/react-avatar": "^1.2.6",
