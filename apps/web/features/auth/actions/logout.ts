@@ -1,8 +1,10 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auditRepository } from '@ncb/database';
-import { destroySession, getSession } from '../../../lib/session';
+import { auth } from '@ncb/auth';
+import { getSession } from '../../../lib/session';
 
 export async function logout(reason?: 'idle'): Promise<void> {
   const session = await getSession();
@@ -12,6 +14,6 @@ export async function logout(reason?: 'idle'): Promise<void> {
       actorUserId: session.user.id
     });
   }
-  await destroySession();
+  await auth.api.signOut({ headers: await headers() });
   redirect(reason === 'idle' ? '/login?reason=idle' : '/login');
 }

@@ -7,7 +7,8 @@ const setActive = vi.fn();
 const updateMock = vi.fn();
 const auditAppend = vi.fn();
 const sendNotificationMock = vi.fn();
-const deleteAllForUserMock = vi.fn();
+const setUserPasswordMock = vi.fn();
+const revokeAllSessionsForUserMock = vi.fn();
 
 vi.mock('../../../../notifications/services/notification-service', () => ({
   sendNotification: (...args: unknown[]) => sendNotificationMock(...args)
@@ -23,14 +24,12 @@ vi.mock('@ncb/database', () => ({
   },
   auditRepository: {
     append: (...args: unknown[]) => auditAppend(...args)
-  },
-  sessionsRepository: {
-    deleteAllForUser: (...args: unknown[]) => deleteAllForUserMock(...args)
   }
 }));
 
-vi.mock('@ncb/shared', () => ({
-  makePasswordRecord: (password: string) => ({ alg: 'PBKDF2-SHA256', iterations: 1, salt: 's', hash: password })
+vi.mock('@ncb/auth/utils', () => ({
+  setUserPassword: (...args: unknown[]) => setUserPasswordMock(...args),
+  revokeAllSessionsForUser: (...args: unknown[]) => revokeAllSessionsForUserMock(...args)
 }));
 
 const { createUser, DuplicateEmailError, listUsers, setUserActive, changePassword, resetUserPassword } = await import('../../users-service');
@@ -57,7 +56,8 @@ describe('users service', () => {
     updateMock.mockResolvedValue(sampleUser());
     auditAppend.mockReset();
     sendNotificationMock.mockReset();
-    deleteAllForUserMock.mockReset();
+    setUserPasswordMock.mockReset();
+    revokeAllSessionsForUserMock.mockReset();
   });
 
   it('createUser rejects a duplicate email without calling create', async () => {
@@ -69,7 +69,7 @@ describe('users service', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('createUser persists a new user and returns a summary without the password record', async () => {
+  it('createUser persists a new user, sets its Better Auth password, and returns a summary without the password record', async () => {
     findByEmail.mockResolvedValue(null);
     create.mockResolvedValue(sampleUser());
 
@@ -83,6 +83,7 @@ describe('users service', () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'reviewer@ncb.local', role: 'reviewer' })
     );
+    expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', 'a-very-long-password');
     expect(result).not.toHaveProperty('passwordRecord');
     expect(result.id).toBe('usr_1');
   });
@@ -115,24 +116,23 @@ describe('users service', () => {
     expect(result.active).toBe(false);
   });
 
-  it('changePassword kills every other session but keeps the caller’s own alive', async () => {
-    await changePassword('usr_1', 'a-new-long-password', 'sess_current');
-
-    expect(updateMock).toHaveBeenCalledWith('usr_1', expect.objectContaining({ mustChangePassword: false }));
-    expect(deleteAllForUserMock).toHaveBeenCalledWith('usr_1', 'sess_current');
-  });
-
-  it('changePassword kills every session (including the caller’s) when no exceptSessionId is given', async () => {
+  it('changePassword clears mustChangePassword and sets the new Better Auth password', async () => {
     await changePassword('usr_1', 'a-new-long-password');
 
-    expect(deleteAllForUserMock).toHaveBeenCalledWith('usr_1', undefined);
+    expect(updateMock).toHaveBeenCalledWith('usr_1', { mustChangePassword: false });
+    expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', 'a-new-long-password');
+    // Other-session revocation is the caller's job now (it needs the
+    // request's own headers to know which session is "current" — see
+    // features/auth/actions/change-password.ts), not this service function's.
+    expect(revokeAllSessionsForUserMock).not.toHaveBeenCalled();
   });
 
-  it('resetUserPassword kills every session on the target account unconditionally', async () => {
+  it('resetUserPassword sets the new password and kills every session on the target account unconditionally', async () => {
     await resetUserPassword('usr_1', 'a-new-long-password', true, 'usr_admin_demo');
 
-    expect(updateMock).toHaveBeenCalledWith('usr_1', expect.objectContaining({ mustChangePassword: true }));
-    expect(deleteAllForUserMock).toHaveBeenCalledWith('usr_1');
+    expect(updateMock).toHaveBeenCalledWith('usr_1', { mustChangePassword: true });
+    expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', 'a-new-long-password');
+    expect(revokeAllSessionsForUserMock).toHaveBeenCalledWith('usr_1');
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'user_password_reset', entityId: 'usr_1' }));
   });
 });

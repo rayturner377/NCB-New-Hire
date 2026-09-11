@@ -2,9 +2,9 @@
 
 import { redirect } from 'next/navigation';
 import { auditRepository, usersRepository } from '@ncb/database';
-import { hashForAudit, verifyPassword } from '@ncb/shared';
+import { hashForAudit } from '@ncb/shared';
+import { auth } from '@ncb/auth';
 import { getClientIp } from '../../../lib/client-ip';
-import { createSession } from '../../../lib/session';
 import { loginSchema } from '../schemas/login';
 import { clearLoginAttempts, isLoginRateLimited, recordFailedLoginAttempt } from '../services/login-rate-limit';
 
@@ -14,13 +14,15 @@ export interface LoginResult {
 }
 
 /**
- * Ported from server.js handleLogin (~L1309-1346). Same rate-limiting,
- * audit-logging (now via auditRepository instead of the flat file audit
- * log), and session-issuing behavior; error messages intentionally stay
- * generic ("Invalid email or password") to avoid confirming which part
- * was wrong, matching the original. On success this redirects to `/` and
- * never returns to the caller (matches next/navigation's redirect()
- * contract); only failures produce a LoginResult for the form to render.
+ * Same rate-limiting, audit-logging, and generic-error behavior as before
+ * Better Auth: error messages intentionally stay generic ("Invalid email or
+ * password") to avoid confirming which part was wrong — Better Auth's own
+ * signInEmail already throws the identical error for a nonexistent email, a
+ * user with no credential account, and a wrong password (confirmed from its
+ * source before relying on it), so no extra collapsing logic is needed here
+ * to preserve that. On success this redirects to `/` and never returns to
+ * the caller (matches next/navigation's redirect() contract); only failures
+ * produce a LoginResult for the form to render.
  */
 export async function login(_prevState: LoginResult | null, formData: FormData): Promise<LoginResult> {
   const parsed = loginSchema.safeParse({
@@ -40,10 +42,11 @@ export async function login(_prevState: LoginResult | null, formData: FormData):
     return { ok: false, error: 'Too many login attempts. Try again later.' };
   }
 
-  const user = await usersRepository.findByEmail(email);
-  const passwordRecord = user?.passwordRecord as Parameters<typeof verifyPassword>[1];
-
-  if (!user || user.active === false || !verifyPassword(password, passwordRecord)) {
+  let userId: string;
+  try {
+    const result = await auth.api.signInEmail({ body: { email, password } });
+    userId = result.user.id;
+  } catch {
     await recordFailedLoginAttempt(attemptKey);
     await auditRepository.append({
       eventType: 'login_failed',
@@ -54,12 +57,16 @@ export async function login(_prevState: LoginResult | null, formData: FormData):
   }
 
   clearLoginAttempts(attemptKey);
-  await createSession(user.id);
+
+  // Re-fetched rather than trusting Better Auth's own returned user shape —
+  // this app's `role` lives on the same row but isn't something the auth
+  // layer is the authoritative source for.
+  const user = await usersRepository.findById(userId);
   await auditRepository.append({
     eventType: 'login_success',
-    actorUserId: user.id,
+    actorUserId: userId,
     sourceIp: ip,
-    details: { role: user.role }
+    details: { role: user?.role }
   });
 
   redirect('/');

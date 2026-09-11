@@ -1,6 +1,8 @@
 'use server';
 
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { auth } from '@ncb/auth';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { getSession } from '../../../lib/session';
 import { validatePasswordAgainstPolicy } from '../../settings/password-policy';
@@ -43,6 +45,12 @@ export async function changePasswordAction(
     return { ok: false, error: policyError, fieldErrors: { password: policyError } };
   }
 
-  await changePassword(session.user.id, parsed.data.password, session.sessionId);
+  await changePassword(session.user.id, parsed.data.password);
+  // Kills every other active session on this account (the caller's own,
+  // current session is deliberately kept alive) — same reasoning as before
+  // Better Auth: if the old password had leaked, that session dies now
+  // instead of staying valid until it naturally expires. Needs the request's
+  // own headers/cookie to know which session is "current."
+  await auth.api.revokeOtherSessions({ headers: await headers() });
   redirect('/');
 }

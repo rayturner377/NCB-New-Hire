@@ -1,12 +1,19 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { makePasswordRecord } from '@ncb/shared';
+import { hashPassword } from 'better-auth/crypto';
 import { usersRepository } from '../repositories/users.js';
+import { prisma } from '../client.js';
 
 /**
  * Production-safe first-admin bootstrap. Unlike seed-users.ts (a fixed set of
  * demo accounts sharing a hardcoded password, dev/demo only), this creates
  * exactly one real admin account with a freshly generated password printed
  * once — nothing here is hardcoded or reused across environments.
+ *
+ * Hashes with Better Auth's own scrypt implementation (`better-auth/crypto`,
+ * the same function @ncb/auth's own hash() wraps) directly rather than
+ * depending on @ncb/auth here — @ncb/auth depends on @ncb/database (for
+ * prisma/usersRepository), so the reverse import would be circular. Creates
+ * the credential Account row itself for the same reason.
  *
  * Usage: npm run db:create-admin -- <email> [displayName]
  */
@@ -31,17 +38,24 @@ async function main(): Promise<void> {
   }
 
   const password = generatePassword();
-  const passwordRecord = makePasswordRecord(password);
+  const userId = randomUUID();
 
   await usersRepository.create({
-    id: randomUUID(),
+    id: userId,
     email,
     displayName,
-    // Matches apps/web/lib/permissions.ts's ROLES.ADMIN — not imported directly since
-    // apps/web isn't a dependency of packages/database (same convention as seed-users.ts).
     role: 'admin',
-    passwordRecord,
     mustChangePassword: true
+  });
+
+  await prisma.account.create({
+    data: {
+      id: randomUUID(),
+      accountId: userId,
+      providerId: 'credential',
+      userId,
+      password: await hashPassword(password)
+    }
   });
 
   console.log(`Created admin: ${email}`);
