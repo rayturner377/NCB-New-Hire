@@ -13,6 +13,8 @@ export const SAMPLE_VARIABLE_VALUES: Record<string, string> = {
   paidOn: 'Sep 7, 2026',
   recipientName: 'Jane Doe',
   email: 'jane.doe@example.com',
-  temporaryPassword: 'Temp1234!',
-  loginUrl: 'https://portal.ncb.local/login'
+  resetCode: '482913',
+  activationCode: '482913',
+  loginUrl: 'https://portal.ncb.local/login',
+  resetUrl: 'https://portal.ncb.local/forgot-password'
 };

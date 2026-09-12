@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { parseAndValidateImageDataUrl } from '../../../lib/image-data-url';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { patientOwnsCase } from '../case-authorization';
 import { parsePatientCaseData } from '../parse-patient-case-data';
 import { FAMILY_DISORDER_CATALOG, MEDICAL_DISEASE_CATALOG } from '../patient-case-data';
@@ -30,7 +30,7 @@ export async function savePatientCaseAction(
 ): Promise<SavePatientCaseResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

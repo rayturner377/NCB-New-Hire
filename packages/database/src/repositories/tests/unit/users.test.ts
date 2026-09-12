@@ -73,4 +73,13 @@ describe('users repository', () => {
 
     expect(update).toHaveBeenCalledWith({ where: { id: 'user_1' }, data: { active: false } });
   });
+
+  it('softDelete() sets deletedAt and deactivates rather than removing the row', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'user_1', active: false, deletedAt: new Date() });
+    const db = { appUser: { update } } as unknown as PrismaClient;
+
+    await createUsersRepository(db).softDelete('user_1');
+
+    expect(update).toHaveBeenCalledWith({ where: { id: 'user_1' }, data: { deletedAt: expect.any(Date), active: false } });
+  });
 });

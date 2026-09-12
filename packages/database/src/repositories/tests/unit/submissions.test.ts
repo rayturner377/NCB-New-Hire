@@ -95,4 +95,118 @@ describe('submissions repository', () => {
       orderBy: [{ submissionVersion: 'desc' }, { submittedAt: 'desc' }]
     });
   });
+
+  describe('saveAndTransition()', () => {
+    /** A minimal fake PrismaClient whose $transaction just invokes the callback with itself as `tx` — enough to unit-test the orchestration without a real Postgres connection. */
+    function fakeDb(overrides: {
+      existingSubmissions?: { submissionVersion: number }[];
+      caseStatus?: string | null;
+      transitionRows?: { transition_medical_case: number }[];
+    } = {}) {
+      const created: { data?: unknown } = {};
+      const updated: { data?: unknown }[] = [];
+      const db = {
+        medicalSubmission: {
+          findMany: vi.fn().mockResolvedValue(overrides.existingSubmissions ?? []),
+          create: vi.fn().mockImplementation(({ data }) => {
+            created.data = data;
+            return Promise.resolve(data);
+          })
+        },
+        medicalCase: {
+          update: vi.fn().mockImplementation(({ data }) => {
+            updated.push({ data });
+            return Promise.resolve(data);
+          }),
+          findFirst: vi.fn().mockResolvedValue(overrides.caseStatus === undefined ? { status: 'sent_to_doctor' } : overrides.caseStatus ? { status: overrides.caseStatus } : null)
+        },
+        $queryRaw: vi.fn().mockResolvedValue(overrides.transitionRows ?? [{ transition_medical_case: 3 }])
+      };
+      (db as unknown as { $transaction: unknown }).$transaction = (callback: (tx: unknown) => unknown) => callback(db);
+      return { db: db as unknown as PrismaClient, created, updated };
+    }
+
+    it('computes the next submission version from the existing rows and passes it to buildPayload', async () => {
+      const { db } = fakeDb({ existingSubmissions: [{ submissionVersion: 1 }] });
+      const buildPayload = vi.fn().mockReturnValue({ a: 1 });
+
+      await createSubmissionsRepository(db).saveAndTransition(
+        { id: 'sub_2', caseId: 'case_1', expectedVersion: 2, newStatus: 'doctor_submitted', actorId: 'usr_1' },
+        randomBytes(32),
+        buildPayload
+      );
+
+      expect(buildPayload).toHaveBeenCalledWith(2);
+    });
+
+    it('defaults to submission version 1 when the case has no prior submissions', async () => {
+      const { db } = fakeDb({ existingSubmissions: [] });
+      const buildPayload = vi.fn().mockReturnValue({});
+
+      await createSubmissionsRepository(db).saveAndTransition(
+        { id: 'sub_1', caseId: 'case_1', expectedVersion: 1, newStatus: 'doctor_submitted', actorId: 'usr_1' },
+        randomBytes(32),
+        buildPayload
+      );
+
+      expect(buildPayload).toHaveBeenCalledWith(1);
+    });
+
+    it('updates billing only when given a billing input', async () => {
+      const { db, updated } = fakeDb();
+
+      await createSubmissionsRepository(db).saveAndTransition(
+        {
+          id: 'sub_1',
+          caseId: 'case_1',
+          expectedVersion: 2,
+          newStatus: 'doctor_submitted',
+          actorId: 'usr_1',
+          billing: { payableAmount: 150, paymentStatus: 'unpaid' }
+        },
+        randomBytes(32),
+        () => ({})
+      );
+
+      expect(updated).toHaveLength(1);
+      expect(updated[0]!.data).toEqual({ payableAmount: 150, paymentStatus: 'unpaid' });
+    });
+
+    it('skips the billing update when none is given', async () => {
+      const { db, updated } = fakeDb();
+
+      await createSubmissionsRepository(db).saveAndTransition(
+        { id: 'sub_1', caseId: 'case_1', expectedVersion: 2, newStatus: 'doctor_submitted', actorId: 'usr_1' },
+        randomBytes(32),
+        () => ({})
+      );
+
+      expect(updated).toHaveLength(0);
+    });
+
+    it('returns the new case version and the status the case had before the transition', async () => {
+      const { db } = fakeDb({ caseStatus: 'sent_to_doctor', transitionRows: [{ transition_medical_case: 5 }] });
+
+      const result = await createSubmissionsRepository(db).saveAndTransition(
+        { id: 'sub_1', caseId: 'case_1', expectedVersion: 4, newStatus: 'doctor_submitted', actorId: 'usr_1' },
+        randomBytes(32),
+        () => ({})
+      );
+
+      expect(result.newCaseVersion).toBe(5);
+      expect(result.previousStatus).toBe('sent_to_doctor');
+    });
+
+    it('throws (rolling back the transaction) when the stored procedure reports no matching row — a stale/replayed expectedVersion', async () => {
+      const { db } = fakeDb({ transitionRows: [] });
+
+      await expect(
+        createSubmissionsRepository(db).saveAndTransition(
+          { id: 'sub_1', caseId: 'case_1', expectedVersion: 99, newStatus: 'doctor_submitted', actorId: 'usr_1' },
+          randomBytes(32),
+          () => ({})
+        )
+      ).rejects.toThrow('Medical case changed or does not exist');
+    });
+  });
 });

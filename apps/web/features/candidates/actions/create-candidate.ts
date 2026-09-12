@@ -7,7 +7,7 @@ import { createActionRateLimiter } from '../../../lib/action-rate-limit';
 import { combineFullName } from '../../../lib/full-name';
 import { combineContactNumbers } from '../../../lib/phone-number';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { DuplicateEmailError } from '../../users/services/users-service';
 import { createCandidateSchema } from '../schemas/candidate';
 import { createCandidate } from '../services/candidates-service';
@@ -29,7 +29,7 @@ export async function createCandidateAction(
 ): Promise<CandidateActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }
@@ -72,7 +72,7 @@ export async function createCandidateAction(
       ...parsed.data,
       createdBy: session.user.id,
       createdByName: session.user.displayName,
-      mustChangePassword: formData.get('forcePasswordChange') != null
+      grantPortalAccess: formData.get('grantPortalAccess') != null
     });
   } catch (error) {
     if (error instanceof DuplicateEmailError) {

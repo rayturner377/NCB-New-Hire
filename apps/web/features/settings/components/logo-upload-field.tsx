@@ -48,6 +48,7 @@ export function LogoUploadField({ name, label, hint, defaultValue = '' }: LogoUp
       <div className="flex items-center gap-3">
         {dataUrl ? (
           // A data: URL preview — next/image doesn't accept those, so a plain <img> is correct here.
+          // eslint-disable-next-line @next/next/no-img-element
           <img src={dataUrl} alt={label} className="h-14 w-auto max-w-[10rem] rounded border object-contain p-1" />
         ) : (
           <div className="flex h-14 w-28 items-center justify-center rounded border border-dashed text-[10px] text-muted-foreground">

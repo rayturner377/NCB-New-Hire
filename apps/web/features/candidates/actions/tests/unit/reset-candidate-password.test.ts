@@ -4,18 +4,16 @@ const getSessionMock = vi.fn();
 const getCandidateByIdMock = vi.fn();
 const resetUserPasswordMock = vi.fn();
 const revalidatePathMock = vi.fn();
-const getSettingsMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/candidates-service', () => ({
   getCandidateById: (...args: unknown[]) => getCandidateByIdMock(...args)
 }));
 vi.mock('../../../../users/services/users-service', () => ({
   resetUserPassword: (...args: unknown[]) => resetUserPasswordMock(...args)
 }));
-vi.mock('../../../../settings/services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));
 // reset-candidate-password.ts's own createActionRateLimiter() ultimately
 // depends on @ncb/redis's client, which throws at construction if
 // REDIS_URL isn't set — not exercised by this test's assertions, so the
@@ -33,8 +31,6 @@ function formData(fields: Record<string, string>): FormData {
   return data;
 }
 
-const validPassword = 'a-very-long-temp-password';
-
 describe('resetCandidatePasswordAction', () => {
   beforeEach(() => {
     getSessionMock.mockReset();
@@ -42,36 +38,32 @@ describe('resetCandidatePasswordAction', () => {
     resetUserPasswordMock.mockReset();
     revalidatePathMock.mockClear();
     getCandidateByIdMock.mockResolvedValue({ id: 'cand_1', linkedUserId: 'usr_patient_demo' });
-    getSettingsMock.mockReset();
-    getSettingsMock.mockResolvedValue({ userPolicy: { minPasswordLength: 12, requireUppercase: false, requireNumber: false, requireSymbol: false } });
   });
 
   it('rejects without an active session', async () => {
     getSessionMock.mockResolvedValue(null);
-    const result = await resetCandidatePasswordAction(
-      null,
-      formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: validPassword })
-    );
+    const result = await resetCandidatePasswordAction(null, formData({ candidateId: 'cand_1' }));
     expect(result.ok).toBe(false);
     expect(resetUserPasswordMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a role without PATIENT_PROFILES_UPDATE', async () => {
+  it('rejects a role without PATIENT_PROFILES_RESET_PASSWORD', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor_demo', role: 'clinician' } });
-    const result = await resetCandidatePasswordAction(
-      null,
-      formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: validPassword })
-    );
+    const result = await resetCandidatePasswordAction(null, formData({ candidateId: 'cand_1' }));
     expect(result.ok).toBe(false);
     expect(resetUserPasswordMock).not.toHaveBeenCalled();
   });
 
-  it('rejects mismatched passwords', async () => {
+  it('rejects a patient — this action is staff-only, even against their own account', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_patient_demo', role: 'patient' } });
+    const result = await resetCandidatePasswordAction(null, formData({ candidateId: 'cand_1' }));
+    expect(result.ok).toBe(false);
+    expect(resetUserPasswordMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing candidateId', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
-    const result = await resetCandidatePasswordAction(
-      null,
-      formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: 'does-not-match-1234' })
-    );
+    const result = await resetCandidatePasswordAction(null, formData({}));
     expect(result.ok).toBe(false);
     expect(resetUserPasswordMock).not.toHaveBeenCalled();
   });
@@ -80,33 +72,19 @@ describe('resetCandidatePasswordAction', () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
     getCandidateByIdMock.mockResolvedValue({ id: 'cand_1', linkedUserId: '' });
 
-    const result = await resetCandidatePasswordAction(
-      null,
-      formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: validPassword })
-    );
+    const result = await resetCandidatePasswordAction(null, formData({ candidateId: 'cand_1' }));
 
     expect(result.ok).toBe(false);
     expect(resetUserPasswordMock).not.toHaveBeenCalled();
   });
 
-  it("resets the linked account's password, defaulting to forcing a change on next login, and revalidates", async () => {
+  it("triggers a reset code on the linked account and revalidates", async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
 
-    const result = await resetCandidatePasswordAction(
-      null,
-      formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: validPassword, forcePasswordChange: 'on' })
-    );
+    const result = await resetCandidatePasswordAction(null, formData({ candidateId: 'cand_1' }));
 
     expect(result.ok).toBe(true);
-    expect(resetUserPasswordMock).toHaveBeenCalledWith('usr_patient_demo', validPassword, true, 'usr_reviewer_demo');
+    expect(resetUserPasswordMock).toHaveBeenCalledWith('usr_patient_demo', 'usr_reviewer_demo');
     expect(revalidatePathMock).toHaveBeenCalledWith('/candidates/cand_1');
-  });
-
-  it('does not force a password change when the checkbox is unchecked', async () => {
-    getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
-
-    await resetCandidatePasswordAction(null, formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: validPassword }));
-
-    expect(resetUserPasswordMock).toHaveBeenCalledWith('usr_patient_demo', validPassword, false, 'usr_reviewer_demo');
   });
 });

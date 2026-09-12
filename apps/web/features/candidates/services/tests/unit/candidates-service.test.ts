@@ -92,7 +92,7 @@ describe('candidates service', () => {
     );
   });
 
-  it('createCandidate grants portal access when a password is given, linking the new account', async () => {
+  it('createCandidate grants portal access when checked and an email is present, linking the new account', async () => {
     save.mockResolvedValue(undefined);
     createUser.mockResolvedValue({ id: 'usr_new_patient' });
 
@@ -101,7 +101,7 @@ describe('candidates service', () => {
       position: 'Teller',
       dateOfBirth: '1990-01-01',
       email: 'jane@example.com',
-      password: 'a-very-long-password',
+      grantPortalAccess: true,
       createdBy: 'usr_reviewer_demo',
       createdByName: 'Demo Reviewer'
     });
@@ -109,11 +109,26 @@ describe('candidates service', () => {
     expect(createUser).toHaveBeenCalledWith({
       email: 'jane@example.com',
       displayName: 'Jane Doe',
-      role: 'patient',
-      password: 'a-very-long-password'
+      role: 'patient'
     });
     expect(created.linkedUserId).toBe('usr_new_patient');
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ linkedUserId: 'usr_new_patient' }), masterKey);
+  });
+
+  it('createCandidate does not grant portal access when checked but no email is given', async () => {
+    save.mockResolvedValue(undefined);
+
+    const created = await createCandidate({
+      fullName: 'Jane Doe',
+      position: 'Teller',
+      dateOfBirth: '1990-01-01',
+      grantPortalAccess: true,
+      createdBy: 'usr_reviewer_demo',
+      createdByName: 'Demo Reviewer'
+    });
+
+    expect(createUser).not.toHaveBeenCalled();
+    expect(created.linkedUserId).toBe('');
   });
 
   it('listCandidates filters out rows with no payload', async () => {
@@ -163,5 +178,45 @@ describe('candidates service', () => {
     const updated = await updateCandidate('cand_1', { status: 'archived' });
 
     expect(updated.status).toBe('archived');
+  });
+
+  it('updateCandidate patches every field when all are provided at once', async () => {
+    findById.mockResolvedValue({ payload: samplePayload() });
+    save.mockResolvedValue(undefined);
+
+    const patch = {
+      fullName: 'New Name',
+      employeeId: 'EMP-2',
+      nationalId: 'NID-1',
+      dateOfBirth: '1991-02-02',
+      email: 'new@example.com',
+      contactNumber: '+18760000000',
+      addressLine1: '1 New St',
+      addressLine2: 'Apt 2',
+      city: 'Kingston',
+      state: 'St. Andrew',
+      country: 'Jamaica',
+      emergencyContactName: 'Emergency Contact',
+      emergencyContactNumber: '+18761111111',
+      primaryPhysicianName: 'Dr. Physician',
+      primaryPhysicianNumber: '+18762222222',
+      position: 'Manager',
+      medicationInformation: 'None',
+      withdrawalReason: 'N/A'
+    };
+
+    const updated = await updateCandidate('cand_1', patch);
+
+    expect(updated).toMatchObject(patch);
+  });
+
+  it('updateCandidate leaves every field alone when the patch is empty', async () => {
+    const existing = samplePayload();
+    findById.mockResolvedValue({ payload: existing });
+    save.mockResolvedValue(undefined);
+
+    const updated = await updateCandidate('cand_1', {});
+
+    expect(updated).toEqual(existing);
   });
 });

@@ -5,7 +5,6 @@ const createUserMock = vi.fn();
 const revalidatePathMock = vi.fn();
 const assertSameOriginMock = vi.fn();
 const redirectMock = vi.fn();
-const getSettingsMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('next/navigation', () => ({
@@ -17,7 +16,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('../../../../../lib/assert-same-origin', () => ({
   assertSameOrigin: (...args: unknown[]) => assertSameOriginMock(...args)
 }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/users-service', async () => {
   const actual = await vi.importActual<typeof import('../../../services/users-service')>('../../../services/users-service');
   return {
@@ -25,7 +24,6 @@ vi.mock('../../../services/users-service', async () => {
     createUser: (...args: unknown[]) => createUserMock(...args)
   };
 });
-vi.mock('../../../../settings/services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));
 // Covers both this test's own action-rate-limit.ts import and
 // users-service.ts's transitive @ncb/auth/utils -> revoke-sessions.ts
 // import — both ultimately depend on @ncb/redis's client, which throws at
@@ -50,8 +48,7 @@ const validFields = {
   email: 'doctor@ncb.local',
   firstName: 'Demo',
   lastName: 'Doctor',
-  role: 'clinician',
-  password: 'a-very-long-password'
+  role: 'clinician'
 };
 
 describe('createUserAction', () => {
@@ -61,8 +58,6 @@ describe('createUserAction', () => {
     revalidatePathMock.mockClear();
     redirectMock.mockClear();
     assertSameOriginMock.mockReset().mockResolvedValue(undefined);
-    getSettingsMock.mockReset();
-    getSettingsMock.mockResolvedValue({ userPolicy: { minPasswordLength: 12, requireUppercase: false, requireNumber: false, requireSymbol: false } });
   });
 
   it('rejects when there is no active session', async () => {

@@ -2,14 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getSessionMock = vi.fn();
 const updateCandidateMock = vi.fn();
+const listCandidatesForUserMock = vi.fn();
 const revalidatePathMock = vi.fn();
+const auditAppendMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/candidates-service', () => ({
-  updateCandidate: (...args: unknown[]) => updateCandidateMock(...args)
+  updateCandidate: (...args: unknown[]) => updateCandidateMock(...args),
+  listCandidatesForUser: (...args: unknown[]) => listCandidatesForUserMock(...args)
 }));
+vi.mock('@ncb/database', () => ({ auditRepository: { append: (...args: unknown[]) => auditAppendMock(...args) } }));
 
 const { assignCandidateAction } = await import('../../assign-candidate');
 
@@ -23,7 +27,18 @@ describe('assignCandidateAction', () => {
   beforeEach(() => {
     getSessionMock.mockReset();
     updateCandidateMock.mockReset();
+    listCandidatesForUserMock.mockReset();
     revalidatePathMock.mockClear();
+    auditAppendMock.mockReset();
+  });
+
+  it("does nothing when a patient targets another patient's candidateId", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_patient_2', role: 'patient' } });
+    listCandidatesForUserMock.mockResolvedValue([{ id: 'cand_2' }]);
+
+    await assignCandidateAction(formData({ candidateId: 'cand_1', assignedClinicianId: 'usr_doctor_demo' }));
+
+    expect(updateCandidateMock).not.toHaveBeenCalled();
   });
 
   it('does nothing without an active session', async () => {
@@ -46,8 +61,8 @@ describe('assignCandidateAction', () => {
     expect(updateCandidateMock).not.toHaveBeenCalled();
   });
 
-  it('assigns the clinician and revalidates the list', async () => {
-    getSessionMock.mockResolvedValue({ user: { role: 'reviewer' } });
+  it('assigns the clinician, audits it, and revalidates the list', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_1', role: 'reviewer' } });
 
     await assignCandidateAction(
       formData({ candidateId: 'cand_1', assignedClinicianId: 'usr_doctor_demo', assignedClinicianName: 'Demo Doctor' })
@@ -57,6 +72,9 @@ describe('assignCandidateAction', () => {
       assignedClinicianId: 'usr_doctor_demo',
       assignedClinicianName: 'Demo Doctor'
     });
+    expect(auditAppendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'candidate_clinician_assigned', actorUserId: 'usr_1', entityId: 'cand_1' })
+    );
     expect(revalidatePathMock).toHaveBeenCalledWith('/candidates');
   });
 });

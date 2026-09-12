@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { decryptJson, encryptJson, type EncryptedRecord } from '../../crypto-box.js';
+import { decryptBuffer, decryptJson, encryptBuffer, encryptJson, type EncryptedRecord } from '../../crypto-box.js';
 
 describe('crypto-box', () => {
   const key = randomBytes(32);
@@ -43,5 +43,41 @@ describe('crypto-box', () => {
     expect(() => decryptJson(key, undefined as unknown as EncryptedRecord)).toThrow(
       'Unsupported encrypted record.'
     );
+  });
+});
+
+describe('encryptBuffer/decryptBuffer', () => {
+  const key = randomBytes(32);
+
+  it('round-trips arbitrary binary data byte-for-byte', () => {
+    const plaintext = randomBytes(4096);
+    const encrypted = encryptBuffer(key, plaintext);
+    expect(decryptBuffer(key, encrypted).equals(plaintext)).toBe(true);
+  });
+
+  it('never leaves the plaintext bytes recognizable in the output', () => {
+    const plaintext = Buffer.from('a very identifiable plaintext string');
+    const encrypted = encryptBuffer(key, plaintext);
+    expect(encrypted.includes(plaintext)).toBe(false);
+  });
+
+  it('produces different ciphertext for the same input on repeated calls (random IV)', () => {
+    const plaintext = Buffer.from('same input');
+    expect(encryptBuffer(key, plaintext).equals(encryptBuffer(key, plaintext))).toBe(false);
+  });
+
+  it('rejects a tampered ciphertext byte', () => {
+    const encrypted = encryptBuffer(key, Buffer.from('hello'));
+    encrypted[encrypted.length - 1] = encrypted[encrypted.length - 1]! ^ 0xff;
+    expect(() => decryptBuffer(key, encrypted)).toThrow();
+  });
+
+  it('rejects the wrong key', () => {
+    const encrypted = encryptBuffer(key, Buffer.from('hello'));
+    expect(() => decryptBuffer(randomBytes(32), encrypted)).toThrow();
+  });
+
+  it('rejects a buffer too short to contain an IV and auth tag', () => {
+    expect(() => decryptBuffer(key, Buffer.from('short'))).toThrow('Encrypted buffer is too short.');
   });
 });

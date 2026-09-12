@@ -2,27 +2,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getSessionMock = vi.fn();
 const getCaseByIdMock = vi.fn();
-const transitionCaseMock = vi.fn();
-const setCaseBillingMock = vi.fn();
 const getCandidateByIdMock = vi.fn();
-const createSubmissionMock = vi.fn();
+const createSubmissionAndTransitionCaseMock = vi.fn();
 const clearDoctorAssessmentDraftMock = vi.fn();
 const revalidatePathMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../../candidates/services/candidates-service', () => ({
   getCandidateById: (...args: unknown[]) => getCandidateByIdMock(...args)
 }));
 vi.mock('../../../../cases/services/cases-service', () => ({
   getCaseById: (...args: unknown[]) => getCaseByIdMock(...args),
-  transitionCase: (...args: unknown[]) => transitionCaseMock(...args),
-  setCaseBilling: (...args: unknown[]) => setCaseBillingMock(...args),
   clearDoctorAssessmentDraft: (...args: unknown[]) => clearDoctorAssessmentDraftMock(...args)
 }));
 vi.mock('../../../services/submissions-service', () => ({
-  createSubmission: (...args: unknown[]) => createSubmissionMock(...args)
+  createSubmissionAndTransitionCase: (...args: unknown[]) => createSubmissionAndTransitionCaseMock(...args)
 }));
 
 const { createSubmissionAction } = await import('../../create-submission');
@@ -60,14 +56,16 @@ const sampleCandidate = {
   medicationInformation: ''
 };
 
+function sampleCase(overrides: Record<string, unknown> = {}) {
+  return { id: 'case_1', patientId: 'cand_1', version: 2, status: 'sent_to_doctor', assignedClinicianId: 'usr_doctor_demo', ...overrides };
+}
+
 describe('createSubmissionAction', () => {
   beforeEach(() => {
     getSessionMock.mockReset();
     getCaseByIdMock.mockReset();
-    transitionCaseMock.mockReset();
-    setCaseBillingMock.mockReset();
     getCandidateByIdMock.mockReset();
-    createSubmissionMock.mockReset();
+    createSubmissionAndTransitionCaseMock.mockReset();
     clearDoctorAssessmentDraftMock.mockReset();
     revalidatePathMock.mockClear();
   });
@@ -76,14 +74,14 @@ describe('createSubmissionAction', () => {
     getSessionMock.mockResolvedValue(null);
     const result = await createSubmissionAction(null, formData(validFields()));
     expect(result.ok).toBe(false);
-    expect(createSubmissionMock).not.toHaveBeenCalled();
+    expect(createSubmissionAndTransitionCaseMock).not.toHaveBeenCalled();
   });
 
   it("rejects when the user's role lacks permission", async () => {
     getSessionMock.mockResolvedValue({ user: { role: 'patient' } });
     const result = await createSubmissionAction(null, formData(validFields()));
     expect(result.ok).toBe(false);
-    expect(createSubmissionMock).not.toHaveBeenCalled();
+    expect(createSubmissionAndTransitionCaseMock).not.toHaveBeenCalled();
   });
 
   it('rejects a missing case id', async () => {
@@ -100,17 +98,30 @@ describe('createSubmissionAction', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('rejects when the case is not currently awaiting the doctor (stale/replayed request)', async () => {
+    getSessionMock.mockResolvedValue({
+      user: { id: 'usr_doctor_demo', displayName: 'Demo Doctor', email: 'doctor@ncb.local', role: 'clinician' }
+    });
+    getCaseByIdMock.mockResolvedValue(sampleCase({ status: 'reviewed' }));
+
+    const result = await createSubmissionAction(null, formData(validFields()));
+
+    expect(result.ok).toBe(false);
+    expect(getCandidateByIdMock).not.toHaveBeenCalled();
+    expect(createSubmissionAndTransitionCaseMock).not.toHaveBeenCalled();
+  });
+
   it('rejects when the candidate cannot be found', async () => {
     getSessionMock.mockResolvedValue({ user: { role: 'clinician' } });
-    getCaseByIdMock.mockResolvedValue({ id: 'case_1', patientId: 'cand_1', version: 2 });
+    getCaseByIdMock.mockResolvedValue(sampleCase({ assignedClinicianId: undefined }));
     getCandidateByIdMock.mockResolvedValue(null);
     const result = await createSubmissionAction(null, formData(validFields()));
     expect(result.ok).toBe(false);
   });
 
   it('rejects invalid assessment fields without creating anything', async () => {
-    getSessionMock.mockResolvedValue({ user: { role: 'clinician' } });
-    getCaseByIdMock.mockResolvedValue({ id: 'case_1', patientId: 'cand_1', version: 2 });
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor_demo', role: 'clinician' } });
+    getCaseByIdMock.mockResolvedValue(sampleCase());
     getCandidateByIdMock.mockResolvedValue(sampleCandidate);
 
     const result = await createSubmissionAction(
@@ -119,43 +130,43 @@ describe('createSubmissionAction', () => {
     );
 
     expect(result.ok).toBe(false);
-    expect(createSubmissionMock).not.toHaveBeenCalled();
+    expect(createSubmissionAndTransitionCaseMock).not.toHaveBeenCalled();
   });
 
   it('rejects when the case is assigned to a different clinician', async () => {
     getSessionMock.mockResolvedValue({
       user: { id: 'usr_doctor_demo', displayName: 'Demo Doctor', email: 'doctor@ncb.local', role: 'clinician' }
     });
-    getCaseByIdMock.mockResolvedValue({ id: 'case_1', patientId: 'cand_1', version: 2, assignedClinicianId: 'usr_other_doctor' });
+    getCaseByIdMock.mockResolvedValue(sampleCase({ assignedClinicianId: 'usr_other_doctor' }));
 
     const result = await createSubmissionAction(null, formData(validFields()));
 
     expect(result.ok).toBe(false);
     expect(getCandidateByIdMock).not.toHaveBeenCalled();
-    expect(createSubmissionMock).not.toHaveBeenCalled();
+    expect(createSubmissionAndTransitionCaseMock).not.toHaveBeenCalled();
   });
 
-  it('creates the submission, transitions the case, and returns ok on success', async () => {
+  it('creates the submission+transition atomically and returns ok on success', async () => {
     getSessionMock.mockResolvedValue({
       user: { id: 'usr_doctor_demo', displayName: 'Demo Doctor', email: 'doctor@ncb.local', role: 'clinician' }
     });
-    getCaseByIdMock.mockResolvedValue({ id: 'case_1', patientId: 'cand_1', version: 2, assignedClinicianId: 'usr_doctor_demo' });
+    getCaseByIdMock.mockResolvedValue(sampleCase());
     getCandidateByIdMock.mockResolvedValue(sampleCandidate);
-    createSubmissionMock.mockResolvedValue({ id: 'med_1' });
+    createSubmissionAndTransitionCaseMock.mockResolvedValue({ payload: { id: 'med_1' }, newCaseVersion: 3 });
 
     const result = await createSubmissionAction(null, formData(validFields()));
 
     expect(result).toEqual({ ok: true });
-    expect(createSubmissionMock).toHaveBeenCalledWith(
+    expect(createSubmissionAndTransitionCaseMock).toHaveBeenCalledWith(
       expect.objectContaining({
         caseId: 'case_1',
         submittedBy: 'usr_doctor_demo',
         candidate: expect.objectContaining({ fullName: 'Jane Doe' })
-      })
+      }),
+      2,
+      undefined
     );
-    expect(transitionCaseMock).toHaveBeenCalledWith('case_1', 2, 'doctor_submitted', 'usr_doctor_demo');
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases');
-    expect(setCaseBillingMock).not.toHaveBeenCalled();
   });
 
   it("snapshots the doctor's current rate onto the case when they have one set", async () => {
@@ -168,13 +179,17 @@ describe('createSubmissionAction', () => {
         medicalProfile: { defaultMedicalFee: 150 }
       }
     });
-    getCaseByIdMock.mockResolvedValue({ id: 'case_1', patientId: 'cand_1', version: 2, assignedClinicianId: 'usr_doctor_demo' });
+    getCaseByIdMock.mockResolvedValue(sampleCase());
     getCandidateByIdMock.mockResolvedValue(sampleCandidate);
-    createSubmissionMock.mockResolvedValue({ id: 'med_1' });
+    createSubmissionAndTransitionCaseMock.mockResolvedValue({ payload: { id: 'med_1' }, newCaseVersion: 3 });
 
     await createSubmissionAction(null, formData(validFields()));
 
-    expect(setCaseBillingMock).toHaveBeenCalledWith('case_1', 150, 'unpaid');
+    expect(createSubmissionAndTransitionCaseMock).toHaveBeenCalledWith(
+      expect.anything(),
+      2,
+      { payableAmount: 150, paymentStatus: 'unpaid' }
+    );
   });
 
   it("doesn't snapshot a zero/unset rate (leaves payableAmount alone rather than writing $0.00)", async () => {
@@ -187,12 +202,12 @@ describe('createSubmissionAction', () => {
         medicalProfile: { defaultMedicalFee: 0 }
       }
     });
-    getCaseByIdMock.mockResolvedValue({ id: 'case_1', patientId: 'cand_1', version: 2, assignedClinicianId: 'usr_doctor_demo' });
+    getCaseByIdMock.mockResolvedValue(sampleCase());
     getCandidateByIdMock.mockResolvedValue(sampleCandidate);
-    createSubmissionMock.mockResolvedValue({ id: 'med_1' });
+    createSubmissionAndTransitionCaseMock.mockResolvedValue({ payload: { id: 'med_1' }, newCaseVersion: 3 });
 
     await createSubmissionAction(null, formData(validFields()));
 
-    expect(setCaseBillingMock).not.toHaveBeenCalled();
+    expect(createSubmissionAndTransitionCaseMock).toHaveBeenCalledWith(expect.anything(), 2, undefined);
   });
 });

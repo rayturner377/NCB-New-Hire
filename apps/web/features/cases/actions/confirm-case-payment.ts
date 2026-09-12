@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { PERMISSIONS, requirePermission, ForbiddenError } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { confirmCasePayment, getCaseById, hasDoctorSubmitted } from '../services/cases-service';
 
 export interface ConfirmCasePaymentResult {
@@ -25,7 +25,7 @@ export async function confirmCasePaymentAction(
 ): Promise<ConfirmCasePaymentResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

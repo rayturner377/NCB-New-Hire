@@ -9,7 +9,7 @@ import { createActionRateLimiter } from '../../../lib/action-rate-limit';
 import { inlineDataUrlImages } from '../../../lib/inline-images';
 import { sendMail } from '../../../lib/mail';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { getSettings } from '../services/settings-service';
 import { TEST_EMAIL_TEMPLATE_KEY } from '../../messages/test-email';
 import { findNotificationTemplateDefinition } from '../../notifications/registry';
@@ -50,7 +50,7 @@ export async function sendTestEmailAction(
 ): Promise<SettingsActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

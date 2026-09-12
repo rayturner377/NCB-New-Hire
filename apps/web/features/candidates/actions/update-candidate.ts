@@ -1,10 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { combineContactNumbers } from '../../../lib/phone-number';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
+import { requireOwnsCandidate } from '../candidate-authorization';
 import { updateCandidateSchema } from '../schemas/candidate';
 import { updateCandidate } from '../services/candidates-service';
 import type { CandidateActionResult } from './create-candidate';
@@ -23,7 +25,7 @@ export async function updateCandidateAction(
 ): Promise<CandidateActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }
@@ -38,6 +40,13 @@ export async function updateCandidateAction(
   const candidateId = String(formData.get('candidateId') || '');
   if (!candidateId) {
     return { ok: false, error: 'Missing candidate id.' };
+  }
+
+  try {
+    await requireOwnsCandidate(session.user, candidateId);
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    throw error;
   }
 
   const fields = Object.fromEntries(formData.entries());
@@ -60,6 +69,13 @@ export async function updateCandidateAction(
   }
 
   await updateCandidate(candidateId, parsed.data);
+
+  await auditRepository.append({
+    eventType: 'candidate_updated',
+    actorUserId: session.user.id,
+    entityType: 'candidate',
+    entityId: candidateId
+  });
 
   revalidatePath(`/candidates/${candidateId}`);
   revalidatePath('/candidates');

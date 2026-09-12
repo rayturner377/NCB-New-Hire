@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { auditRepository, usersRepository, type AppUser } from '@ncb/database';
 import { setUserPassword, revokeAllSessionsForUser } from '@ncb/auth/utils';
+import { issueAccessCode } from '../../auth/services/access-codes-service';
 import { sendNotification } from '../../notifications/services/notification-service';
 import type { CreateUserSchemaInput, UpdateUserSchemaInput } from '../schemas/user';
 import type { UserSummary } from '../types';
@@ -33,8 +34,6 @@ function isUniqueConstraintViolation(error: unknown): boolean {
 export interface CreateUserInput extends CreateUserSchemaInput {
   /** Doctor-only fields (facility, registration number, rate) — see lib/medical-profile.ts's combineMedicalProfile. */
   medicalProfile?: Record<string, unknown>;
-  /** Forces the change-password wizard on this account's next login — the admin's "require password change on first login" checkbox. */
-  mustChangePassword?: boolean;
 }
 
 /**
@@ -45,6 +44,12 @@ export interface CreateUserInput extends CreateUserSchemaInput {
  * the findByEmail check would otherwise surface as a raw 500 from the
  * constraint violation, so that's caught below too and converted to the same
  * DuplicateEmailError.
+ *
+ * No admin-chosen password here anymore — see AccessCode's own doc comment
+ * (schema.prisma) for why. The account gets a real Better Auth credential
+ * (a random password nobody, including the admin, ever sees) so it exists
+ * but can't be signed into, and a 6-digit activation code is emailed instead;
+ * the new user redeems it at /forgot-password to choose their own password.
  */
 export async function createUser(input: CreateUserInput, actorId?: string): Promise<UserSummary> {
   const email = input.email.toLowerCase();
@@ -60,8 +65,7 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
       email,
       displayName: input.displayName,
       role: input.role,
-      medicalProfile: input.medicalProfile,
-      mustChangePassword: input.mustChangePassword
+      medicalProfile: input.medicalProfile
     });
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
@@ -70,10 +74,12 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
     throw error;
   }
 
-  // Creates the Better Auth credential Account row — without this, the new
-  // user would have no way to actually sign in at all (Better Auth's
-  // sign-in only ever checks the Account row, never AppUser directly).
-  await setUserPassword(created.id, input.password);
+  // A real, unguessable credential the account can't actually be signed into
+  // — Better Auth's sign-in only ever checks this Account row, never AppUser
+  // directly, so the row has to exist, but nobody needs to know its value.
+  await setUserPassword(created.id, randomBytes(32).toString('base64url'));
+
+  const activationCode = await issueAccessCode(created.id, 'account_activation');
 
   await auditRepository.append({
     eventType: 'user_created',
@@ -86,7 +92,7 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
   await sendNotification({
     templateKey: 'account_created',
     to: created.email,
-    variables: { recipientName: created.displayName, email: created.email, temporaryPassword: input.password, loginUrl: '/login' },
+    variables: { recipientName: created.displayName, email: created.email, activationCode, resetUrl: '/forgot-password' },
     entityType: 'user',
     entityId: created.id
   });
@@ -163,22 +169,23 @@ export async function changePassword(id: string, newPassword: string): Promise<v
 }
 
 /**
- * Admin/HR setting a NEW temporary password on someone else's account — a
+ * Admin/HR triggering a password reset on someone else's account — a
  * candidate who forgot theirs, or one that was typed wrong at creation.
- * Deliberately the opposite default of changePassword above: `mustChangePassword`
- * defaults to true, the same "share the temporary password with them
- * directly, they'll be asked to set their own on next login" pattern account
- * creation already uses, rather than silently leaving an admin-known password
- * in place. Also kills every existing session on the account, unconditionally
- * (there's no "caller's own session" to preserve here — the actor is HR/admin,
- * not the account owner) — the same reasoning as changePassword above: if
- * this reset is happening because the account was compromised, whatever
- * session an attacker was using dies immediately instead of staying valid.
+ * No admin-chosen password anymore — see AccessCode's own doc comment
+ * (schema.prisma). This just emails a 6-digit reset code; the account holder
+ * redeems it at /forgot-password to choose their own new password. Kills
+ * every existing session on the account immediately, unconditionally (there's
+ * no "caller's own session" to preserve here — the actor is HR/admin, not the
+ * account owner) — if this reset is happening because the account was
+ * compromised, whatever session an attacker was using dies right away instead
+ * of staying valid until the code is redeemed.
  */
-export async function resetUserPassword(id: string, newPassword: string, mustChangePassword = true, actorId?: string): Promise<void> {
-  const updated = await usersRepository.update(id, { mustChangePassword });
-  await setUserPassword(id, newPassword);
+export async function resetUserPassword(id: string, actorId?: string): Promise<void> {
+  const updated = await usersRepository.findById(id);
+  if (!updated) return;
+
   await revokeAllSessionsForUser(id);
+  const resetCode = await issueAccessCode(id, 'password_reset');
 
   await auditRepository.append({
     eventType: 'user_password_reset',
@@ -191,7 +198,7 @@ export async function resetUserPassword(id: string, newPassword: string, mustCha
   await sendNotification({
     templateKey: 'password_reset',
     to: updated.email,
-    variables: { recipientName: updated.displayName, temporaryPassword: newPassword, loginUrl: '/login' },
+    variables: { recipientName: updated.displayName, resetCode, resetUrl: '/forgot-password' },
     entityType: 'user',
     entityId: id
   });

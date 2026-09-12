@@ -4,17 +4,17 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { AddressFields } from '../../../components/form/address-fields';
 import { ContactFields } from '../../../components/form/contact-fields';
-import { CredentialsFields } from '../../../components/form/credentials-fields';
 import { DateField } from '../../../components/form/date-field';
-import { ForcePasswordChangeField } from '../../../components/form/force-password-change-field';
 import { FormSection } from '../../../components/form/form-section';
 import { NameFields } from '../../../components/form/name-fields';
 import { PhoneNumbersField } from '../../../components/form/phone-numbers-field';
 import { ValidatedSubmitButton } from '../../../components/form/submit-button';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
+import { Checkbox } from '../../../components/ui/checkbox';
 import { FormField } from '../../../components/ui/form-field';
 import { Input } from '../../../components/ui/input';
+import { Label } from '../../../components/ui/label';
 import { Separator } from '../../../components/ui/separator';
 import { useValidatedForm } from '../../../lib/hooks/use-validated-form';
 import { createCandidateAction, type CandidateActionResult } from '../actions/create-candidate';
@@ -144,11 +144,13 @@ export function CandidateForm() {
           <Separator />
           <FormSection
             title="Portal access"
-            description="Optional — set a temporary password to let the candidate sign in themselves at the email above. Leave blank to grant access later."
+            description="Optional — they'll receive an activation code by email to set their own password. Leave unchecked to grant access later."
           >
-            <div className="flex flex-col gap-5">
-              <CredentialsFields showEmail={false} passwordError={fieldError('password')} />
-              <ForcePasswordChangeField />
+            <div className="flex items-start gap-2.5">
+              <Checkbox id="grantPortalAccess" name="grantPortalAccess" className="mt-0.5" />
+              <Label htmlFor="grantPortalAccess" className="text-sm font-medium leading-none">
+                Grant portal access at the email above
+              </Label>
             </div>
           </FormSection>
         </>

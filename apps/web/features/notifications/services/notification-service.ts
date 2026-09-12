@@ -201,19 +201,27 @@ async function dispatchNotification(input: DispatchNotificationInput): Promise<v
     });
   } catch (error) {
     console.error(`Notification "${input.templateKey}" failed to send:`, error);
-    await emailMessagesRepository.create({
-      id: input.id,
-      templateKey: input.templateKey,
-      toEmail: input.to,
-      ccEmails: input.ccEmails,
-      bccEmails: input.bccEmails,
-      subject: input.subject,
-      bodyHtml: input.html,
-      status: 'failed',
-      errorMessage: error instanceof Error ? error.message : String(error),
-      entityType: input.entityType,
-      entityId: input.entityId
-    });
+    // This call's own failure (a DB hiccup while trying to log the *first* failure) must not
+    // throw out of dispatchNotification — it's invoked as `void dispatchNotification(...)` (see
+    // sendNotification), so an uncaught rejection here would escape as an unhandled promise
+    // rejection instead of being contained the way the send failure above already is.
+    try {
+      await emailMessagesRepository.create({
+        id: input.id,
+        templateKey: input.templateKey,
+        toEmail: input.to,
+        ccEmails: input.ccEmails,
+        bccEmails: input.bccEmails,
+        subject: input.subject,
+        bodyHtml: input.html,
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        entityType: input.entityType,
+        entityId: input.entityId
+      });
+    } catch (loggingError) {
+      console.error(`Notification "${input.templateKey}" also failed to record its own failure:`, loggingError);
+    }
   }
 }
 

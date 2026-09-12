@@ -10,6 +10,32 @@ const secret = process.env.BETTER_AUTH_SECRET;
 if (!secret) {
   throw new Error('BETTER_AUTH_SECRET is not set.');
 }
+// The Dockerfile bakes this exact literal in as a build-time placeholder (next build needs some
+// syntactically valid value to construct this module against — see the Dockerfile's own comment),
+// always overridden by the real value from .env at container runtime. A plain truthiness check
+// wouldn't catch a deployment that's missing that override: this string is committed to the repo
+// and would otherwise pass silently as a real, working secret.
+//
+// Skipped during `next build` itself (NEXT_PHASE is set to phase-production-build only then, per
+// Next.js's own convention): next build's "Collecting page data" step imports every route module
+// to inspect it, constructing this exact betterAuth() instance against the Dockerfile's own
+// placeholder as it does — rejecting it here too would fail the build using the very placeholder
+// the build stage set for exactly this purpose. The check still runs at every other time,
+// including `next start`, which is what actually matters for a real deployment.
+if (secret === 'docker-build-placeholder-overridden-at-runtime' && process.env.NEXT_PHASE !== 'phase-production-build') {
+  throw new Error('BETTER_AUTH_SECRET is still the Docker build placeholder — set a real value in .env at runtime.');
+}
+
+/**
+ * Without an explicit baseURL, Better Auth derives the origin from each
+ * incoming request's own Host header — the exact behavior its own startup
+ * warning flags, and a real security concern (a spoofed Host header could
+ * otherwise influence callback/redirect URLs), not just a cosmetic warning.
+ * BETTER_AUTH_URL must be set explicitly in any real deployment (see
+ * .env.example); the localhost fallback only covers local dev, matching the
+ * default port docker-compose.yml/next dev both use.
+ */
+const baseURL = process.env.BETTER_AUTH_URL || `http://localhost:${process.env.PORT || 3000}`;
 
 /**
  * Sliding inactivity timeout, same admin-configurable env var and 5-480
@@ -51,6 +77,7 @@ function cookieIsSecure(): boolean {
  */
 export const auth = betterAuth({
   secret,
+  baseURL,
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   secondaryStorage: redisStorage({ client: redis, keyPrefix: 'ncb-auth:' }),
   session: {
@@ -70,6 +97,12 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
+    // No public self-signup — every account is created by an admin/reviewer
+    // through createUser() (features/users/services/users-service.ts). Without
+    // this, /api/auth/sign-up/email stayed live even with no signup page ever
+    // linking to it, letting an uninvited caller create a real patient account
+    // directly against the API.
+    disableSignUp: true,
     password: { hash, verify }
   },
   databaseHooks: {

@@ -167,4 +167,35 @@ describe('audit repository', () => {
 
     expect(findMany).toHaveBeenCalledWith({ where: {}, orderBy: { occurredAt: 'desc' }, skip: 0, take: 10 });
   });
+
+  it('list() defaults to the most recent 250 events', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const db = { auditEvent: { findMany } } as unknown as PrismaClient;
+
+    await createAuditRepository(db).list();
+
+    expect(findMany).toHaveBeenCalledWith({ orderBy: { id: 'desc' }, take: 250 });
+  });
+
+  it('list() respects an explicit limit', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const db = { auditEvent: { findMany } } as unknown as PrismaClient;
+
+    await createAuditRepository(db).list(10);
+
+    expect(findMany).toHaveBeenCalledWith({ orderBy: { id: 'desc' }, take: 10 });
+  });
+
+  it("listForEntity() scopes to one entity's own events, newest first", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const db = { auditEvent: { findMany } } as unknown as PrismaClient;
+
+    await createAuditRepository(db).listForEntity('case', 'case_1');
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { entityType: 'case', entityId: 'case_1' },
+      orderBy: { occurredAt: 'desc' },
+      take: 100
+    });
+  });
 });

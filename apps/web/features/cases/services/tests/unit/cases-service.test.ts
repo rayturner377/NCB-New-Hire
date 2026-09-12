@@ -11,6 +11,8 @@ const setAssignedClinician = vi.fn();
 const setPaymentStatus = vi.fn();
 const setPaymentConfirmedAt = vi.fn();
 const updatePayload = vi.fn();
+const setBilling = vi.fn();
+const listForClinician = vi.fn();
 const auditAppend = vi.fn();
 const auditListForEntity = vi.fn();
 const settingsRead = vi.fn();
@@ -29,7 +31,9 @@ vi.mock('@ncb/database', () => ({
     setAssignedClinician: (...args: unknown[]) => setAssignedClinician(...args),
     setPaymentStatus: (...args: unknown[]) => setPaymentStatus(...args),
     setPaymentConfirmedAt: (...args: unknown[]) => setPaymentConfirmedAt(...args),
-    updatePayload: (...args: unknown[]) => updatePayload(...args)
+    updatePayload: (...args: unknown[]) => updatePayload(...args),
+    setBilling: (...args: unknown[]) => setBilling(...args),
+    listForClinician: (...args: unknown[]) => listForClinician(...args)
   },
   auditRepository: {
     append: (...args: unknown[]) => auditAppend(...args),
@@ -67,7 +71,11 @@ const {
   reassignClinician,
   transitionCase,
   setCaseHidden,
-  confirmCasePayment
+  confirmCasePayment,
+  setCaseBilling,
+  hasDoctorSubmitted,
+  listReviewQueueCases,
+  countCasesForClinician
 } = await import('../../cases-service');
 
 describe('cases service', () => {
@@ -82,6 +90,8 @@ describe('cases service', () => {
     setPaymentStatus.mockReset();
     setPaymentConfirmedAt.mockReset();
     updatePayload.mockReset();
+    setBilling.mockReset();
+    listForClinician.mockReset();
     auditAppend.mockReset();
     auditListForEntity.mockReset();
     settingsRead.mockReset();
@@ -303,5 +313,95 @@ describe('cases service', () => {
 
     expect(updatePayload).toHaveBeenCalledWith('case_1', { hidden: false }, masterKey);
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'case_unhidden' }));
+  });
+
+  it('transitionCase to sent_to_doctor notifies the assigned doctor, cc-ing the configured doctor notification address', async () => {
+    findById.mockResolvedValue({ status: 'draft', patientId: 'cand_1', assignedClinicianId: 'usr_doctor_demo' });
+    transition.mockResolvedValue(2);
+    usersFindById.mockResolvedValue({ email: 'doctor@ncb.local', displayName: 'Dr. Demo' });
+    getCandidateByIdMock.mockResolvedValue({ fullName: 'Jane Doe' });
+    settingsRead.mockResolvedValue({ notifications: { doctorNotificationEmail: 'doctors@ncb.local' } });
+
+    await transitionCase('case_1', 1, 'sent_to_doctor', 'usr_reviewer_demo');
+
+    expect(sendNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateKey: 'case_moved_forward',
+        to: 'doctor@ncb.local',
+        extraCc: 'doctors@ncb.local',
+        variables: { caseId: 'case_1', patientName: 'Jane Doe', doctorName: 'Dr. Demo' }
+      })
+    );
+  });
+
+  it('transitionCase to reviewed uses the case_reviewed template instead', async () => {
+    findById.mockResolvedValue({ status: 'doctor_submitted', patientId: 'cand_1', assignedClinicianId: 'usr_doctor_demo' });
+    transition.mockResolvedValue(2);
+    usersFindById.mockResolvedValue({ email: 'doctor@ncb.local', displayName: 'Dr. Demo' });
+    getCandidateByIdMock.mockResolvedValue({ fullName: 'Jane Doe' });
+
+    await transitionCase('case_1', 1, 'reviewed', 'usr_reviewer_demo');
+
+    expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ templateKey: 'case_reviewed' }));
+  });
+
+  it('transitionCase to sent_to_doctor skips notifying entirely when no doctor is assigned', async () => {
+    findById.mockResolvedValue({ status: 'draft', patientId: 'cand_1', assignedClinicianId: null });
+    transition.mockResolvedValue(2);
+
+    await transitionCase('case_1', 1, 'sent_to_doctor', 'usr_reviewer_demo');
+
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+    expect(usersFindById).not.toHaveBeenCalled();
+  });
+
+  it('transitionCase to sent_to_doctor skips notifying when the assigned doctor has no email on file', async () => {
+    findById.mockResolvedValue({ status: 'draft', patientId: 'cand_1', assignedClinicianId: 'usr_doctor_demo' });
+    transition.mockResolvedValue(2);
+    usersFindById.mockResolvedValue({ email: '', displayName: 'Dr. Demo' });
+
+    await transitionCase('case_1', 1, 'sent_to_doctor', 'usr_reviewer_demo');
+
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it('setCaseBilling writes payableAmount/paymentStatus straight through', async () => {
+    await setCaseBilling('case_1', 150, 'unpaid');
+    expect(setBilling).toHaveBeenCalledWith('case_1', 150, 'unpaid');
+  });
+
+  describe('hasDoctorSubmitted', () => {
+    it.each(['draft', 'sent_to_patient', 'patient_completed', 'sent_to_doctor'])('is false while pre-doctor (%s)', (status) => {
+      expect(hasDoctorSubmitted(status)).toBe(false);
+    });
+
+    it.each(['doctor_submitted', 'reviewed', 'archived', 'withdrawn'])('is true once past the doctor stage (%s)', (status) => {
+      expect(hasDoctorSubmitted(status)).toBe(true);
+    });
+  });
+
+  it('listReviewQueueCases includes doctor_submitted/reviewed cases not yet paid, excludes paid or pre-doctor ones', async () => {
+    listAllWithPatient.mockResolvedValue([
+      { id: 'case_1', status: 'doctor_submitted', paymentStatus: 'unpaid' },
+      { id: 'case_2', status: 'reviewed', paymentStatus: 'paid' },
+      { id: 'case_3', status: 'sent_to_doctor', paymentStatus: null }
+    ]);
+
+    const result = await listReviewQueueCases();
+
+    expect(result.map((c) => c.id)).toEqual(['case_1']);
+  });
+
+  it("countCasesForClinician tallies total vs. still-active (excluding reviewed/archived/canceled/withdrawn)", async () => {
+    listForClinician.mockResolvedValue([
+      { status: 'sent_to_doctor' },
+      { status: 'doctor_submitted' },
+      { status: 'reviewed' },
+      { status: 'withdrawn' }
+    ]);
+
+    const result = await countCasesForClinician('usr_doctor_demo');
+
+    expect(result).toEqual({ total: 4, active: 2 });
   });
 });

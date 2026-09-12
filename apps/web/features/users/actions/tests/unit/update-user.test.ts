@@ -10,7 +10,7 @@ vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidat
 vi.mock('../../../../../lib/assert-same-origin', () => ({
   assertSameOrigin: (...args: unknown[]) => assertSameOriginMock(...args)
 }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/users-service', () => ({
   updateUser: (...args: unknown[]) => updateUserMock(...args),
   getUserRole: (...args: unknown[]) => getUserRoleMock(...args)

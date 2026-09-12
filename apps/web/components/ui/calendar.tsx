@@ -47,7 +47,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         ...classNames
       }}
       components={{
-        DayButton({ day, modifiers, className: dayClassName, ...buttonProps }) {
+        DayButton({ day: _day, modifiers, className: dayClassName, ...buttonProps }) {
           return (
             <button
               type="button"

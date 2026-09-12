@@ -7,10 +7,8 @@ import { createActionRateLimiter } from '../../../lib/action-rate-limit';
 import { combineFullName } from '../../../lib/full-name';
 import { combineMedicalProfile } from '../../../lib/medical-profile';
 import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
-import { validatePasswordAgainstPolicy } from '../../settings/password-policy';
-import { getSettings } from '../../settings/services/settings-service';
 import { createUserSchema } from '../schemas/user';
 import { createUser, DuplicateEmailError } from '../services/users-service';
 
@@ -29,7 +27,7 @@ export async function createUserAction(
 ): Promise<UserActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }
@@ -67,19 +65,12 @@ export async function createUserAction(
     };
   }
 
-  const { userPolicy } = await getSettings();
-  const policyError = validatePasswordAgainstPolicy(parsed.data.password, userPolicy);
-  if (policyError) {
-    return { ok: false, error: policyError, fieldErrors: { password: policyError } };
-  }
-
   let created;
   try {
     created = await createUser(
       {
         ...parsed.data,
-        medicalProfile: parsed.data.role === 'clinician' ? combineMedicalProfile(formData) : undefined,
-        mustChangePassword: formData.get('forcePasswordChange') != null
+        medicalProfile: parsed.data.role === 'clinician' ? combineMedicalProfile(formData) : undefined
       },
       session.user.id
     );

@@ -6,8 +6,7 @@ export const userRoleSchema = z.enum(['admin', 'reviewer', 'auditor', 'clinician
 export const createUserSchema = z.object({
   email: z.string().trim().min(1, 'Email is required').max(254).email('Enter a valid email address'),
   displayName: z.string().trim().min(1, 'Display name is required').max(140),
-  role: userRoleSchema,
-  password: z.string().min(12, 'Password must be at least 12 characters').max(200)
+  role: userRoleSchema
 });
 
 export type CreateUserSchemaInput = z.infer<typeof createUserSchema>;

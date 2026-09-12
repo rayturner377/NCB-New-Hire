@@ -109,28 +109,28 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
   {
     key: 'password_reset',
     label: 'Password reset',
-    description: "Sent to a user when an admin/HR resets their portal account's password.",
-    defaultSubject: '{{portalName}}: your password has been reset',
+    description: "Sent to a user when an admin/HR triggers a password reset on their portal account.",
+    defaultSubject: '{{portalName}}: your password reset code',
     defaultBody:
-      '<p>Hi {{recipientName}},</p><p>Your {{portalName}} account password was just reset.</p><p>Your temporary password is: <strong>{{temporaryPassword}}</strong></p><p>Sign in at {{loginUrl}} — you’ll be asked to choose a new password.</p>',
+      '<p>Hi {{recipientName}},</p><p>A password reset was requested for your {{portalName}} account.</p><p>Your reset code is: <strong>{{resetCode}}</strong></p><p>Enter it at {{resetUrl}} along with a new password of your choosing. This code expires in 15 minutes and can only be used once.</p><p>If you didn’t request this, you can ignore this email.</p>',
     variables: [
       { name: 'recipientName', description: "The account holder's name" },
-      { name: 'temporaryPassword', description: 'The new temporary password' },
-      { name: 'loginUrl', description: 'The sign-in page URL' }
+      { name: 'resetCode', description: 'The 6-digit, single-use reset code' },
+      { name: 'resetUrl', description: 'The page where the code is redeemed' }
     ]
   },
   {
     key: 'account_created',
     label: 'Account created',
-    description: 'Sent to a newly created user with their temporary sign-in details.',
+    description: 'Sent to a newly created user with an activation code to set their own password.',
     defaultSubject: 'Welcome to {{portalName}}',
     defaultBody:
-      '<p>Hi {{recipientName}},</p><p>An account has been created for you on {{portalName}}.</p><p>Your email is <strong>{{email}}</strong> and your temporary password is: <strong>{{temporaryPassword}}</strong></p><p>Sign in at {{loginUrl}} — you’ll be asked to choose a new password.</p>',
+      '<p>Hi {{recipientName}},</p><p>An account has been created for you on {{portalName}}.</p><p>Your email is <strong>{{email}}</strong> and your activation code is: <strong>{{activationCode}}</strong></p><p>Enter it at {{resetUrl}} to choose your own password. This code expires in 15 minutes and can only be used once.</p>',
     variables: [
       { name: 'recipientName', description: "The new account holder's name" },
       { name: 'email', description: 'Their sign-in email address' },
-      { name: 'temporaryPassword', description: 'The temporary password set for them' },
-      { name: 'loginUrl', description: 'The sign-in page URL' }
+      { name: 'activationCode', description: 'The 6-digit, single-use activation code' },
+      { name: 'resetUrl', description: 'The page where the code is redeemed' }
     ]
   },
   {

@@ -37,8 +37,7 @@ export interface DoctorCaseFormProps {
 
 const initialState: SubmissionActionResult | null = null;
 
-const TAB_ORDER = ['patient', 'assessment', 'exam', 'determination', 'documents'] as const;
-type TabValue = (typeof TAB_ORDER)[number];
+type TabValue = 'patient' | 'assessment' | 'exam' | 'determination' | 'documents';
 
 const TAB_LABELS: Record<TabValue, string> = {
   patient: 'Patient submission',

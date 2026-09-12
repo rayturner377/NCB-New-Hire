@@ -24,27 +24,19 @@ const candidateBaseSchema = z.object({
   position: z.string().trim().min(1, 'Position applied for is required').max(140),
   medicationInformation: z.string().trim().max(2000).optional().default(''),
   assignedClinicianId: z.string().trim().max(80).optional().default(''),
-  assignedClinicianName: z.string().trim().max(140).optional().default(''),
-  password: z.string().trim().max(200).optional().default('')
+  assignedClinicianName: z.string().trim().max(140).optional().default('')
 });
 
 /**
  * Ported from server.js's candidateSetupForm (public/app.js ~L8243-8254) for
- * the profile fields, plus an optional password — the old app granted
- * portal access as a separate later step (POST /api/candidates/:id/user);
- * this form combines the two so HR can do both at once. A password (if any)
- * logs the candidate in with the email above, so email becomes required
- * once a password is set.
+ * the profile fields, plus an optional "grant portal access" checkbox — the
+ * old app granted portal access as a separate later step
+ * (POST /api/candidates/:id/user); this form combines the two so HR can do
+ * both at once. No password collected here — see create-candidate.ts's own
+ * handling of the grantPortalAccess flag and AccessCode's doc comment
+ * (schema.prisma) for why.
  */
-export const createCandidateSchema = candidateBaseSchema
-  .refine((data) => data.password === '' || data.password.length >= 12, {
-    message: 'Password must be at least 12 characters',
-    path: ['password']
-  })
-  .refine((data) => data.password === '' || data.email !== '', {
-    message: 'An email is required to grant portal access',
-    path: ['email']
-  });
+export const createCandidateSchema = candidateBaseSchema;
 
 export type CreateCandidateSchemaInput = z.infer<typeof createCandidateSchema>;
 
