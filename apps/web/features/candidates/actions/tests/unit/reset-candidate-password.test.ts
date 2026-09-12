@@ -56,8 +56,18 @@ describe('resetCandidatePasswordAction', () => {
     expect(resetUserPasswordMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a role without PATIENT_PROFILES_UPDATE', async () => {
+  it('rejects a role without PATIENT_PROFILES_RESET_PASSWORD', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor_demo', role: 'clinician' } });
+    const result = await resetCandidatePasswordAction(
+      null,
+      formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: validPassword })
+    );
+    expect(result.ok).toBe(false);
+    expect(resetUserPasswordMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a patient — this action is staff-only, even against their own account', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_patient_demo', role: 'patient' } });
     const result = await resetCandidatePasswordAction(
       null,
       formData({ candidateId: 'cand_1', password: validPassword, confirmPassword: validPassword })

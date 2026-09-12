@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { Button } from '../../../components/ui/button';
-import { listCasesWithPatient } from '../../cases/services/cases-service';
+import { listCasesForPatient, listCasesWithPatient } from '../../cases/services/cases-service';
 import { logAccessDenied } from '../../../lib/audit-access';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
@@ -41,7 +41,13 @@ export async function CandidatesContainer() {
   // just theirs, the way listCandidatesForUser is built for.
   const candidates = session.user.role === 'patient' ? await listCandidatesForUser(session.user.id) : await listCandidates();
 
-  const cases = await listCasesWithPatient();
+  // A patient must only ever receive their own case data in the page payload — listCasesWithPatient()
+  // returns every case for every patient in the system, so a patient viewer instead gets just the
+  // cases for the candidate records already scoped above (usually exactly one).
+  const cases =
+    session.user.role === 'patient'
+      ? (await Promise.all(candidates.map((candidate) => listCasesForPatient(candidate.id)))).flat()
+      : await listCasesWithPatient();
   const casesByPatientId: Record<string, CandidateCaseSummary[]> = {};
   for (const medicalCase of cases) {
     const list = (casesByPatientId[medicalCase.patientId] ??= []);

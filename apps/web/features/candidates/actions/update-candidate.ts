@@ -5,6 +5,7 @@ import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { combineContactNumbers } from '../../../lib/phone-number';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
+import { requireOwnsCandidate } from '../candidate-authorization';
 import { updateCandidateSchema } from '../schemas/candidate';
 import { updateCandidate } from '../services/candidates-service';
 import type { CandidateActionResult } from './create-candidate';
@@ -38,6 +39,13 @@ export async function updateCandidateAction(
   const candidateId = String(formData.get('candidateId') || '');
   if (!candidateId) {
     return { ok: false, error: 'Missing candidate id.' };
+  }
+
+  try {
+    await requireOwnsCandidate(session.user, candidateId);
+  } catch (error) {
+    if (error instanceof ForbiddenError) return { ok: false, error: error.message };
+    throw error;
   }
 
   const fields = Object.fromEntries(formData.entries());

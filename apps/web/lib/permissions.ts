@@ -43,6 +43,8 @@ export const PERMISSIONS = Object.freeze({
   PATIENT_PROFILES_LIST: 'patient_profiles:list',
   PATIENT_PROFILES_CREATE: 'patient_profiles:create',
   PATIENT_PROFILES_UPDATE: 'patient_profiles:update',
+  /** Staff-only: trigger a password-reset code for a candidate's portal account. Deliberately separate from PATIENT_PROFILES_UPDATE (which PATIENT also holds, for editing their own record) — a patient must never be able to reach this action, even against their own account (self-service goes through the normal change-password flow instead). */
+  PATIENT_PROFILES_RESET_PASSWORD: 'patient_profiles:reset_password',
   DOCTORS_LIST: 'doctors:list',
   MEDICAL_OFFICES_LIST: 'medical_offices:list',
   MEDICAL_OFFICES_CREATE: 'medical_offices:create',
@@ -95,6 +97,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
     PERMISSIONS.PATIENT_PROFILES_LIST,
     PERMISSIONS.PATIENT_PROFILES_CREATE,
     PERMISSIONS.PATIENT_PROFILES_UPDATE,
+    PERMISSIONS.PATIENT_PROFILES_RESET_PASSWORD,
     PERMISSIONS.DOCTORS_LIST,
     PERMISSIONS.MEDICAL_OFFICES_LIST,
     PERMISSIONS.MEDICAL_OFFICES_CREATE,

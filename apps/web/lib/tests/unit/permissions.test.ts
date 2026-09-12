@@ -144,6 +144,7 @@ describe('the auditor role', () => {
       PERMISSIONS.MEDICAL_CASES_PATIENT_UPDATE,
       PERMISSIONS.PATIENT_PROFILES_CREATE,
       PERMISSIONS.PATIENT_PROFILES_UPDATE,
+      PERMISSIONS.PATIENT_PROFILES_RESET_PASSWORD,
       PERMISSIONS.MEDICAL_OFFICES_CREATE,
       PERMISSIONS.STAFF_ACCOUNTS_MANAGE,
       // The reviewer-held bundle that also grants resending — auditor gets the read-only

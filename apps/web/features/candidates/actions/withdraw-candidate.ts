@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
+import { requireOwnsCandidate } from '../candidate-authorization';
 import { updateCandidate } from '../services/candidates-service';
 
 export async function withdrawCandidateAction(formData: FormData): Promise<void> {
@@ -22,6 +23,13 @@ export async function withdrawCandidateAction(formData: FormData): Promise<void>
   const candidateId = String(formData.get('candidateId') || '');
   const withdrawalReason = String(formData.get('withdrawalReason') || '');
   if (!candidateId) return;
+
+  try {
+    await requireOwnsCandidate(session.user, candidateId);
+  } catch (error) {
+    if (error instanceof ForbiddenError) return;
+    throw error;
+  }
 
   await updateCandidate(candidateId, { status: 'withdrawn', withdrawalReason });
   revalidatePath('/candidates');

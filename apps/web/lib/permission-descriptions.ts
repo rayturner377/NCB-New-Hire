@@ -20,6 +20,7 @@ export const PERMISSION_DESCRIPTIONS: Partial<Record<string, string>> = {
   [PERMISSIONS.PATIENT_PROFILES_LIST]: 'Browse the full candidate/patient roster.',
   [PERMISSIONS.PATIENT_PROFILES_CREATE]: 'Add a new candidate/patient profile.',
   [PERMISSIONS.PATIENT_PROFILES_UPDATE]: "Edit a candidate/patient's own profile details.",
+  [PERMISSIONS.PATIENT_PROFILES_RESET_PASSWORD]: "Send a password-reset code to a candidate's portal account.",
   [PERMISSIONS.DOCTORS_LIST]: 'See the list of doctor accounts.',
   [PERMISSIONS.MEDICAL_OFFICES_LIST]: 'See the list of medical facilities doctors are assigned to.',
   [PERMISSIONS.MEDICAL_OFFICES_CREATE]: 'Add a new medical facility.',

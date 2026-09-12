@@ -1,4 +1,4 @@
-import { ROLES } from '../../lib/permissions';
+import { ForbiddenError, ROLES } from '../../lib/permissions';
 import { listCandidatesForUser } from './services/candidates-service';
 
 /**
@@ -18,4 +18,11 @@ export async function ownsCandidate(user: { role: string; id: string }, candidat
   if (user.role !== ROLES.PATIENT) return true;
   const ownCandidates = await listCandidatesForUser(user.id);
   return ownCandidates.some((candidate) => candidate.id === candidateId);
+}
+
+/** Throws ForbiddenError rather than returning a boolean — for actions that already handle ForbiddenError from requirePermission and want the same shape for the ownership check. */
+export async function requireOwnsCandidate(user: { role: string; id: string }, candidateId: string): Promise<void> {
+  if (!(await ownsCandidate(user, candidateId))) {
+    throw new ForbiddenError();
+  }
 }

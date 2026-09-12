@@ -24,8 +24,10 @@ const resetPasswordLimiter = createActionRateLimiter('reset-candidate-password',
  * HR setting a new temporary password on a candidate's portal account —
  * covers both "they forgot it" and "we mistyped it at creation" (there was
  * previously no way to do either once the account existed — only at creation
- * time). Gated on PATIENT_PROFILES_UPDATE, the same permission that already
- * gates editing the rest of this candidate's profile.
+ * time). Gated on PATIENT_PROFILES_RESET_PASSWORD, deliberately separate
+ * from PATIENT_PROFILES_UPDATE — that permission is also held by `patient`
+ * (to edit their own record), and a patient must never be able to reach
+ * this HR-facing reset action, even against their own account.
  */
 export async function resetCandidatePasswordAction(
   _prevState: ResetCandidatePasswordResult | null,
@@ -39,7 +41,7 @@ export async function resetCandidatePasswordAction(
   }
 
   try {
-    requirePermission(session.user, PERMISSIONS.PATIENT_PROFILES_UPDATE);
+    requirePermission(session.user, PERMISSIONS.PATIENT_PROFILES_RESET_PASSWORD);
   } catch (error) {
     if (error instanceof ForbiddenError) return { ok: false, error: error.message };
     throw error;

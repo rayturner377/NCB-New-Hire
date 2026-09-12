@@ -6,7 +6,7 @@ vi.mock('../../services/candidates-service', () => ({
   listCandidatesForUser: (...args: unknown[]) => listCandidatesForUserMock(...args)
 }));
 
-const { ownsCandidate } = await import('../../candidate-authorization');
+const { ownsCandidate, requireOwnsCandidate } = await import('../../candidate-authorization');
 
 describe('ownsCandidate', () => {
   it('lets a patient view their own linked candidate profile', async () => {
@@ -29,5 +29,19 @@ describe('ownsCandidate', () => {
     expect(await ownsCandidate({ role: 'admin', id: 'usr_admin_1' }, 'cand_1')).toBe(true);
     expect(await ownsCandidate({ role: 'reviewer', id: 'usr_reviewer_1' }, 'cand_2')).toBe(true);
     expect(listCandidatesForUserMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('requireOwnsCandidate', () => {
+  it('resolves when the user owns the candidate', async () => {
+    listCandidatesForUserMock.mockResolvedValue([{ id: 'cand_1' }]);
+    await expect(requireOwnsCandidate({ role: 'patient', id: 'usr_patient_1' }, 'cand_1')).resolves.toBeUndefined();
+  });
+
+  it('throws ForbiddenError when the user does not own the candidate', async () => {
+    listCandidatesForUserMock.mockResolvedValue([{ id: 'cand_2' }]);
+    await expect(requireOwnsCandidate({ role: 'patient', id: 'usr_patient_1' }, 'cand_1')).rejects.toThrow(
+      'Your account does not have permission to perform this action.'
+    );
   });
 });
