@@ -24,8 +24,14 @@ const nextConfig = {
     // data URLs in the same request alongside the rest of the General tab's fields. Exceeding the
     // default silently failed the whole submission (the request never even reached the action),
     // which read as "I uploaded a logo, it disappeared" rather than a clear error.
+    //
+    // 20mb rather than a tighter value: case-attachments-service.ts's own MAX_ATTACHMENT_BYTES
+    // allows up to 15MB, and a multipart FormData upload carries some encoding overhead beyond the
+    // raw file size — an 8MB cap here meant an attachment between 8-15MB looked valid client-side
+    // (under the app's own advertised limit) but died with an opaque framework-level error before
+    // upload-case-attachment.ts's action ever ran.
     serverActions: {
-      bodySizeLimit: '8mb'
+      bodySizeLimit: '20mb'
     }
   }
   // No webpack() config: Turbopack is the default bundler as of Next.js 16,
