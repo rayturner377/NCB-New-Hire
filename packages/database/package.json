@@ -23,7 +23,8 @@
     "@ncb/shared": "*",
     "@prisma/client": "^5.20.0",
     "better-auth": "^1.7.4",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "prisma": "^5.20.0"
   },
   "devDependencies": {
     "@ncb/eslint-config": "*",
@@ -31,7 +32,6 @@
     "@ncb/vitest-config": "*",
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^9.9.0",
-    "prisma": "^5.20.0",
     "typescript": "^5.6.3",
     "vitest": "^5.0.0"
   }

@@ -15,7 +15,14 @@ if (!secret) {
 // always overridden by the real value from .env at container runtime. A plain truthiness check
 // wouldn't catch a deployment that's missing that override: this string is committed to the repo
 // and would otherwise pass silently as a real, working secret.
-if (secret === 'docker-build-placeholder-overridden-at-runtime') {
+//
+// Skipped during `next build` itself (NEXT_PHASE is set to phase-production-build only then, per
+// Next.js's own convention): next build's "Collecting page data" step imports every route module
+// to inspect it, constructing this exact betterAuth() instance against the Dockerfile's own
+// placeholder as it does — rejecting it here too would fail the build using the very placeholder
+// the build stage set for exactly this purpose. The check still runs at every other time,
+// including `next start`, which is what actually matters for a real deployment.
+if (secret === 'docker-build-placeholder-overridden-at-runtime' && process.env.NEXT_PHASE !== 'phase-production-build') {
   throw new Error('BETTER_AUTH_SECRET is still the Docker build placeholder — set a real value in .env at runtime.');
 }
 
