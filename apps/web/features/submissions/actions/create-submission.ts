@@ -8,9 +8,9 @@ import { requireFullSession } from '../../../lib/session';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import type { CandidatePayload } from '../../candidates/types';
 import { ownsCase } from '../../cases/case-authorization';
-import { clearDoctorAssessmentDraft, getCaseById, setCaseBilling, transitionCase } from '../../cases/services/cases-service';
+import { clearDoctorAssessmentDraft, getCaseById } from '../../cases/services/cases-service';
 import { createSubmissionSchema } from '../schemas/submission';
-import { createSubmission } from '../services/submissions-service';
+import { createSubmissionAndTransitionCase } from '../services/submissions-service';
 
 export interface SubmissionActionResult {
   ok: boolean;
@@ -69,6 +69,9 @@ export async function createSubmissionAction(
   if (!ownsCase(session.user, medicalCase)) {
     return { ok: false, error: 'This case is not assigned to you.' };
   }
+  if (medicalCase.status !== 'sent_to_doctor') {
+    return { ok: false, error: 'This case is not currently awaiting your assessment.' };
+  }
 
   const candidate = await getCandidateById(medicalCase.patientId);
   if (!candidate) {
@@ -81,14 +84,6 @@ export async function createSubmissionAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid assessment details.' };
   }
 
-  await createSubmission({
-    ...parsed.data,
-    caseId,
-    submittedBy: session.user.id,
-    submittedByName: session.user.displayName,
-    submittedByEmail: session.user.email
-  });
-
   // Snapshots the doctor's *current* rate onto the case at the moment they submit — a fixed
   // amount from here on, independent of the doctor's own rate changing later (only an admin can
   // adjust it after this point, see actions/update-case-billing.ts). A rate of 0 (unset, or a
@@ -96,11 +91,23 @@ export async function createSubmissionAction(
   // writing a misleading $0.00.
   const medicalProfile = session.user.medicalProfile as { defaultMedicalFee?: number } | null;
   const doctorRate = Number(medicalProfile?.defaultMedicalFee);
-  if (Number.isFinite(doctorRate) && doctorRate > 0) {
-    await setCaseBilling(caseId, doctorRate, 'unpaid');
-  }
+  const billing = Number.isFinite(doctorRate) && doctorRate > 0 ? { payableAmount: doctorRate, paymentStatus: 'unpaid' } : undefined;
 
-  await transitionCase(caseId, expectedVersion, 'doctor_submitted', session.user.id);
+  // The submission insert, billing snapshot, and case transition all happen in one DB
+  // transaction — a stale expectedVersion rolls back the submission/billing writes too, instead
+  // of leaving them orphaned with no matching transition (see submissionsRepository.saveAndTransition).
+  await createSubmissionAndTransitionCase(
+    {
+      ...parsed.data,
+      caseId,
+      submittedBy: session.user.id,
+      submittedByName: session.user.displayName,
+      submittedByEmail: session.user.email
+    },
+    expectedVersion,
+    billing
+  );
+
   // The draft's job is done — clearing it now means a future "send back to the doctor" on this
   // same case starts from a blank assessment, not this now-superseded draft snapshot.
   await clearDoctorAssessmentDraft(caseId, medicalCase.payload);

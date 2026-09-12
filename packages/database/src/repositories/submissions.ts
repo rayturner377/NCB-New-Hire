@@ -75,6 +75,75 @@ export function createSubmissionsRepository(db: PrismaClient) {
       const row = await db.medicalSubmission.findFirst({ where: { id } });
       if (!row) return false;
       return sha256OfBuffer(Buffer.from(row.encryptedPayload)) === row.payloadSha256;
+    },
+
+    /**
+     * Atomically: computes the next submission version, inserts the submission row, optionally
+     * updates billing, and calls the version-checked transition_medical_case stored procedure —
+     * all in one DB transaction. Previously these were three independent statements (see
+     * create-submission.ts's own history) with no shared rollback: a stale expectedVersion could
+     * fail the transition after the submission (and billing change) had already been persisted,
+     * leaving them orphaned with no matching case transition. `buildPayload` receives the
+     * transaction-computed version so the caller's payload shape (owned by apps/web, not this
+     * repository) can include it without a second round trip.
+     */
+    async saveAndTransition(
+      input: {
+        id: string;
+        caseId: string;
+        submittedBy?: string;
+        expectedVersion: number;
+        newStatus: string;
+        actorId: string;
+        billing?: { payableAmount: number; paymentStatus: string };
+      },
+      masterKey: Buffer,
+      buildPayload: (submissionVersion: number) => unknown
+    ): Promise<{ payload: unknown; submissionVersion: number; newCaseVersion: number; previousStatus: string | null }> {
+      return db.$transaction(async (tx) => {
+        const existing = await tx.medicalSubmission.findMany({
+          where: { caseId: input.caseId },
+          orderBy: [{ submissionVersion: 'desc' }, { submittedAt: 'desc' }],
+          take: 1,
+          select: { submissionVersion: true }
+        });
+        const submissionVersion = (existing[0]?.submissionVersion ?? 0) + 1;
+
+        const payload = buildPayload(submissionVersion);
+        const record = encryptJson(masterKey, payload);
+        const encryptedPayload = Buffer.from(JSON.stringify(record), 'utf8');
+        const payloadSha256 = sha256OfBuffer(encryptedPayload);
+        await tx.medicalSubmission.create({
+          data: {
+            id: input.id,
+            caseId: input.caseId,
+            submittedBy: input.submittedBy,
+            submissionVersion,
+            encryptedPayload,
+            payloadKeyVersion: 1,
+            payloadSha256
+          }
+        });
+
+        if (input.billing) {
+          await tx.medicalCase.update({
+            where: { id: input.caseId },
+            data: { payableAmount: input.billing.payableAmount, paymentStatus: input.billing.paymentStatus }
+          });
+        }
+
+        const before = await tx.medicalCase.findFirst({ where: { id: input.caseId }, select: { status: true } });
+
+        const rows = await tx.$queryRaw<{ transition_medical_case: number }[]>`
+          SELECT transition_medical_case(${input.caseId}::varchar, ${input.expectedVersion}::integer, ${input.newStatus}::varchar, ${input.actorId}::varchar) AS transition_medical_case
+        `;
+        const row = rows[0];
+        if (!row) {
+          throw new Error('Medical case changed or does not exist');
+        }
+
+        return { payload, submissionVersion, newCaseVersion: row.transition_medical_case, previousStatus: before?.status ?? null };
+      });
     }
   };
 }

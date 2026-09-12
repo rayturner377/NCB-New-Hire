@@ -182,17 +182,34 @@ export async function transitionCase(
   if (newStatus === 'withdrawn' || newStatus === 'canceled_by_doctor') {
     await casesRepository.setPaymentStatus(caseId, 'not_payable');
   }
+  await finalizeCaseTransition(caseId, actorId, before?.status ?? null, newStatus);
+
+  return newVersion;
+}
+
+/**
+ * The audit + notification side effects of a case transition, shared between transitionCase above
+ * (which also performs the DB transition itself) and createSubmissionAndTransitionCase
+ * (submissions-service.ts, whose transition already happened inside its own DB transaction via
+ * submissionsRepository.saveAndTransition — this only runs after that transaction has committed).
+ * Deliberately not run inside a DB transaction itself: an audit write and an outgoing email are
+ * side effects of a committed transition, not part of the atomicity guarantee for it.
+ */
+export async function finalizeCaseTransition(
+  caseId: string,
+  actorId: string,
+  previousStatus: string | null,
+  newStatus: CaseStatus
+): Promise<void> {
   await auditRepository.append({
     eventType: 'case_transition',
     actorUserId: actorId,
     entityType: 'case',
     entityId: caseId,
-    details: { from: before?.status ?? null, to: newStatus }
+    details: { from: previousStatus, to: newStatus }
   });
 
   await notifyOnTransition(newStatus, caseId);
-
-  return newVersion;
 }
 
 /**

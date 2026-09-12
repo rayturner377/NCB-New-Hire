@@ -2,14 +2,17 @@ import { randomBytes } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const save = vi.fn();
+const saveAndTransition = vi.fn();
 const listAll = vi.fn();
 const listForCase = vi.fn();
 const findById = vi.fn();
 const decrypt = vi.fn((row: { payload: unknown }) => row.payload);
+const finalizeCaseTransitionMock = vi.fn();
 
 vi.mock('@ncb/database', () => ({
   submissionsRepository: {
     save: (...args: unknown[]) => save(...args),
+    saveAndTransition: (...args: unknown[]) => saveAndTransition(...args),
     listAll: (...args: unknown[]) => listAll(...args),
     listForCase: (...args: unknown[]) => listForCase(...args),
     findById: (...args: unknown[]) => findById(...args),
@@ -20,9 +23,12 @@ vi.mock('@ncb/database', () => ({
 const masterKey = randomBytes(32);
 vi.mock('../../../../../lib/master-key', () => ({ loadMasterKey: () => masterKey }));
 
-const { createSubmission, getSubmissionById, listSubmissions, listSubmissionsForCase } = await import(
-  '../../submissions-service'
-);
+vi.mock('../../../../cases/services/cases-service', () => ({
+  finalizeCaseTransition: (...args: unknown[]) => finalizeCaseTransitionMock(...args)
+}));
+
+const { createSubmission, createSubmissionAndTransitionCase, getSubmissionById, listSubmissions, listSubmissionsForCase } =
+  await import('../../submissions-service');
 
 function baseInput() {
   return {
@@ -68,10 +74,12 @@ function baseInput() {
 describe('submissions service', () => {
   beforeEach(() => {
     save.mockReset();
+    saveAndTransition.mockReset();
     listAll.mockReset();
     listForCase.mockReset();
     findById.mockReset();
     decrypt.mockClear();
+    finalizeCaseTransitionMock.mockReset();
   });
 
   it('createSubmission builds the full payload, defaults review to pending, and persists against the real case id', async () => {
@@ -125,5 +133,64 @@ describe('submissions service', () => {
   it('getSubmissionById decrypts the row when found', async () => {
     findById.mockResolvedValue({ payload: { id: 'med_1' } });
     expect(await getSubmissionById('med_1')).toEqual({ id: 'med_1' });
+  });
+});
+
+describe('createSubmissionAndTransitionCase', () => {
+  beforeEach(() => {
+    saveAndTransition.mockReset();
+    finalizeCaseTransitionMock.mockReset();
+  });
+
+  it('delegates the atomic write to saveAndTransition with the expected version and billing', async () => {
+    saveAndTransition.mockResolvedValue({
+      payload: { id: 'med_1', version: 1 },
+      submissionVersion: 1,
+      newCaseVersion: 3,
+      previousStatus: 'sent_to_doctor'
+    });
+
+    await createSubmissionAndTransitionCase(baseInput(), 2, { payableAmount: 150, paymentStatus: 'unpaid' });
+
+    expect(saveAndTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        caseId: 'case_1',
+        submittedBy: 'usr_doctor_demo',
+        expectedVersion: 2,
+        newStatus: 'doctor_submitted',
+        actorId: 'usr_doctor_demo',
+        billing: { payableAmount: 150, paymentStatus: 'unpaid' }
+      }),
+      masterKey,
+      expect.any(Function)
+    );
+  });
+
+  it("the buildPayload callback produces the full submission shape using the transaction-computed version", async () => {
+    saveAndTransition.mockImplementation(async (_input, _masterKey, buildPayload) => ({
+      payload: buildPayload(2),
+      submissionVersion: 2,
+      newCaseVersion: 3,
+      previousStatus: 'sent_to_doctor'
+    }));
+
+    const result = await createSubmissionAndTransitionCase(baseInput(), 2);
+
+    expect(result.payload.version).toBe(2);
+    expect(result.payload.review).toEqual({ status: 'pending', notes: '', reviewedAt: '', reviewedBy: '', reviewedByName: '' });
+    expect(result.newCaseVersion).toBe(3);
+  });
+
+  it('finalizes the case transition (audit + notify) only after the transaction resolves, using its reported previousStatus', async () => {
+    saveAndTransition.mockResolvedValue({
+      payload: { id: 'med_1' },
+      submissionVersion: 1,
+      newCaseVersion: 3,
+      previousStatus: 'sent_to_doctor'
+    });
+
+    await createSubmissionAndTransitionCase(baseInput(), 2);
+
+    expect(finalizeCaseTransitionMock).toHaveBeenCalledWith('case_1', 'usr_doctor_demo', 'sent_to_doctor', 'doctor_submitted');
   });
 });
