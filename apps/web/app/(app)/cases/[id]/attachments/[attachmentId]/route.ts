@@ -56,6 +56,20 @@ export async function GET(
     return new NextResponse('Not found', { status: 404 });
   }
 
+  // No virus-scanning engine is wired up yet, so every attachment sits at the default 'pending'
+  // scanStatus forever today — blocking on anything short of 'clean' would make every attachment
+  // undownloadable right now, a regression with no actual scanning behind it. 'rejected'/'failed'
+  // can't occur yet either, but gating on them now means the day a scanner is integrated (see
+  // case_attachments.scan_status's own doc comment), a flagged file is instantly blocked for
+  // everyone except the uploader/an admin, who may need to investigate it.
+  if (
+    (result.attachment.scanStatus === 'rejected' || result.attachment.scanStatus === 'failed') &&
+    result.attachment.uploadedBy !== session.user.id &&
+    session.user.role !== 'admin'
+  ) {
+    return new NextResponse('Not found', { status: 404 });
+  }
+
   // Downloading a medical document is exactly the kind of access an investigator would need
   // to reconstruct later — the read side was previously unaudited even though every mutation
   // (upload, delete) already went through auditRepository.append elsewhere.
