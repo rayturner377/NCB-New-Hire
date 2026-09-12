@@ -3,14 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { deleteUser, getUserRole } from '../services/users-service';
 
 /** Soft-deletes a staff/patient account — same gate as creating one (requireCanManageUserAccount), so a reviewer can delete a doctor/reviewer/auditor account but never an admin's. Can't delete yourself, regardless of role. */
 export async function deleteUserAction(formData: FormData): Promise<void> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) return;
 
   const userId = String(formData.get('userId') || '');

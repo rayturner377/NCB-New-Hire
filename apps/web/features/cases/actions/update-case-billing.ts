@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { BILLING_STATUS_OPTIONS } from '../billing-status';
 import { getCaseById, hasDoctorSubmitted, setCaseBilling } from '../services/cases-service';
 
@@ -17,7 +17,7 @@ import { getCaseById, hasDoctorSubmitted, setCaseBilling } from '../services/cas
 export async function updateCaseBillingAction(formData: FormData): Promise<void> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) return;
 
   try {

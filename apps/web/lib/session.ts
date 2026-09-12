@@ -38,3 +38,18 @@ export async function getSession(): Promise<AuthenticatedSession | null> {
   const permissions = await getEffectivePermissions(user);
   return { user: { ...user, permissions } };
 }
+
+/**
+ * The same session `getSession()` returns, but null while `mustChangePassword`
+ * is set — for every Server Action/Route Handler except the two that must
+ * keep working during a forced password change (changePasswordAction itself,
+ * and logout). `app/(app)/layout.tsx`'s own mustChangePassword redirect only
+ * covers page loads; a Server Action or Route Handler can be invoked directly
+ * (a stale cached form, a crafted request) without ever rendering that layout
+ * first, so this is the actual enforcement boundary, not just a UX redirect.
+ */
+export async function requireFullSession(): Promise<AuthenticatedSession | null> {
+  const session = await getSession();
+  if (!session || session.user.mustChangePassword) return null;
+  return session;
+}

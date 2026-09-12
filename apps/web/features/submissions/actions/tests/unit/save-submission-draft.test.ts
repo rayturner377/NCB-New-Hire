@@ -7,7 +7,7 @@ const revalidatePathMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../../cases/case-authorization', async () => {
   const actual = await vi.importActual<typeof import('../../../../cases/case-authorization')>('../../../../cases/case-authorization');
   return actual;

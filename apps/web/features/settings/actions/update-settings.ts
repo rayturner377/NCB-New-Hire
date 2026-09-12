@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import type { ZodError } from 'zod';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import {
   exportSettingsSchema,
   generalSettingsSchema,
@@ -28,7 +28,7 @@ function fieldErrorsFrom(error: ZodError): Record<string, string> {
 
 async function requireSettingsAccess() {
   await assertSameOrigin();
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false as const, result: { ok: false, error: 'Your session has expired. Please sign in again.' } };
   }

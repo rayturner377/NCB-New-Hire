@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { getUserRole, setUserActive } from '../services/users-service';
 
 /**
@@ -15,7 +15,7 @@ import { getUserRole, setUserActive } from '../services/users-service';
 export async function setUserActiveAction(formData: FormData): Promise<void> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) return;
 
   const userId = String(formData.get('userId') || '');

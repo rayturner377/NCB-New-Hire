@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { createActionRateLimiter } from '../../../lib/action-rate-limit';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { createMedicalOfficeSchema } from '../schemas/medical-office';
 import { createMedicalOffice } from '../services/medical-offices-service';
 
@@ -24,7 +24,7 @@ export async function createMedicalOfficeAction(
 ): Promise<MedicalOfficeActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

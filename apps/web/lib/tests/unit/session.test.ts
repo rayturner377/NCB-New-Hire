@@ -11,7 +11,7 @@ vi.mock('../../effective-permissions', () => ({
   getEffectivePermissions: (...args: unknown[]) => getEffectivePermissionsMock(...args)
 }));
 
-const { getSession, sessionTtlMs } = await import('../../session');
+const { getSession, requireFullSession, sessionTtlMs } = await import('../../session');
 
 describe('getSession', () => {
   beforeEach(() => {
@@ -51,6 +51,36 @@ describe('getSession', () => {
 
     expect(session?.user.displayName).toBe('Dr. Example');
     expect(session?.user.permissions).toEqual(['cases:view']);
+  });
+});
+
+describe('requireFullSession', () => {
+  beforeEach(() => {
+    getAuthSessionMock.mockReset();
+    findByIdMock.mockReset();
+    getEffectivePermissionsMock.mockReset();
+    getEffectivePermissionsMock.mockResolvedValue([]);
+  });
+
+  it('returns null when there is no session at all', async () => {
+    getAuthSessionMock.mockResolvedValue(null);
+    expect(await requireFullSession()).toBeNull();
+  });
+
+  it('returns null when mustChangePassword is set, even though getSession() itself would return a session', async () => {
+    getAuthSessionMock.mockResolvedValue({ user: { id: 'user_1' } });
+    findByIdMock.mockResolvedValue({ id: 'user_1', active: true, mustChangePassword: true });
+
+    expect(await requireFullSession()).toBeNull();
+    expect(await getSession()).not.toBeNull();
+  });
+
+  it('returns the session when mustChangePassword is false', async () => {
+    getAuthSessionMock.mockResolvedValue({ user: { id: 'user_1' } });
+    findByIdMock.mockResolvedValue({ id: 'user_1', active: true, mustChangePassword: false, displayName: 'Dr. Example' });
+
+    const session = await requireFullSession();
+    expect(session?.user.displayName).toBe('Dr. Example');
   });
 });
 

@@ -5,7 +5,7 @@ import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { combineFullName } from '../../../lib/full-name';
 import { combineMedicalProfile } from '../../../lib/medical-profile';
 import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { updateUserSchema } from '../schemas/user';
 import { getUserRole, updateUser } from '../services/users-service';
 
@@ -21,7 +21,7 @@ export async function updateUserAction(
 ): Promise<UpdateUserActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

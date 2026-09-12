@@ -13,7 +13,7 @@ vi.mock('next/navigation', () => ({
   }
 }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/medical-offices-service', () => ({
   createMedicalOffice: (...args: unknown[]) => createMedicalOfficeMock(...args)
 }));

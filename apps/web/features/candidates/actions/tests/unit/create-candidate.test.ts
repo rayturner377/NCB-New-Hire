@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('../../../../../lib/assert-same-origin', () => ({
   assertSameOrigin: (...args: unknown[]) => assertSameOriginMock(...args)
 }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/candidates-service', () => ({
   createCandidate: (...args: unknown[]) => createCandidateMock(...args)
 }));

@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@ncb/auth';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 
 export interface SignOutOtherSessionsResult {
   ok: boolean;
@@ -23,7 +23,7 @@ export async function signOutOtherSessionsAction(
 ): Promise<SignOutOtherSessionsResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

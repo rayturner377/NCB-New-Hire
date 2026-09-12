@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { listActiveDoctors } from '../../users/services/users-service';
 import { findCaseAction } from '../case-transitions';
 import { getCaseById, reassignClinician, transitionCase } from '../services/cases-service';
@@ -31,7 +31,7 @@ export async function applyCaseActionAction(
 ): Promise<ApplyCaseActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

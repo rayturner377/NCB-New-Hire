@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { createActionRateLimiter } from '../../../lib/action-rate-limit';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { ownsCase } from '../case-authorization';
 import { InvalidAttachmentError, uploadCaseAttachment } from '../services/case-attachments-service';
 import { getCaseById } from '../services/cases-service';
@@ -32,7 +32,7 @@ export async function uploadCaseAttachmentAction(
 ): Promise<UploadCaseAttachmentResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

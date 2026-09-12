@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ASSIGNABLE_PERMISSIONS, ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { getUserRole, updateUser } from '../services/users-service';
 import type { SettingsActionResult } from '../../settings/types-action';
 
@@ -38,7 +38,7 @@ export async function updateUserPermissionOverridesAction(
 ): Promise<SettingsActionResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }

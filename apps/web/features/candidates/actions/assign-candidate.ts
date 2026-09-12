@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { requireOwnsCandidate } from '../candidate-authorization';
 import { updateCandidate } from '../services/candidates-service';
 
@@ -11,7 +11,7 @@ import { updateCandidate } from '../services/candidates-service';
 export async function assignCandidateAction(formData: FormData): Promise<void> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) return;
 
   try {

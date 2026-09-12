@@ -8,7 +8,7 @@ const renderNotificationEmailMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: () => undefined }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
-vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args) }));
+vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../../../lib/mail', () => ({ sendMail: (...args: unknown[]) => sendMailMock(...args) }));
 vi.mock('@ncb/database', () => ({ emailMessagesRepository: { create: (...args: unknown[]) => emailCreateMock(...args) } }));
 vi.mock('../../../services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));

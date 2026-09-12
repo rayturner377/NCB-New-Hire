@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ROLES } from '../../../lib/permissions';
-import { getSession } from '../../../lib/session';
+import { requireFullSession } from '../../../lib/session';
 import { caseAttachmentsRepository } from '@ncb/database';
 import { ownsCase } from '../case-authorization';
 import { deleteCaseAttachment } from '../services/case-attachments-service';
@@ -21,7 +21,7 @@ export async function deleteCaseAttachmentAction(
 ): Promise<DeleteCaseAttachmentResult> {
   await assertSameOrigin();
 
-  const session = await getSession();
+  const session = await requireFullSession();
   if (!session) {
     return { ok: false, error: 'Your session has expired. Please sign in again.' };
   }
