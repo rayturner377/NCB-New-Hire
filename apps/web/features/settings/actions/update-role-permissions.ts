@@ -47,7 +47,7 @@ export async function updateRolePermissionsAction(
   }
 
   await rolePermissionsRepository.setForRole(parsed.data.role, parsed.data.permissions);
-  invalidateRolePermissionsCache();
+  await invalidateRolePermissionsCache();
 
   await auditRepository.append({
     eventType: 'role_permissions_updated',
