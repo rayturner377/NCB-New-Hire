@@ -15,7 +15,9 @@ export const EVENT_LABELS: Record<string, string> = {
   user_deleted: 'User deleted',
   user_activated: 'User activated',
   user_deactivated: 'User deactivated',
-  user_password_reset: 'Password reset',
+  user_password_reset: 'Password reset requested',
+  account_activated: 'Account activated',
+  password_reset_completed: 'Password reset completed',
   login_success: 'Login',
   login_failed: 'Login failed',
   logout: 'Logout',
@@ -37,7 +39,15 @@ export const EVENT_TYPE_GROUPS: EventTypeGroup[] = [
   },
   {
     label: 'User accounts',
-    eventTypes: ['user_created', 'user_deleted', 'user_activated', 'user_deactivated', 'user_password_reset']
+    eventTypes: [
+      'user_created',
+      'user_deleted',
+      'user_activated',
+      'user_deactivated',
+      'user_password_reset',
+      'account_activated',
+      'password_reset_completed'
+    ]
   },
   {
     label: 'Sessions & access',

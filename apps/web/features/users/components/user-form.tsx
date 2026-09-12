@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { CredentialsFields } from '../../../components/form/credentials-fields';
 import { DoctorProfileFields, type DoctorProfileFieldsOffice } from '../../../components/form/doctor-profile-fields';
-import { ForcePasswordChangeField } from '../../../components/form/force-password-change-field';
 import { FormSection } from '../../../components/form/form-section';
 import { NameFields } from '../../../components/form/name-fields';
 import { ValidatedSubmitButton } from '../../../components/form/submit-button';
@@ -29,10 +28,10 @@ export interface UserFormProps {
 
 /**
  * Reused for every staff account type (doctor/reviewer/admin) rather than
- * one form per role — the fields are identical (name, login email, temporary
- * password); only the role differs, and that's fixed by the page this form
- * is rendered on. Same validated-submit treatment as CandidateForm
- * (components/form/submit-button.tsx + lib/hooks/use-validated-form.ts).
+ * one form per role — the fields are identical (name, login email); only the
+ * role differs, and that's fixed by the page this form is rendered on. Same
+ * validated-submit treatment as CandidateForm (components/form/submit-button.tsx
+ * + lib/hooks/use-validated-form.ts).
  */
 export function UserForm({ role, roleLabel, cancelHref, offices = [] }: UserFormProps) {
   const [state, formAction] = useActionState(createUserAction, initialState);
@@ -72,11 +71,8 @@ export function UserForm({ role, roleLabel, cancelHref, offices = [] }: UserForm
 
       <Separator />
 
-      <FormSection title="Login credentials" description="What they'll use to sign in — share the temporary password with them directly.">
-        <div className="flex flex-col gap-5">
-          <CredentialsFields passwordRequired emailError={fieldError('email')} passwordError={fieldError('password')} />
-          <ForcePasswordChangeField />
-        </div>
+      <FormSection title="Login credentials" description="They'll receive an activation code by email to set their own password.">
+        <CredentialsFields emailRequired emailError={fieldError('email')} />
       </FormSection>
 
       {role === 'clinician' ? (

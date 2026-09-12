@@ -14,3 +14,4 @@ export * from './repositories/case-attachments.js';
 export * from './repositories/notification-templates.js';
 export * from './repositories/email-messages.js';
 export * from './repositories/role-permissions.js';
+export * from './repositories/access-codes.js';

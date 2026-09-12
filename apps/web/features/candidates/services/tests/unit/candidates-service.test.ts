@@ -92,7 +92,7 @@ describe('candidates service', () => {
     );
   });
 
-  it('createCandidate grants portal access when a password is given, linking the new account', async () => {
+  it('createCandidate grants portal access when checked and an email is present, linking the new account', async () => {
     save.mockResolvedValue(undefined);
     createUser.mockResolvedValue({ id: 'usr_new_patient' });
 
@@ -101,7 +101,7 @@ describe('candidates service', () => {
       position: 'Teller',
       dateOfBirth: '1990-01-01',
       email: 'jane@example.com',
-      password: 'a-very-long-password',
+      grantPortalAccess: true,
       createdBy: 'usr_reviewer_demo',
       createdByName: 'Demo Reviewer'
     });
@@ -109,11 +109,26 @@ describe('candidates service', () => {
     expect(createUser).toHaveBeenCalledWith({
       email: 'jane@example.com',
       displayName: 'Jane Doe',
-      role: 'patient',
-      password: 'a-very-long-password'
+      role: 'patient'
     });
     expect(created.linkedUserId).toBe('usr_new_patient');
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ linkedUserId: 'usr_new_patient' }), masterKey);
+  });
+
+  it('createCandidate does not grant portal access when checked but no email is given', async () => {
+    save.mockResolvedValue(undefined);
+
+    const created = await createCandidate({
+      fullName: 'Jane Doe',
+      position: 'Teller',
+      dateOfBirth: '1990-01-01',
+      grantPortalAccess: true,
+      createdBy: 'usr_reviewer_demo',
+      createdByName: 'Demo Reviewer'
+    });
+
+    expect(createUser).not.toHaveBeenCalled();
+    expect(created.linkedUserId).toBe('');
   });
 
   it('listCandidates filters out rows with no payload', async () => {

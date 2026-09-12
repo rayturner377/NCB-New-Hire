@@ -43,9 +43,32 @@ model AppUser {
   attachments            CaseAttachment[]      @relation("AttachmentUploadedBy")
   settingUpdates         ApplicationSetting[]  @relation("SettingUpdatedBy")
   accounts               Account[]
+  accessCodes            AccessCode[]
 
   @@index([role, active], map: "idx_users_role_active")
   @@map("app_users")
+}
+
+/// One-time codes emailed for account activation and password reset, replacing the previous
+/// design of emailing a real chosen password directly (which ended up persisted in plaintext in
+/// email_messages.bodyHtml, readable by anyone with Message Centre access). Only codeHash is ever
+/// stored — see lib/access-codes.ts for generation/hashing/verification. A code is single-use
+/// (usedAt) and expiring (expiresAt); attemptCount locks it out after repeated wrong guesses,
+/// since the 6-digit space is small enough that hash strength alone isn't sufficient protection.
+model AccessCode {
+  id           String    @id @db.VarChar(80)
+  userId       String    @map("user_id") @db.VarChar(80)
+  codeHash     String    @map("code_hash") @db.Char(64)
+  purpose      String    @db.VarChar(30)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt       DateTime? @map("used_at") @db.Timestamptz(6)
+  attemptCount Int       @default(0) @map("attempt_count")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, createdAt(sort: Desc)], map: "idx_access_codes_user_purpose")
+  @@map("access_codes")
 }
 
 /// Better Auth's credential storage. One row per

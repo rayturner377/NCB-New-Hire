@@ -5,8 +5,7 @@ describe('createUserSchema', () => {
   const valid = {
     email: 'doctor@ncb.local',
     displayName: 'Demo Doctor',
-    role: 'clinician',
-    password: 'a-very-long-password'
+    role: 'clinician'
   };
 
   it('accepts a valid payload', () => {
@@ -23,10 +22,6 @@ describe('createUserSchema', () => {
 
   it('rejects an unrecognized role', () => {
     expect(createUserSchema.safeParse({ ...valid, role: 'superadmin' }).success).toBe(false);
-  });
-
-  it('rejects a password shorter than 12 characters', () => {
-    expect(createUserSchema.safeParse({ ...valid, password: 'short' }).success).toBe(false);
   });
 });
 

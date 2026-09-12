@@ -76,24 +76,6 @@ describe('createCandidateAction', () => {
     expect(createCandidateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a password with no email (portal access needs a login email)', async () => {
-    getSessionMock.mockResolvedValue({ user: { id: 'user_1', role: 'reviewer' } });
-
-    const result = await createCandidateAction(
-      null,
-      formData({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        position: 'Teller',
-        dateOfBirth: '1990-01-01',
-        password: 'a-very-long-password'
-      })
-    );
-
-    expect(result.ok).toBe(false);
-    expect(createCandidateMock).not.toHaveBeenCalled();
-  });
-
   it('creates the candidate, revalidates the list, and redirects to the new candidate on success', async () => {
     getSessionMock.mockResolvedValue({
       user: { id: 'usr_reviewer_demo', displayName: 'Demo Reviewer', role: 'reviewer' }
@@ -111,10 +93,34 @@ describe('createCandidateAction', () => {
       expect.objectContaining({
         fullName: 'Jane Doe',
         createdBy: 'usr_reviewer_demo',
-        createdByName: 'Demo Reviewer'
+        createdByName: 'Demo Reviewer',
+        grantPortalAccess: false
       })
     );
     expect(revalidatePathMock).toHaveBeenCalledWith('/candidates');
     expect(redirectMock).toHaveBeenCalledWith('/candidates/cand_1');
+  });
+
+  it('passes grantPortalAccess: true when the checkbox is checked', async () => {
+    getSessionMock.mockResolvedValue({
+      user: { id: 'usr_reviewer_demo', displayName: 'Demo Reviewer', role: 'reviewer' }
+    });
+    createCandidateMock.mockResolvedValue({ id: 'cand_1' });
+
+    await expect(
+      createCandidateAction(
+        null,
+        formData({
+          firstName: 'Jane',
+          lastName: 'Doe',
+          position: 'Teller',
+          dateOfBirth: '1990-01-01',
+          email: 'jane@example.com',
+          grantPortalAccess: 'on'
+        })
+      )
+    ).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(createCandidateMock).toHaveBeenCalledWith(expect.objectContaining({ grantPortalAccess: true }));
   });
 });

@@ -72,7 +72,7 @@ export async function createCandidateAction(
       ...parsed.data,
       createdBy: session.user.id,
       createdByName: session.user.displayName,
-      mustChangePassword: formData.get('forcePasswordChange') != null
+      grantPortalAccess: formData.get('grantPortalAccess') != null
     });
   } catch (error) {
     if (error instanceof DuplicateEmailError) {

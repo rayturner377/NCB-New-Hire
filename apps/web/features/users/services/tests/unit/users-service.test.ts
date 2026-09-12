@@ -9,9 +9,14 @@ const auditAppend = vi.fn();
 const sendNotificationMock = vi.fn();
 const setUserPasswordMock = vi.fn();
 const revokeAllSessionsForUserMock = vi.fn();
+const issueAccessCodeMock = vi.fn();
 
 vi.mock('../../../../notifications/services/notification-service', () => ({
   sendNotification: (...args: unknown[]) => sendNotificationMock(...args)
+}));
+
+vi.mock('../../../../auth/services/access-codes-service', () => ({
+  issueAccessCode: (...args: unknown[]) => issueAccessCodeMock(...args)
 }));
 
 vi.mock('@ncb/database', () => ({
@@ -74,6 +79,8 @@ describe('users service', () => {
     sendNotificationMock.mockReset();
     setUserPasswordMock.mockReset();
     revokeAllSessionsForUserMock.mockReset();
+    issueAccessCodeMock.mockReset();
+    issueAccessCodeMock.mockResolvedValue('482913');
     findById.mockReset();
     softDelete.mockReset();
   });
@@ -82,9 +89,9 @@ describe('users service', () => {
     findByEmail.mockResolvedValue(null);
     create.mockRejectedValue({ code: 'P2002' });
 
-    await expect(
-      createUser({ email: 'reviewer@ncb.local', displayName: 'Someone', role: 'reviewer', password: 'a-very-long-password' })
-    ).rejects.toThrow(DuplicateEmailError);
+    await expect(createUser({ email: 'reviewer@ncb.local', displayName: 'Someone', role: 'reviewer' })).rejects.toThrow(
+      DuplicateEmailError
+    );
     expect(setUserPasswordMock).not.toHaveBeenCalled();
   });
 
@@ -92,9 +99,9 @@ describe('users service', () => {
     findByEmail.mockResolvedValue(null);
     create.mockRejectedValue(new Error('connection lost'));
 
-    await expect(
-      createUser({ email: 'reviewer@ncb.local', displayName: 'Someone', role: 'reviewer', password: 'a-very-long-password' })
-    ).rejects.toThrow('connection lost');
+    await expect(createUser({ email: 'reviewer@ncb.local', displayName: 'Someone', role: 'reviewer' })).rejects.toThrow(
+      'connection lost'
+    );
   });
 
   it('getUserRole returns the role for an existing user', async () => {
@@ -147,27 +154,35 @@ describe('users service', () => {
   it('createUser rejects a duplicate email without calling create', async () => {
     findByEmail.mockResolvedValue(sampleUser());
 
-    await expect(
-      createUser({ email: 'reviewer@ncb.local', displayName: 'Someone Else', role: 'reviewer', password: 'a-very-long-password' })
-    ).rejects.toThrow(DuplicateEmailError);
+    await expect(createUser({ email: 'reviewer@ncb.local', displayName: 'Someone Else', role: 'reviewer' })).rejects.toThrow(
+      DuplicateEmailError
+    );
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('createUser persists a new user, sets its Better Auth password, and returns a summary without the password record', async () => {
+  it('createUser persists a new user, sets an unguessable Better Auth password, issues an activation code, and emails the code (never a real password)', async () => {
     findByEmail.mockResolvedValue(null);
     create.mockResolvedValue(sampleUser());
 
     const result = await createUser({
       email: 'Reviewer@NCB.local',
       displayName: 'Demo Reviewer',
-      role: 'reviewer',
-      password: 'a-very-long-password'
+      role: 'reviewer'
     });
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'reviewer@ncb.local', role: 'reviewer' })
     );
-    expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', 'a-very-long-password');
+    // A real credential is set, but its value is never anything the caller chose or can see.
+    expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', expect.any(String));
+    expect(issueAccessCodeMock).toHaveBeenCalledWith('usr_1', 'account_activation');
+    expect(sendNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateKey: 'account_created',
+        variables: expect.objectContaining({ activationCode: '482913' })
+      })
+    );
+    expect(sendNotificationMock.mock.calls[0]![0].variables).not.toHaveProperty('temporaryPassword');
     expect(result).not.toHaveProperty('passwordRecord');
     expect(result.id).toBe('usr_1');
   });
@@ -211,12 +226,30 @@ describe('users service', () => {
     expect(revokeAllSessionsForUserMock).not.toHaveBeenCalled();
   });
 
-  it('resetUserPassword sets the new password and kills every session on the target account unconditionally', async () => {
-    await resetUserPassword('usr_1', 'a-new-long-password', true, 'usr_admin_demo');
+  it('resetUserPassword kills every session on the target account and emails a reset code (never a password)', async () => {
+    findById.mockResolvedValue(sampleUser());
 
-    expect(updateMock).toHaveBeenCalledWith('usr_1', { mustChangePassword: true });
-    expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', 'a-new-long-password');
+    await resetUserPassword('usr_1', 'usr_admin_demo');
+
     expect(revokeAllSessionsForUserMock).toHaveBeenCalledWith('usr_1');
+    expect(issueAccessCodeMock).toHaveBeenCalledWith('usr_1', 'password_reset');
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'user_password_reset', entityId: 'usr_1' }));
+    expect(sendNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        templateKey: 'password_reset',
+        variables: expect.objectContaining({ resetCode: '482913' })
+      })
+    );
+    expect(sendNotificationMock.mock.calls[0]![0].variables).not.toHaveProperty('temporaryPassword');
+  });
+
+  it('resetUserPassword does nothing when the target user does not exist', async () => {
+    findById.mockResolvedValue(null);
+
+    await resetUserPassword('missing', 'usr_admin_demo');
+
+    expect(revokeAllSessionsForUserMock).not.toHaveBeenCalled();
+    expect(issueAccessCodeMock).not.toHaveBeenCalled();
+    expect(auditAppend).not.toHaveBeenCalled();
   });
 });

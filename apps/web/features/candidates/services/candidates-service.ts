@@ -13,8 +13,8 @@ function randomToken(bytes: number): string {
 export interface CreateCandidateInput extends CreateCandidateSchemaInput {
   createdBy: string;
   createdByName: string;
-  /** Forces the change-password wizard on next login — only meaningful alongside `password`. */
-  mustChangePassword?: boolean;
+  /** HR's "grant portal access" checkbox — only takes effect when an email is also present. */
+  grantPortalAccess?: boolean;
 }
 
 async function persist(payload: CandidatePayload): Promise<void> {
@@ -36,22 +36,21 @@ async function persist(payload: CandidatePayload): Promise<void> {
 }
 
 /**
- * Ported from server.js sanitizeCandidate (~L3011-3039). A password grants
- * portal access at creation time (old app.js did this as a separate later
- * step, POST /api/candidates/:id/user — see createUser/DuplicateEmailError,
- * reused here so both flows create the account identically).
+ * Ported from server.js sanitizeCandidate (~L3011-3039). Checking "grant
+ * portal access" (with an email present) grants it at creation time (old
+ * app.js did this as a separate later step, POST /api/candidates/:id/user —
+ * see createUser/DuplicateEmailError, reused here so both flows create the
+ * account identically).
  */
 export async function createCandidate(input: CreateCandidateInput): Promise<CandidatePayload> {
   const now = new Date().toISOString();
 
   let linkedUserId = '';
-  if (input.password) {
+  if (input.grantPortalAccess && input.email) {
     const user = await createUser({
       email: input.email,
       displayName: input.fullName,
-      role: 'patient',
-      password: input.password,
-      mustChangePassword: input.mustChangePassword
+      role: 'patient'
     });
     linkedUserId = user.id;
   }
