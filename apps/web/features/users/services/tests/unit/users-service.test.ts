@@ -20,7 +20,9 @@ vi.mock('@ncb/database', () => ({
     create: (...args: unknown[]) => create(...args),
     listUsers: (...args: unknown[]) => listUsersMock(...args),
     setActive: (...args: unknown[]) => setActive(...args),
-    update: (...args: unknown[]) => updateMock(...args)
+    update: (...args: unknown[]) => updateMock(...args),
+    findById: (...args: unknown[]) => findById(...args),
+    softDelete: (...args: unknown[]) => softDelete(...args)
   },
   auditRepository: {
     append: (...args: unknown[]) => auditAppend(...args)
@@ -32,7 +34,21 @@ vi.mock('@ncb/auth/utils', () => ({
   revokeAllSessionsForUser: (...args: unknown[]) => revokeAllSessionsForUserMock(...args)
 }));
 
-const { createUser, DuplicateEmailError, listUsers, setUserActive, changePassword, resetUserPassword } = await import('../../users-service');
+const findById = vi.fn();
+const softDelete = vi.fn();
+
+const {
+  createUser,
+  DuplicateEmailError,
+  listUsers,
+  listActiveDoctors,
+  getUserRole,
+  setUserActive,
+  updateUser,
+  deleteUser,
+  changePassword,
+  resetUserPassword
+} = await import('../../users-service');
 
 function sampleUser(overrides: Record<string, unknown> = {}) {
   return {
@@ -58,6 +74,74 @@ describe('users service', () => {
     sendNotificationMock.mockReset();
     setUserPasswordMock.mockReset();
     revokeAllSessionsForUserMock.mockReset();
+    findById.mockReset();
+    softDelete.mockReset();
+  });
+
+  it('createUser converts a race-condition unique-constraint violation into DuplicateEmailError', async () => {
+    findByEmail.mockResolvedValue(null);
+    create.mockRejectedValue({ code: 'P2002' });
+
+    await expect(
+      createUser({ email: 'reviewer@ncb.local', displayName: 'Someone', role: 'reviewer', password: 'a-very-long-password' })
+    ).rejects.toThrow(DuplicateEmailError);
+    expect(setUserPasswordMock).not.toHaveBeenCalled();
+  });
+
+  it('createUser rethrows any other error from create() unchanged', async () => {
+    findByEmail.mockResolvedValue(null);
+    create.mockRejectedValue(new Error('connection lost'));
+
+    await expect(
+      createUser({ email: 'reviewer@ncb.local', displayName: 'Someone', role: 'reviewer', password: 'a-very-long-password' })
+    ).rejects.toThrow('connection lost');
+  });
+
+  it('getUserRole returns the role for an existing user', async () => {
+    findById.mockResolvedValue(sampleUser({ role: 'admin' }));
+    expect(await getUserRole('usr_1')).toBe('admin');
+  });
+
+  it('getUserRole returns null when no such user exists', async () => {
+    findById.mockResolvedValue(null);
+    expect(await getUserRole('missing')).toBeNull();
+  });
+
+  it('listActiveDoctors filters to active clinicians only', async () => {
+    listUsersMock.mockResolvedValue([
+      sampleUser({ id: 'doc_1', role: 'clinician', active: true }),
+      sampleUser({ id: 'doc_2', role: 'clinician', active: false }),
+      sampleUser({ id: 'usr_3', role: 'reviewer', active: true })
+    ]);
+
+    const result = await listActiveDoctors();
+
+    expect(result.map((u) => u.id)).toEqual(['doc_1']);
+  });
+
+  it('updateUser passes the patch through and returns a summary', async () => {
+    updateMock.mockResolvedValue(sampleUser({ displayName: 'Updated Name' }));
+
+    const result = await updateUser('usr_1', { displayName: 'Updated Name' });
+
+    expect(updateMock).toHaveBeenCalledWith('usr_1', { displayName: 'Updated Name' });
+    expect(result.displayName).toBe('Updated Name');
+  });
+
+  it('deleteUser soft-deletes and records an audit event with the pre-deletion role/name', async () => {
+    softDelete.mockResolvedValue(sampleUser({ role: 'clinician', displayName: 'Departed Doctor' }));
+
+    await deleteUser('usr_1', 'usr_admin_demo');
+
+    expect(softDelete).toHaveBeenCalledWith('usr_1');
+    expect(auditAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'user_deleted',
+        actorUserId: 'usr_admin_demo',
+        entityId: 'usr_1',
+        details: { role: 'clinician', displayName: 'Departed Doctor' }
+      })
+    );
   });
 
   it('createUser rejects a duplicate email without calling create', async () => {
