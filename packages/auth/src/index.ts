@@ -82,6 +82,12 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
+    // No public self-signup — every account is created by an admin/reviewer
+    // through createUser() (features/users/services/users-service.ts). Without
+    // this, /api/auth/sign-up/email stayed live even with no signup page ever
+    // linking to it, letting an uninvited caller create a real patient account
+    // directly against the API.
+    disableSignUp: true,
     password: { hash, verify }
   },
   databaseHooks: {
