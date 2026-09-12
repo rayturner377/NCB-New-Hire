@@ -2,7 +2,6 @@ import { View } from '@react-pdf/renderer';
 import type { SubmissionPayload } from '../../../../submissions/types';
 import { PdfGridBox, PdfSectionHeading, type PdfGridCellDef } from './pdf-primitives';
 import { PdfSignatureBlock } from './pdf-signature-block';
-import { pdfStyles } from './pdf-styles';
 
 export interface PdfPhysicianSectionProps {
   submission: SubmissionPayload;

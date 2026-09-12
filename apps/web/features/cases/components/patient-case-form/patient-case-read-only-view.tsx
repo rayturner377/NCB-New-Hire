@@ -29,8 +29,7 @@ export interface PatientCaseReadOnlyViewProps {
   layout?: 'tabs' | 'flat';
 }
 
-const TAB_ORDER = ['personal', 'family', 'medical', 'consent'] as const;
-type TabValue = (typeof TAB_ORDER)[number];
+type TabValue = 'personal' | 'family' | 'medical' | 'consent';
 
 /**
  * Everything the patient entered, read-only, for anyone downstream who needs

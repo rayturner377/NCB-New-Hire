@@ -30,8 +30,7 @@ export interface PatientCaseFormProps {
 
 const initialState: SavePatientCaseResult | null = null;
 
-const TAB_ORDER = ['personal', 'family', 'medical', 'consent'] as const;
-type TabValue = (typeof TAB_ORDER)[number];
+type TabValue = 'personal' | 'family' | 'medical' | 'consent';
 
 const TAB_LABELS: Record<TabValue, string> = {
   personal: 'Personal info',

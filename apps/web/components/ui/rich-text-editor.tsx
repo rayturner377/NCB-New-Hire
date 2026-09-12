@@ -251,9 +251,11 @@ export function RichTextEditor({ name, defaultValue = '', onChangeHtml }: RichTe
       editor.commands.setContent(defaultValue);
       setHtml(defaultValue);
     }
-    // Deliberately only re-syncs when `defaultValue` itself changes (a different template loaded)
-    // — not on every `editor` identity change, which TipTap's useEditor doesn't need here.
-  }, [defaultValue]);
+    // `editor` is included for exhaustive-deps correctness; TipTap's useEditor keeps a stable
+    // instance across re-renders, so in practice this only re-fires on `defaultValue` changes
+    // (a different template loaded) plus the one transition from undefined to the mounted editor,
+    // which the `editor &&` guard above already handles safely.
+  }, [defaultValue, editor]);
 
   return (
     <div className="rounded-md border">
