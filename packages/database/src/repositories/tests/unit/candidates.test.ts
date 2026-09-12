@@ -29,6 +29,16 @@ describe('candidates repository', () => {
     expect(found?.payload).toEqual(payload);
   });
 
+  it('findById() returns null when no candidate matches', async () => {
+    const db = {
+      patientProfile: { findFirst: vi.fn().mockResolvedValue(null) }
+    } as unknown as PrismaClient;
+
+    const found = await createCandidatesRepository(db).findById('missing', masterKey);
+
+    expect(found).toBeNull();
+  });
+
   it('returns payload: null when profile_payload is absent', async () => {
     const db = {
       patientProfile: {
