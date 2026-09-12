@@ -146,6 +146,20 @@ describe('sendNotification', () => {
 
     expect(emailCreateMock).toHaveBeenCalledWith(expect.objectContaining({ id, status: 'failed', errorMessage: 'Connection refused' }));
   });
+
+  it('never lets a failure while recording the failed row escape as an unhandled rejection', async () => {
+    sendMailMock.mockRejectedValue(new Error('Connection refused'));
+    emailCreateMock.mockRejectedValue(new Error('DB connection lost'));
+    const unhandled = vi.fn();
+    process.once('unhandledRejection', unhandled);
+
+    await sendNotification({ templateKey: 'case_reviewed', to: 'doctor@ncb.local', variables: {} });
+    await flushMicrotasks();
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(unhandled).not.toHaveBeenCalled();
+  });
 });
 
 describe('renderNotificationEmail', () => {
