@@ -1,4 +1,4 @@
-import { rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { deleteAttachmentFile, readAttachmentFile, saveAttachmentFile } from '../../attachment-storage';
@@ -18,6 +18,16 @@ describe('attachment storage', () => {
     const read = await readAttachmentFile(testKey);
 
     expect(read.equals(data)).toBe(true);
+  });
+
+  it('stores the file encrypted at rest — the on-disk bytes never contain the plaintext', async () => {
+    const data = Buffer.from('a very identifiable plaintext string that must not appear on disk');
+    await saveAttachmentFile(testKey, data);
+
+    const onDisk = await readFile(path.join(ATTACHMENTS_DIR, testKey));
+
+    expect(onDisk.equals(data)).toBe(false);
+    expect(onDisk.includes(data)).toBe(false);
   });
 
   it('deleteAttachmentFile removes the file and never throws for a file that is already gone', async () => {

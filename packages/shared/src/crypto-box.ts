@@ -39,3 +39,33 @@ export function decryptJson<T = unknown>(key: Buffer, record: EncryptedRecord): 
   ]);
   return JSON.parse(plaintext.toString('utf8')) as T;
 }
+
+const IV_LENGTH = 12;
+const TAG_LENGTH = 16;
+
+/**
+ * Same AES-256-GCM primitive as encryptJson/decryptJson, but for raw binary
+ * data (file attachments) instead of JSON-serializable values — round-tripping
+ * a Buffer through JSON.stringify/base64 as encryptJson does would roughly
+ * double storage size for a multi-MB file. Output is a single Buffer
+ * (iv || authTag || ciphertext, concatenated) rather than a JSON envelope, so
+ * it can be written to disk as-is.
+ */
+export function encryptBuffer(key: Buffer, plaintext: Buffer): Buffer {
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+}
+
+export function decryptBuffer(key: Buffer, encrypted: Buffer): Buffer {
+  if (encrypted.length < IV_LENGTH + TAG_LENGTH) {
+    throw new Error('Encrypted buffer is too short.');
+  }
+  const iv = encrypted.subarray(0, IV_LENGTH);
+  const tag = encrypted.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
+  const ciphertext = encrypted.subarray(IV_LENGTH + TAG_LENGTH);
+  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
