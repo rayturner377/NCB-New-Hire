@@ -129,6 +129,11 @@ Before using this with real medical data:
 - Serve only over HTTPS and set `COOKIE_SECURE=true`.
 - Set `BETTER_AUTH_URL` to your real domain — do not leave it unset in production.
 - Store `APP_MASTER_KEY` and `BETTER_AUTH_SECRET` in a managed secret vault, not in the project folder.
+- `APP_MASTER_KEY` has no rotation tooling today — every encrypted column (case/candidate/submission
+  payloads, application settings) and every encrypted attachment on disk is unreadable without the
+  exact key that encrypted it, and a rotation would mean re-encrypting all of it in one pass, not
+  just swapping the env var. Back it up securely and treat losing it as a full-data-loss event; if
+  rotation ever becomes necessary, that's a one-time migration script, not a config change.
 - Require a password and TLS on Redis, and restrict network access to it the same way as Postgres — it holds live session tokens.
 - Restrict database access by facility, reviewer group, and network policy where appropriate.
 - Add secure backups, restore testing, retention rules, and deletion workflows.

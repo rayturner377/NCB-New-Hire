@@ -10,6 +10,14 @@ const secret = process.env.BETTER_AUTH_SECRET;
 if (!secret) {
   throw new Error('BETTER_AUTH_SECRET is not set.');
 }
+// The Dockerfile bakes this exact literal in as a build-time placeholder (next build needs some
+// syntactically valid value to construct this module against — see the Dockerfile's own comment),
+// always overridden by the real value from .env at container runtime. A plain truthiness check
+// wouldn't catch a deployment that's missing that override: this string is committed to the repo
+// and would otherwise pass silently as a real, working secret.
+if (secret === 'docker-build-placeholder-overridden-at-runtime') {
+  throw new Error('BETTER_AUTH_SECRET is still the Docker build placeholder — set a real value in .env at runtime.');
+}
 
 /**
  * Without an explicit baseURL, Better Auth derives the origin from each
