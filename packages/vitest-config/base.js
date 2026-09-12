@@ -19,10 +19,10 @@ export default defineConfig({
       // own; counting them drags the ratio down without telling us anything.
       exclude: ['src/index.ts', 'src/types/**', 'src/generated/**', 'src/scripts/**', '**/*.test.ts'],
       thresholds: {
-        lines: 70,
-        statements: 70,
-        functions: 70,
-        branches: 60
+        lines: 85,
+        statements: 85,
+        functions: 85,
+        branches: 85
       }
     }
   }

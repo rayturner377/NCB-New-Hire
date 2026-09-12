@@ -164,4 +164,44 @@ describe('candidates service', () => {
 
     expect(updated.status).toBe('archived');
   });
+
+  it('updateCandidate patches every field when all are provided at once', async () => {
+    findById.mockResolvedValue({ payload: samplePayload() });
+    save.mockResolvedValue(undefined);
+
+    const patch = {
+      fullName: 'New Name',
+      employeeId: 'EMP-2',
+      nationalId: 'NID-1',
+      dateOfBirth: '1991-02-02',
+      email: 'new@example.com',
+      contactNumber: '+18760000000',
+      addressLine1: '1 New St',
+      addressLine2: 'Apt 2',
+      city: 'Kingston',
+      state: 'St. Andrew',
+      country: 'Jamaica',
+      emergencyContactName: 'Emergency Contact',
+      emergencyContactNumber: '+18761111111',
+      primaryPhysicianName: 'Dr. Physician',
+      primaryPhysicianNumber: '+18762222222',
+      position: 'Manager',
+      medicationInformation: 'None',
+      withdrawalReason: 'N/A'
+    };
+
+    const updated = await updateCandidate('cand_1', patch);
+
+    expect(updated).toMatchObject(patch);
+  });
+
+  it('updateCandidate leaves every field alone when the patch is empty', async () => {
+    const existing = samplePayload();
+    findById.mockResolvedValue({ payload: existing });
+    save.mockResolvedValue(undefined);
+
+    const updated = await updateCandidate('cand_1', {});
+
+    expect(updated).toEqual(existing);
+  });
 });

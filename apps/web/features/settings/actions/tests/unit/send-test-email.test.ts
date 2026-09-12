@@ -83,4 +83,52 @@ describe('sendTestEmailAction', () => {
     expect(result.ok).toBe(false);
     expect(sendMailMock).not.toHaveBeenCalled();
   });
+
+  it('rejects without an active session', async () => {
+    getSessionMock.mockResolvedValue(null);
+    const result = await sendTestEmailAction(null, formData({ testRecipient: 'admin@ncb.local' }));
+    expect(result.ok).toBe(false);
+    expect(sendMailMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the caller's role lacks SETTINGS_MANAGE", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_1', role: 'reviewer' } });
+    const result = await sendTestEmailAction(null, formData({ testRecipient: 'admin@ncb.local' }));
+    expect(result.ok).toBe(false);
+    expect(sendMailMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing/invalid recipient email', async () => {
+    const result = await sendTestEmailAction(null, formData({ testRecipient: 'not-an-email' }));
+    expect(result.ok).toBe(false);
+    expect(sendMailMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects when renderNotificationEmail itself returns null for the chosen template', async () => {
+    renderNotificationEmailMock.mockResolvedValue(null);
+
+    const result = await sendTestEmailAction(null, formData({ testRecipient: 'admin@ncb.local', templateKey: 'case_doctor_submitted' }));
+
+    expect(result.ok).toBe(false);
+    expect(sendMailMock).not.toHaveBeenCalled();
+  });
+
+  it('records a failed row and surfaces the error message when the send itself fails', async () => {
+    sendMailMock.mockRejectedValue(new Error('SMTP timeout'));
+
+    const result = await sendTestEmailAction(null, formData({ testRecipient: 'admin@ncb.local' }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('SMTP timeout');
+    expect(emailCreateMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', errorMessage: 'SMTP timeout' }));
+  });
+
+  it('falls back to a generic error message when the thrown value is not an Error', async () => {
+    sendMailMock.mockRejectedValue('not an Error instance');
+
+    const result = await sendTestEmailAction(null, formData({ testRecipient: 'admin@ncb.local' }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Failed to send test email.');
+  });
 });

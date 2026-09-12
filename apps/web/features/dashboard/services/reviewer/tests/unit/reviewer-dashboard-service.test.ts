@@ -160,4 +160,61 @@ describe('getReviewerDashboardData', () => {
       href: '/doctors'
     });
   });
+
+  it('reports zero average turnaround when no case was completed in range', async () => {
+    listAllWithPatient.mockResolvedValue([caseRow({ id: 'a', status: 'sent_to_doctor' })]);
+
+    const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
+
+    expect(result.period.averageTurnaroundDays).toBe(0);
+  });
+
+  it('labels a queue row Unassigned when no clinician is assigned, and falls back to updatedAt when doctorSubmittedAt is missing', async () => {
+    listAllWithPatient.mockResolvedValue([
+      caseRow({ id: 'a', status: 'doctor_submitted', assignedClinicianId: null, doctorSubmittedAt: null, updatedAt: new Date('2026-01-09') })
+    ]);
+
+    const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
+
+    expect(result.queueRows[0]).toMatchObject({ assignedClinicianName: 'Unassigned', doctorSubmittedAt: '2026-01-09T00:00:00.000Z' });
+  });
+
+  it('labels a queue row Unknown doctor when the assigned clinician id no longer resolves to a real user', async () => {
+    listAllWithPatient.mockResolvedValue([caseRow({ id: 'a', status: 'doctor_submitted', assignedClinicianId: 'doc_gone' })]);
+
+    const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
+
+    expect(result.queueRows[0]?.assignedClinicianName).toBe('Unknown doctor');
+  });
+
+  it('labels a settings audit event', async () => {
+    listAllWithPatient.mockResolvedValue([]);
+    auditList.mockResolvedValue([auditEvent({ id: 6n, eventType: 'settings_updated', entityType: 'settings', entityId: null })]);
+
+    const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
+
+    expect(result.recentUpdates[0]).toMatchObject({ impactedKind: 'System settings', impactedLabel: 'Settings', href: '/settings' });
+  });
+
+  it('falls back to a generic row for any other entity type', async () => {
+    listAllWithPatient.mockResolvedValue([]);
+    auditList.mockResolvedValue([auditEvent({ id: 7n, eventType: 'case_created', entityType: 'something_else', entityId: 'x' })]);
+
+    const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
+
+    expect(result.recentUpdates[0]).toMatchObject({ impactedKind: '—', impactedLabel: '—', href: '/cases' });
+  });
+
+  it('labels an unauthenticated event as System, and an actor whose account is gone as Unknown user', async () => {
+    listAllWithPatient.mockResolvedValue([]);
+    auditList.mockResolvedValue([
+      auditEvent({ id: 8n, eventType: 'settings_updated', entityType: 'settings', entityId: null, actorUserId: null }),
+      auditEvent({ id: 9n, eventType: 'settings_updated', entityType: 'settings', entityId: null, actorUserId: 'usr_gone' })
+    ]);
+
+    const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
+
+    expect(result.recentUpdates[0]).toMatchObject({ actorName: 'System', actorRole: '—' });
+    expect(result.recentUpdates[1]).toMatchObject({ actorName: 'Unknown user' });
+  });
 });
