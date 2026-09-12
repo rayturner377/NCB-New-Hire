@@ -16,8 +16,7 @@ export interface SubmissionViewerProps {
 
 const NOOP = () => {};
 
-const TAB_ORDER = ['assessment', 'exam', 'determination'] as const;
-type TabValue = (typeof TAB_ORDER)[number];
+type TabValue = 'assessment' | 'exam' | 'determination';
 
 /**
  * Read-only rendering of a doctor's assessment submission — reuses the exact

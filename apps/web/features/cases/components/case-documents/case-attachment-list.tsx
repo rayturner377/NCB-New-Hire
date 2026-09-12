@@ -3,7 +3,6 @@
 import { Download, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Alert } from '../../../../components/ui/alert';
 import { Button } from '../../../../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/card';
 import { deleteCaseAttachmentAction } from '../../actions/delete-case-attachment';
