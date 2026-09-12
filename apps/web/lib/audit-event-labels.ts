@@ -11,6 +11,7 @@ export const EVENT_LABELS: Record<string, string> = {
   case_payment_confirmed: 'Payment confirmed',
   case_hidden: 'Hidden from queue',
   case_unhidden: 'Unhidden',
+  case_attachment_downloaded: 'Attachment downloaded',
   user_created: 'User created',
   user_deleted: 'User deleted',
   user_activated: 'User activated',
@@ -35,7 +36,15 @@ export interface EventTypeGroup {
 export const EVENT_TYPE_GROUPS: EventTypeGroup[] = [
   {
     label: 'Case activity',
-    eventTypes: ['case_created', 'case_transition', 'case_reassigned', 'case_payment_confirmed', 'case_hidden', 'case_unhidden']
+    eventTypes: [
+      'case_created',
+      'case_transition',
+      'case_reassigned',
+      'case_payment_confirmed',
+      'case_hidden',
+      'case_unhidden',
+      'case_attachment_downloaded'
+    ]
   },
   {
     label: 'User accounts',
