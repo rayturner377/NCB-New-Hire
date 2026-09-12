@@ -12,6 +12,17 @@ if (!secret) {
 }
 
 /**
+ * Without an explicit baseURL, Better Auth derives the origin from each
+ * incoming request's own Host header — the exact behavior its own startup
+ * warning flags, and a real security concern (a spoofed Host header could
+ * otherwise influence callback/redirect URLs), not just a cosmetic warning.
+ * BETTER_AUTH_URL must be set explicitly in any real deployment (see
+ * .env.example); the localhost fallback only covers local dev, matching the
+ * default port docker-compose.yml/next dev both use.
+ */
+const baseURL = process.env.BETTER_AUTH_URL || `http://localhost:${process.env.PORT || 3000}`;
+
+/**
  * Sliding inactivity timeout, same admin-configurable env var and 5-480
  * minute clamp as the pre-Better-Auth lib/session.ts's sessionTtlMs(). A
  * session refreshes to a fresh full window once it's within `updateAge`
@@ -51,6 +62,7 @@ function cookieIsSecure(): boolean {
  */
 export const auth = betterAuth({
   secret,
+  baseURL,
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   secondaryStorage: redisStorage({ client: redis, keyPrefix: 'ncb-auth:' }),
   session: {
