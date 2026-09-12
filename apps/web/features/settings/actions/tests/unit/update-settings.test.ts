@@ -92,6 +92,12 @@ describe('settings actions', () => {
   });
 
   describe('updateNotificationSettingsAction', () => {
+    it('rejects without access', async () => {
+      getSessionMock.mockResolvedValue(null);
+      const result = await updateNotificationSettingsAction(null, formData({}));
+      expect(result.ok).toBe(false);
+    });
+
     it('accepts both notification emails left blank (still present as empty strings, as a real form submits them)', async () => {
       const result = await updateNotificationSettingsAction(
         null,
@@ -104,6 +110,12 @@ describe('settings actions', () => {
   });
 
   describe('updateExportSettingsAction', () => {
+    it('rejects without access', async () => {
+      getSessionMock.mockResolvedValue(null);
+      const result = await updateExportSettingsAction(null, formData({}));
+      expect(result.ok).toBe(false);
+    });
+
     it('rejects a file name pattern missing the required {caseId} placeholder', async () => {
       const result = await updateExportSettingsAction(null, formData({ fileNamePattern: 'export.pdf' }));
 
@@ -118,6 +130,12 @@ describe('settings actions', () => {
   });
 
   describe('updateUserPolicySettingsAction', () => {
+    it('rejects without access', async () => {
+      getSessionMock.mockResolvedValue(null);
+      const result = await updateUserPolicySettingsAction(null, formData({}));
+      expect(result.ok).toBe(false);
+    });
+
     const validPolicy = {
       minPasswordLength: '12',
       sessionTimeoutMinutes: '15',
@@ -146,6 +164,12 @@ describe('settings actions', () => {
   });
 
   describe('updateSlaSettingsAction', () => {
+    it('rejects without access', async () => {
+      getSessionMock.mockResolvedValue(null);
+      const result = await updateSlaSettingsAction(null, formData({}));
+      expect(result.ok).toBe(false);
+    });
+
     it('rejects unparseable JSON in definitionsJson', async () => {
       const result = await updateSlaSettingsAction(null, formData({ definitionsJson: '{not json' }));
 
@@ -184,6 +208,12 @@ describe('settings actions', () => {
   });
 
   describe('updateThemeSettingsAction', () => {
+    it('rejects without access', async () => {
+      getSessionMock.mockResolvedValue(null);
+      const result = await updateThemeSettingsAction(null, formData({}));
+      expect(result.ok).toBe(false);
+    });
+
     it('rejects a non-hex color', async () => {
       const result = await updateThemeSettingsAction(
         null,
@@ -205,6 +235,12 @@ describe('settings actions', () => {
   });
 
   describe('updateMailSettingsAction', () => {
+    it('rejects without access', async () => {
+      getSessionMock.mockResolvedValue(null);
+      const result = await updateMailSettingsAction(null, formData({}));
+      expect(result.ok).toBe(false);
+    });
+
     it('rejects an invalid fromEmail', async () => {
       const result = await updateMailSettingsAction(null, formData({ fromEmail: 'not-an-email' }));
 
