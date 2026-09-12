@@ -5,11 +5,15 @@ const findByIdMock = vi.fn();
 const getCaseByIdMock = vi.fn();
 const deleteCaseAttachmentMock = vi.fn();
 const revalidatePathMock = vi.fn();
+const auditAppendMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
 vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
-vi.mock('@ncb/database', () => ({ caseAttachmentsRepository: { findById: (...args: unknown[]) => findByIdMock(...args) } }));
+vi.mock('@ncb/database', () => ({
+  caseAttachmentsRepository: { findById: (...args: unknown[]) => findByIdMock(...args) },
+  auditRepository: { append: (...args: unknown[]) => auditAppendMock(...args) }
+}));
 vi.mock('../../../services/case-attachments-service', () => ({
   deleteCaseAttachment: (...args: unknown[]) => deleteCaseAttachmentMock(...args)
 }));
@@ -30,6 +34,7 @@ describe('deleteCaseAttachmentAction', () => {
     getCaseByIdMock.mockReset();
     deleteCaseAttachmentMock.mockReset();
     revalidatePathMock.mockClear();
+    auditAppendMock.mockReset();
   });
 
   it('rejects without an active session', async () => {
@@ -92,15 +97,18 @@ describe('deleteCaseAttachmentAction', () => {
     expect(deleteCaseAttachmentMock).not.toHaveBeenCalled();
   });
 
-  it('deletes the attachment and revalidates the case page on success', async () => {
+  it('deletes the attachment, audits it, and revalidates the case page on success', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
-    findByIdMock.mockResolvedValue({ id: 'att_1', caseId: 'case_1', uploadedBy: 'usr_doc' });
+    findByIdMock.mockResolvedValue({ id: 'att_1', caseId: 'case_1', uploadedBy: 'usr_doc', originalName: 'report.pdf' });
     getCaseByIdMock.mockResolvedValue({ id: 'case_1', assignedClinicianId: 'usr_doc' });
 
     const result = await deleteCaseAttachmentAction(null, formData({ attachmentId: 'att_1', caseId: 'case_1' }));
 
     expect(result.ok).toBe(true);
     expect(deleteCaseAttachmentMock).toHaveBeenCalledWith('att_1');
+    expect(auditAppendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'case_attachment_deleted', actorUserId: 'usr_doc', entityId: 'att_1' })
+    );
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
   });
 });

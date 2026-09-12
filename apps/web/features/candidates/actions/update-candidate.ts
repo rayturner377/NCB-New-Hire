@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { combineContactNumbers } from '../../../lib/phone-number';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
@@ -68,6 +69,13 @@ export async function updateCandidateAction(
   }
 
   await updateCandidate(candidateId, parsed.data);
+
+  await auditRepository.append({
+    eventType: 'candidate_updated',
+    actorUserId: session.user.id,
+    entityType: 'candidate',
+    entityId: candidateId
+  });
 
   revalidatePath(`/candidates/${candidateId}`);
   revalidatePath('/candidates');

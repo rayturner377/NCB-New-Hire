@@ -4,6 +4,7 @@ const getSessionMock = vi.fn();
 const updateCandidateMock = vi.fn();
 const listCandidatesForUserMock = vi.fn();
 const revalidatePathMock = vi.fn();
+const auditAppendMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
@@ -12,6 +13,7 @@ vi.mock('../../../services/candidates-service', () => ({
   updateCandidate: (...args: unknown[]) => updateCandidateMock(...args),
   listCandidatesForUser: (...args: unknown[]) => listCandidatesForUserMock(...args)
 }));
+vi.mock('@ncb/database', () => ({ auditRepository: { append: (...args: unknown[]) => auditAppendMock(...args) } }));
 
 const { updateCandidateAction } = await import('../../update-candidate');
 
@@ -27,6 +29,7 @@ describe('updateCandidateAction', () => {
     updateCandidateMock.mockReset();
     listCandidatesForUserMock.mockReset();
     revalidatePathMock.mockClear();
+    auditAppendMock.mockReset();
   });
 
   it('rejects without an active session', async () => {
@@ -87,7 +90,7 @@ describe('updateCandidateAction', () => {
     expect(updateCandidateMock).not.toHaveBeenCalled();
   });
 
-  it('updates the candidate and revalidates both list and detail pages on success', async () => {
+  it('updates the candidate, audits it, and revalidates both list and detail pages on success', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_1', role: 'reviewer' } });
     updateCandidateMock.mockResolvedValue(undefined);
 
@@ -95,6 +98,9 @@ describe('updateCandidateAction', () => {
 
     expect(result.ok).toBe(true);
     expect(updateCandidateMock).toHaveBeenCalledWith('cand_1', expect.objectContaining({ city: 'Kingston' }));
+    expect(auditAppendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'candidate_updated', actorUserId: 'usr_1', entityId: 'cand_1' })
+    );
     expect(revalidatePathMock).toHaveBeenCalledWith('/candidates/cand_1');
     expect(revalidatePathMock).toHaveBeenCalledWith('/candidates');
   });

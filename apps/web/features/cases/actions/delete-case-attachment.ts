@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ROLES } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
-import { caseAttachmentsRepository } from '@ncb/database';
+import { auditRepository, caseAttachmentsRepository } from '@ncb/database';
 import { ownsCase } from '../case-authorization';
 import { deleteCaseAttachment } from '../services/case-attachments-service';
 import { getCaseById } from '../services/cases-service';
@@ -47,6 +47,15 @@ export async function deleteCaseAttachmentAction(
   }
 
   await deleteCaseAttachment(attachmentId);
+
+  await auditRepository.append({
+    eventType: 'case_attachment_deleted',
+    actorUserId: session.user.id,
+    entityType: 'case_attachment',
+    entityId: attachmentId,
+    details: { caseId, originalName: attachment.originalName }
+  });
+
   revalidatePath(`/cases/${caseId}`);
   return { ok: true };
 }

@@ -4,11 +4,13 @@ const getSessionMock = vi.fn();
 const getCaseByIdMock = vi.fn();
 const uploadCaseAttachmentMock = vi.fn();
 const revalidatePathMock = vi.fn();
+const auditAppendMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
 vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/cases-service', () => ({ getCaseById: (...args: unknown[]) => getCaseByIdMock(...args) }));
+vi.mock('@ncb/database', () => ({ auditRepository: { append: (...args: unknown[]) => auditAppendMock(...args) } }));
 // upload-case-attachment.ts's own createActionRateLimiter() ultimately
 // depends on @ncb/redis's client, which throws at construction if
 // REDIS_URL isn't set — not exercised by this test's assertions.
@@ -44,6 +46,7 @@ describe('uploadCaseAttachmentAction', () => {
     getCaseByIdMock.mockReset();
     uploadCaseAttachmentMock.mockReset();
     revalidatePathMock.mockClear();
+    auditAppendMock.mockReset();
     getCaseByIdMock.mockResolvedValue(assignedCase);
   });
 
@@ -118,15 +121,18 @@ describe('uploadCaseAttachmentAction', () => {
     await expect(uploadCaseAttachmentAction(null, formData({ caseId: 'case_1', file: pdfFile }))).rejects.toThrow('disk full');
   });
 
-  it('uploads and revalidates the case page on success', async () => {
+  it('uploads, audits, and revalidates the case page on success', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
-    uploadCaseAttachmentMock.mockResolvedValue({ id: 'att_1' });
+    uploadCaseAttachmentMock.mockResolvedValue({ id: 'att_1', originalName: 'report.pdf' });
 
     const result = await uploadCaseAttachmentAction(null, formData({ caseId: 'case_1', file: pdfFile }));
 
     expect(result.ok).toBe(true);
     expect(uploadCaseAttachmentMock).toHaveBeenCalledWith(
       expect.objectContaining({ caseId: 'case_1', uploadedBy: 'usr_doc', originalName: 'report.pdf', contentType: 'application/pdf' })
+    );
+    expect(auditAppendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'case_attachment_uploaded', actorUserId: 'usr_doc', entityId: 'att_1' })
     );
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
   });

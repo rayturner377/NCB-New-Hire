@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { createActionRateLimiter } from '../../../lib/action-rate-limit';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
@@ -66,12 +67,20 @@ export async function uploadCaseAttachmentAction(
 
   try {
     const data = Buffer.from(await file.arrayBuffer());
-    await uploadCaseAttachment({
+    const attachment = await uploadCaseAttachment({
       caseId,
       uploadedBy: session.user.id,
       originalName: file.name || 'document.pdf',
       contentType: file.type || 'application/octet-stream',
       data
+    });
+
+    await auditRepository.append({
+      eventType: 'case_attachment_uploaded',
+      actorUserId: session.user.id,
+      entityType: 'case_attachment',
+      entityId: attachment.id,
+      details: { caseId, originalName: attachment.originalName }
     });
   } catch (error) {
     if (error instanceof InvalidAttachmentError) {

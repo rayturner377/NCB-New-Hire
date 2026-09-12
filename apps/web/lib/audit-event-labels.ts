@@ -12,6 +12,11 @@ export const EVENT_LABELS: Record<string, string> = {
   case_hidden: 'Hidden from queue',
   case_unhidden: 'Unhidden',
   case_attachment_downloaded: 'Attachment downloaded',
+  case_attachment_uploaded: 'Attachment uploaded',
+  case_attachment_deleted: 'Attachment deleted',
+  candidate_updated: 'Candidate profile updated',
+  candidate_withdrawn: 'Candidate withdrawn',
+  candidate_clinician_assigned: 'Candidate assigned to clinician',
   user_created: 'User created',
   user_deleted: 'User deleted',
   user_activated: 'User activated',
@@ -43,8 +48,14 @@ export const EVENT_TYPE_GROUPS: EventTypeGroup[] = [
       'case_payment_confirmed',
       'case_hidden',
       'case_unhidden',
-      'case_attachment_downloaded'
+      'case_attachment_downloaded',
+      'case_attachment_uploaded',
+      'case_attachment_deleted'
     ]
+  },
+  {
+    label: 'Candidate activity',
+    eventTypes: ['candidate_updated', 'candidate_withdrawn', 'candidate_clinician_assigned']
   },
   {
     label: 'User accounts',
