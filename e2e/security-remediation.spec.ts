@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 /**
@@ -29,6 +30,41 @@ async function waitForMessageRow(page: Page, text: string, timeoutMs = 30000): P
     if (Date.now() > deadline) throw new Error(`Message row containing "${text}" never appeared within ${timeoutMs}ms`);
     await page.waitForTimeout(1000);
   }
+}
+
+/** Requires an active (admin/reviewer) session that can create candidates — see PATIENT_PROFILES_CREATE. */
+async function createPatientCandidate(page: Page, lastName: string, email: string): Promise<string> {
+  await page.goto('/candidates/new', { waitUntil: 'domcontentloaded' });
+  await page.fill('input[name="firstName"]', 'E2E');
+  await page.fill('input[name="lastName"]', lastName);
+  await pickDate(page, 'dateOfBirth', 1991, 'February', 2);
+  await page.fill('input[name="position"]', 'Teller');
+  await page.fill('input[name="email"]', email);
+  await page.getByText('Grant portal access at the email above').click();
+  await page.getByRole('button', { name: /create candidate/i }).click();
+  await page.waitForURL(/\/candidates\/(cand_[a-z0-9_]+)/);
+  return page.url();
+}
+
+/** Requires an active (admin/reviewer) session — reads the Message Centre. */
+async function getLatestCode(page: Page, email: string): Promise<string> {
+  await waitForMessageRow(page, email);
+  await page.getByText(email).first().click();
+  await page.waitForURL(/\/messages\//);
+  const bodyText = await page.frameLocator('iframe[title="Email content"]').locator('body').innerText();
+  const codeMatch = bodyText.match(/\b(\d{6})\b/);
+  return codeMatch![1]!;
+}
+
+/** /forgot-password redirects away for an already-authenticated session, so this must run signed out. */
+async function redeemCode(page: Page, email: string, code: string, password: string): Promise<void> {
+  await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
+  await page.fill('#email', email);
+  await page.fill('#code', code);
+  await page.fill('#password', password);
+  await page.fill('#confirmPassword', password);
+  await page.getByRole('button', { name: /set new password/i }).click();
+  await expect(page.getByText(/password has been set/i)).toBeVisible({ timeout: 10000 });
 }
 
 async function login(page: Page, email: string, password = PASSWORD): Promise<void> {
@@ -133,54 +169,20 @@ test('a patient cannot view or edit another patient\'s candidate profile (IDOR)'
   const passwordA = 'PatientAPassword123!';
   const passwordB = 'PatientBPassword123!';
 
-  async function createPatientCandidate(displayLabel: string, email: string): Promise<string> {
-    await page.goto('/candidates/new', { waitUntil: 'domcontentloaded' });
-    await page.fill('input[name="firstName"]', 'IDOR');
-    await page.fill('input[name="lastName"]', displayLabel);
-    await pickDate(page, 'dateOfBirth', 1991, 'February', 2);
-    await page.fill('input[name="position"]', 'Teller');
-    await page.fill('input[name="email"]', email);
-    await page.getByText('Grant portal access at the email above').click();
-    await page.getByRole('button', { name: /create candidate/i }).click();
-    await page.waitForURL(/\/candidates\/(cand_[a-z0-9_]+)/);
-    return page.url();
-  }
-
-  /** Requires an active (admin/reviewer) session — reads the Message Centre. */
-  async function getLatestCode(email: string): Promise<string> {
-    await waitForMessageRow(page, email);
-    await page.getByText(email).first().click();
-    await page.waitForURL(/\/messages\//);
-    const bodyText = await page.frameLocator('iframe[title="Email content"]').locator('body').innerText();
-    const codeMatch = bodyText.match(/\b(\d{6})\b/);
-    return codeMatch![1]!;
-  }
-
-  /** /forgot-password redirects away for an already-authenticated session, so this must run signed out. */
-  async function redeemCode(email: string, code: string, password: string): Promise<void> {
-    await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
-    await page.fill('#email', email);
-    await page.fill('#code', code);
-    await page.fill('#password', password);
-    await page.fill('#confirmPassword', password);
-    await page.getByRole('button', { name: /set new password/i }).click();
-    await expect(page.getByText(/password has been set/i)).toBeVisible({ timeout: 10000 });
-  }
-
   // Set up both candidates + accounts as reviewer first.
   await login(page, 'reviewer@ncb.local');
-  const candidateAUrl = await createPatientCandidate('PatientA', emailA);
-  const candidateBUrl = await createPatientCandidate('PatientB', emailB);
+  const candidateAUrl = await createPatientCandidate(page, 'PatientA', emailA);
+  const candidateBUrl = await createPatientCandidate(page, 'PatientB', emailB);
   await signOut(page, 'Demo Reviewer');
 
   // Read both activation codes as admin (Message Centre + mail already enabled from the previous test), then sign out before redeeming either.
   await login(page, 'admin@ncb.local');
-  const codeA = await getLatestCode(emailA);
-  const codeB = await getLatestCode(emailB);
+  const codeA = await getLatestCode(page, emailA);
+  const codeB = await getLatestCode(page, emailB);
   await signOut(page, 'Demo Admin');
 
-  await redeemCode(emailA, codeA, passwordA);
-  await redeemCode(emailB, codeB, passwordB);
+  await redeemCode(page, emailA, codeA, passwordA);
+  await redeemCode(page, emailB, codeB, passwordB);
 
   // Patient A tries to reach Patient B's candidate profile directly by URL — requireOwnsCandidate
   // renders a generic "not found" at the same URL (no redirect, so as not to confirm the candidate
@@ -188,9 +190,136 @@ test('a patient cannot view or edit another patient\'s candidate profile (IDOR)'
   await login(page, emailA, passwordA);
   await page.goto(candidateBUrl, { waitUntil: 'domcontentloaded' });
   await expect(page.getByText(/candidate not found/i)).toBeVisible();
-  await expect(page.getByText('IDOR PatientB')).not.toBeVisible();
+  await expect(page.getByText('E2E PatientB')).not.toBeVisible();
 
   // Patient A can still reach their own, with their real data.
   await page.goto(candidateAUrl, { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: 'IDOR PatientA' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'E2E PatientA' })).toBeVisible();
+});
+
+test('mutations closed in the audit-coverage pass are actually recorded in /audit', async ({ page }) => {
+  // Six full login/logout cycles plus a resend that awaits a real (unreachable) SMTP round trip —
+  // comfortably over the default 30s test budget even though no single step is slow on its own.
+  test.setTimeout(120000);
+  const email = `e2e-audit-${Date.now()}@example.com`;
+  const password = 'AuditPassword123!';
+
+  // 1. candidate_created — reviewer creates the candidate/account.
+  await login(page, 'reviewer@ncb.local');
+  const candidateUrl = await createPatientCandidate(page, 'AuditSubject', email);
+
+  // 2. candidate_updated (staff-edit path, update-candidate.ts) — the candidate detail page's
+  // profile section is directly editable in place for anyone with PATIENT_PROFILES_UPDATE, no
+  // separate edit route.
+  await page.goto(candidateUrl, { waitUntil: 'domcontentloaded' });
+  await page.fill('input[name="city"]', 'Kingston');
+  await page.getByRole('button', { name: /save changes/i }).click();
+  await expect(page.getByText(/candidate profile updated/i)).toBeVisible({ timeout: 10000 });
+  await signOut(page, 'Demo Reviewer');
+
+  // 3. account_activated (via /forgot-password redemption) then candidate_updated a second time
+  // (self-edit path, update-own-profile.ts — previously had NO actorId/audit at all).
+  await login(page, 'admin@ncb.local');
+  const code = await getLatestCode(page, email);
+  await signOut(page, 'Demo Admin');
+  await redeemCode(page, email, code, password);
+
+  await login(page, email, password);
+  await page.goto('/profile', { waitUntil: 'domcontentloaded' });
+  await page.fill('input[name="city"]', 'Montego Bay');
+  await page.getByRole('button', { name: /save changes/i }).click();
+  await expect(page.getByText(/profile updated/i)).toBeVisible({ timeout: 10000 });
+
+  // 4. sessions_revoked — the same self-service action used to react to a suspicious login.
+  await page.getByRole('button', { name: /sign out of other devices/i }).click();
+  await expect(page.getByText(/every other device has been signed out/i)).toBeVisible({ timeout: 10000 });
+  await signOut(page, 'E2E AuditSubject');
+
+  // 5. medical_office_created — admin creates a new facility.
+  await login(page, 'admin@ncb.local');
+  const officeName = `E2E Audit Clinic ${Date.now()}`;
+  await page.goto('/medical-offices/new', { waitUntil: 'domcontentloaded' });
+  await page.fill('#name', officeName);
+  await page.getByRole('button', { name: /create facility/i }).click();
+  await page.waitForURL(/\/doctors\?tab=offices/);
+
+  // 6. message_resent — resend the activation email we just read above.
+  await getLatestCode(page, email); // navigates into the message detail page for `email`'s latest message
+  const resendButton = page.getByRole('button', { name: /^resend$/i });
+  const resendForm = page.locator('form', { has: resendButton });
+  await resendButton.click();
+  // resendMessageAction awaits the real SMTP round trip (unlike the fire-and-forget dispatch every
+  // other notification path uses), so this can take a moment. The audit event is written up front,
+  // before the send is attempted (see resendEmailMessage), so it's recorded regardless of the
+  // outcome here — the mail host is deliberately unreachable in this test, so delivery itself is
+  // expected to fail; we only need the action to have actually run.
+  await expect(resendButton).toBeEnabled({ timeout: 30000 });
+  await expect(resendForm.getByRole('alert')).toBeVisible();
+
+  // Now verify every one of the above actually landed in the audit trail, most-recent-first.
+  await page.goto(
+    '/audit?type=candidate_created,candidate_updated,sessions_revoked,medical_office_created,message_resent',
+    { waitUntil: 'domcontentloaded' }
+  );
+  const auditTable = page.locator('table');
+  await expect(auditTable.getByText('Candidate created').first()).toBeVisible();
+  // At least 2 (staff edit + self edit) — not an exact count, since re-running this suite against
+  // a persistent database (rather than a reset-per-run fixture) leaves earlier runs' rows in place.
+  expect(await auditTable.getByText('Candidate profile updated').count()).toBeGreaterThanOrEqual(2);
+  await expect(auditTable.getByText('Other sessions signed out').first()).toBeVisible();
+  await expect(auditTable.getByText('Medical office created').first()).toBeVisible();
+  await expect(auditTable.getByText('Message resent').first()).toBeVisible();
+});
+
+test('case transitions are atomic and version-guarded (transition_medical_case)', async () => {
+  // The patient intake → doctor submission flow that exercises this stored procedure end-to-end
+  // requires the full multi-page medical/family history forms and a signature pad — driving that
+  // through the browser would make this test almost entirely about form-filling, not about the
+  // concurrency guarantee itself. The guarantee lives entirely in the SQL added in migration
+  // 0018_atomic_case_transitions (see packages/database/src/repositories/cases.ts's
+  // submitAndTransition/confirmPayment, which both delegate the actual state change to it), so it's
+  // verified directly against the same Postgres the Docker-built app is running against.
+  const caseId = `case_e2e_atomic_${Date.now()}`;
+  const patientId = `cand_e2e_atomic_${Date.now()}`;
+  const userId = `usr_e2e_atomic_${Date.now()}`;
+
+  function psql(sql: string): string {
+    return execFileSync(
+      'docker',
+      ['compose', 'exec', '-T', 'postgres', 'psql', '-U', 'ncb_medical_app', '-d', 'ncb_medical', '-tA', '-c', sql],
+      { encoding: 'utf8' }
+    ).trim();
+  }
+
+  try {
+    psql(
+      `INSERT INTO app_users (id, email, display_name, role) VALUES ('${userId}', '${userId}@example.com', 'E2E Atomic Test', 'reviewer')`
+    );
+    psql(`INSERT INTO patient_profiles (id, full_name, created_by) VALUES ('${patientId}', 'E2E Atomic Patient', '${userId}')`);
+    psql(
+      `INSERT INTO medical_cases (id, patient_id, route, status, payment_status, version) VALUES ('${caseId}', '${patientId}', 'doctor', 'doctor_submitted', 'unpaid', 1)`
+    );
+
+    // A stale version must be rejected outright, leaving status/payment_status/version untouched —
+    // this is the optimistic-concurrency guard a race between two transitions relies on.
+    expect(() => psql(`SELECT transition_medical_case('${caseId}', 0, 'withdrawn', '${userId}')`)).toThrow();
+    const afterRejectedAttempt = psql(`SELECT status, payment_status, version FROM medical_cases WHERE id = '${caseId}'`);
+    expect(afterRejectedAttempt).toBe('doctor_submitted|unpaid|1');
+
+    // The correct version succeeds and normalizes payment_status to not_payable in the same
+    // statement as the status change — the atomicity this migration exists to guarantee (no window
+    // where a case could be read as withdrawn but still unpaid, or vice versa).
+    const newVersion = psql(`SELECT transition_medical_case('${caseId}', 1, 'withdrawn', '${userId}')`);
+    expect(newVersion).toBe('2');
+    const afterSuccess = psql(`SELECT status, payment_status, version FROM medical_cases WHERE id = '${caseId}'`);
+    expect(afterSuccess).toBe('withdrawn|not_payable|2');
+
+    // Now that the version has moved to 2, the original expected-version-1 caller (e.g. a second
+    // browser tab that loaded the case before either transition) must also be rejected.
+    expect(() => psql(`SELECT transition_medical_case('${caseId}', 1, 'reviewed', '${userId}')`)).toThrow();
+  } finally {
+    psql(`DELETE FROM medical_cases WHERE id = '${caseId}'`);
+    psql(`DELETE FROM patient_profiles WHERE id = '${patientId}'`);
+    psql(`DELETE FROM app_users WHERE id = '${userId}'`);
+  }
 });
