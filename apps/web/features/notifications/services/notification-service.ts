@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { emailMessagesRepository, notificationTemplatesRepository } from '@ncb/database';
+import { auditRepository, emailMessagesRepository, notificationTemplatesRepository } from '@ncb/database';
 import { render } from '@react-email/render';
 import { isSvgDataUrl } from '../../../lib/image-data-url';
 import { inlineDataUrlImages } from '../../../lib/inline-images';
@@ -232,11 +232,21 @@ async function dispatchNotification(input: DispatchNotificationInput): Promise<v
  * of creating a new one, so a message's history stays "one row per logical
  * send," not one per attempt.
  */
-export async function resendEmailMessage(id: string): Promise<void> {
+export async function resendEmailMessage(id: string, actorId?: string): Promise<void> {
   const message = await emailMessagesRepository.findById(id);
   if (!message) {
     throw new Error('Message not found.');
   }
+
+  // Recorded regardless of the resend's own delivery outcome (tracked separately on the
+  // email_messages row itself) — this is about who triggered it, not whether it landed.
+  await auditRepository.append({
+    eventType: 'message_resent',
+    actorUserId: actorId,
+    entityType: 'email_message',
+    entityId: id,
+    details: { toEmail: message.toEmail, subject: message.subject }
+  });
 
   const settings = await getSettings();
   try {

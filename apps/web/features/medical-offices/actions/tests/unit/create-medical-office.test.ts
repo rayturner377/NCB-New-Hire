@@ -81,7 +81,7 @@ describe('createMedicalOfficeAction', () => {
 
     await expect(createMedicalOfficeAction(null, formData({ name: 'NCB Clinic' }))).rejects.toThrow('NEXT_REDIRECT');
 
-    expect(createMedicalOfficeMock).toHaveBeenCalledWith(expect.objectContaining({ name: 'NCB Clinic' }));
+    expect(createMedicalOfficeMock).toHaveBeenCalledWith(expect.objectContaining({ name: 'NCB Clinic' }), 'usr_1');
     expect(revalidatePathMock).toHaveBeenCalledWith('/doctors');
     expect(redirectMock).toHaveBeenCalledWith('/doctors?tab=offices');
   });

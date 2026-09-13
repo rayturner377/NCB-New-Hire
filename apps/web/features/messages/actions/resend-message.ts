@@ -42,7 +42,7 @@ export async function resendMessageAction(_prevState: ResendMessageResult | null
   }
 
   try {
-    await resendEmailMessage(id);
+    await resendEmailMessage(id, session.user.id);
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Failed to resend.' };
   }

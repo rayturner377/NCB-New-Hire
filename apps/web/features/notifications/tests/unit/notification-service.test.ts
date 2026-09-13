@@ -9,6 +9,7 @@ const findDefinitionMock = vi.fn();
 const sendMailMock = vi.fn();
 const isSvgDataUrlMock = vi.fn();
 const inlineDataUrlImagesMock = vi.fn((html: string) => ({ html, attachments: [] }));
+const auditAppendMock = vi.fn();
 
 vi.mock('@ncb/database', () => ({
   notificationTemplatesRepository: { findByKey: (...args: unknown[]) => findByKeyMock(...args) },
@@ -16,6 +17,9 @@ vi.mock('@ncb/database', () => ({
     create: (...args: unknown[]) => emailCreateMock(...args),
     findById: (...args: unknown[]) => emailFindByIdMock(...args),
     updateStatus: (...args: unknown[]) => emailUpdateStatusMock(...args)
+  },
+  auditRepository: {
+    append: (...args: unknown[]) => auditAppendMock(...args)
   }
 }));
 vi.mock('../../../settings/services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));
@@ -224,6 +228,7 @@ describe('resendEmailMessage', () => {
     getSettingsMock.mockReset();
     sendMailMock.mockReset();
     inlineDataUrlImagesMock.mockClear();
+    auditAppendMock.mockReset();
 
     getSettingsMock.mockResolvedValue({
       mail: { enabled: true, fromEmail: 'noreply@ncb.local', host: 'smtp.local', port: 587, username: '', password: '', secure: false }
@@ -246,10 +251,31 @@ describe('resendEmailMessage', () => {
     });
     sendMailMock.mockResolvedValue(undefined);
 
-    await resendEmailMessage('msg_1');
+    await resendEmailMessage('msg_1', 'usr_admin_demo');
 
     expect(sendMailMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ to: 'a@b.com', subject: 'Stored subject' }));
     expect(emailUpdateStatusMock).toHaveBeenCalledWith('msg_1', 'sent', null);
+    expect(auditAppendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'message_resent', actorUserId: 'usr_admin_demo', entityId: 'msg_1' })
+    );
+  });
+
+  it('audits the resend attempt even when it later fails', async () => {
+    emailFindByIdMock.mockResolvedValue({
+      id: 'msg_1',
+      toEmail: 'a@b.com',
+      ccEmails: null,
+      bccEmails: null,
+      subject: 'Stored subject',
+      bodyHtml: '<p>Stored body</p>'
+    });
+    sendMailMock.mockRejectedValue(new Error('SMTP down'));
+
+    await expect(resendEmailMessage('msg_1', 'usr_admin_demo')).rejects.toThrow('SMTP down');
+
+    expect(auditAppendMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'message_resent', actorUserId: 'usr_admin_demo', entityId: 'msg_1' })
+    );
   });
 
   it('marks the message failed and rethrows when the resend attempt fails', async () => {

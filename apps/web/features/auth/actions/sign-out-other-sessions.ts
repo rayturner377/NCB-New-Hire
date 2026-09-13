@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@ncb/auth';
+import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { requireFullSession } from '../../../lib/session';
 
@@ -29,6 +30,14 @@ export async function signOutOtherSessionsAction(
   }
 
   await auth.api.revokeOtherSessions({ headers: await headers() });
+
+  await auditRepository.append({
+    eventType: 'sessions_revoked',
+    actorUserId: session.user.id,
+    entityType: 'user',
+    entityId: session.user.id
+  });
+
   revalidatePath('/profile');
   return { ok: true };
 }

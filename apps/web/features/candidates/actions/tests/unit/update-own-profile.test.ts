@@ -82,7 +82,7 @@ describe('updateOwnProfileAction', () => {
     const result = await updateOwnProfileAction(null, formData({ city: 'Kingston', candidateId: 'someone-elses-id' }));
 
     expect(result.ok).toBe(true);
-    expect(updateCandidateMock).toHaveBeenCalledWith('cand_1', expect.objectContaining({ city: 'Kingston' }));
+    expect(updateCandidateMock).toHaveBeenCalledWith('cand_1', expect.objectContaining({ city: 'Kingston' }), 'usr_patient_demo');
     expect(revalidatePathMock).toHaveBeenCalledWith('/profile');
   });
 });

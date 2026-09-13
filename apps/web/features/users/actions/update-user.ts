@@ -58,10 +58,14 @@ export async function updateUserAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid details.', fieldErrors };
   }
 
-  await updateUser(userId, {
-    ...parsed.data,
-    medicalProfile: targetRole === 'clinician' ? combineMedicalProfile(formData) : undefined
-  });
+  await updateUser(
+    userId,
+    {
+      ...parsed.data,
+      medicalProfile: targetRole === 'clinician' ? combineMedicalProfile(formData) : undefined
+    },
+    session.user.id
+  );
 
   revalidatePath('/doctors');
   revalidatePath('/reviewers');

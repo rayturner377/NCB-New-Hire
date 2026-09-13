@@ -48,7 +48,7 @@ describe('updateCaseBillingAction', () => {
 
     await updateCaseBillingAction(formData({ caseId: 'case_1', payableAmount: '100', paymentStatus: 'paid' }));
 
-    expect(setCaseBillingMock).toHaveBeenCalledWith('case_1', 100, 'paid');
+    expect(setCaseBillingMock).toHaveBeenCalledWith('case_1', 100, 'paid', 'usr_reviewer_demo');
   });
 
   it('rejects an unrecognized payment status', async () => {
@@ -68,7 +68,7 @@ describe('updateCaseBillingAction', () => {
 
     await updateCaseBillingAction(formData({ caseId: 'case_1', payableAmount: '200', paymentStatus: 'paid' }));
 
-    expect(setCaseBillingMock).toHaveBeenCalledWith('case_1', 200, 'paid');
+    expect(setCaseBillingMock).toHaveBeenCalledWith('case_1', 200, 'paid', 'usr_admin_demo');
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases');
   });
@@ -96,6 +96,6 @@ describe('updateCaseBillingAction', () => {
 
     await updateCaseBillingAction(formData({ caseId: 'case_1', payableAmount: '', paymentStatus: 'not_payable' }));
 
-    expect(setCaseBillingMock).toHaveBeenCalledWith('case_1', null, 'not_payable');
+    expect(setCaseBillingMock).toHaveBeenCalledWith('case_1', null, 'not_payable', 'usr_admin_demo');
   });
 });

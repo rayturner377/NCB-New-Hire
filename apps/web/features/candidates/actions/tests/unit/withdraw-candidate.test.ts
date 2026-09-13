@@ -4,7 +4,6 @@ const getSessionMock = vi.fn();
 const updateCandidateMock = vi.fn();
 const listCandidatesForUserMock = vi.fn();
 const revalidatePathMock = vi.fn();
-const auditAppendMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
@@ -13,7 +12,6 @@ vi.mock('../../../services/candidates-service', () => ({
   updateCandidate: (...args: unknown[]) => updateCandidateMock(...args),
   listCandidatesForUser: (...args: unknown[]) => listCandidatesForUserMock(...args)
 }));
-vi.mock('@ncb/database', () => ({ auditRepository: { append: (...args: unknown[]) => auditAppendMock(...args) } }));
 
 const { withdrawCandidateAction } = await import('../../withdraw-candidate');
 
@@ -29,7 +27,6 @@ describe('withdrawCandidateAction', () => {
     updateCandidateMock.mockReset();
     listCandidatesForUserMock.mockReset();
     revalidatePathMock.mockClear();
-    auditAppendMock.mockReset();
   });
 
   it('does nothing without an active session', async () => {
@@ -52,12 +49,11 @@ describe('withdrawCandidateAction', () => {
 
     await withdrawCandidateAction(formData({ candidateId: 'cand_1', withdrawalReason: 'No longer needed' }));
 
-    expect(updateCandidateMock).toHaveBeenCalledWith('cand_1', {
-      status: 'withdrawn',
-      withdrawalReason: 'No longer needed'
-    });
-    expect(auditAppendMock).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: 'candidate_withdrawn', actorUserId: 'usr_1', entityId: 'cand_1' })
+    expect(updateCandidateMock).toHaveBeenCalledWith(
+      'cand_1',
+      { status: 'withdrawn', withdrawalReason: 'No longer needed' },
+      'usr_1',
+      { eventType: 'candidate_withdrawn', details: { withdrawalReason: 'No longer needed' } }
     );
     expect(revalidatePathMock).toHaveBeenCalledWith('/candidates');
   });

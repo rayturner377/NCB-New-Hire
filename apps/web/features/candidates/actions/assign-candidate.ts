@@ -1,7 +1,6 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
@@ -34,15 +33,12 @@ export async function assignCandidateAction(formData: FormData): Promise<void> {
     throw error;
   }
 
-  await updateCandidate(candidateId, { assignedClinicianId, assignedClinicianName });
-
-  await auditRepository.append({
-    eventType: 'candidate_clinician_assigned',
-    actorUserId: session.user.id,
-    entityType: 'candidate',
-    entityId: candidateId,
-    details: { assignedClinicianId, assignedClinicianName }
-  });
+  await updateCandidate(
+    candidateId,
+    { assignedClinicianId, assignedClinicianName },
+    session.user.id,
+    { eventType: 'candidate_clinician_assigned', details: { assignedClinicianId, assignedClinicianName } }
+  );
 
   revalidatePath('/candidates');
 }

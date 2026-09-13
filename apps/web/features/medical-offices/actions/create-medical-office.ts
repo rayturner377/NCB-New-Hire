@@ -56,7 +56,7 @@ export async function createMedicalOfficeAction(
     };
   }
 
-  await createMedicalOffice(parsed.data);
+  await createMedicalOffice(parsed.data, session.user.id);
 
   revalidatePath('/doctors');
   redirect('/doctors?tab=offices');

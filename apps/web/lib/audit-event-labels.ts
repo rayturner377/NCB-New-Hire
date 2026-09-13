@@ -14,16 +14,24 @@ export const EVENT_LABELS: Record<string, string> = {
   case_attachment_downloaded: 'Attachment downloaded',
   case_attachment_uploaded: 'Attachment uploaded',
   case_attachment_deleted: 'Attachment deleted',
+  case_billing_updated: 'Billing updated',
+  candidate_created: 'Candidate created',
   candidate_updated: 'Candidate profile updated',
   candidate_withdrawn: 'Candidate withdrawn',
   candidate_clinician_assigned: 'Candidate assigned to clinician',
+  medical_office_created: 'Medical office created',
+  message_resent: 'Message resent',
   user_created: 'User created',
+  user_updated: 'User profile updated',
   user_deleted: 'User deleted',
   user_activated: 'User activated',
   user_deactivated: 'User deactivated',
   user_password_reset: 'Password reset requested',
+  user_permission_overrides_updated: 'Permission overrides updated',
   account_activated: 'Account activated',
+  password_changed: 'Password changed',
   password_reset_completed: 'Password reset completed',
+  sessions_revoked: 'Other sessions signed out',
   login_success: 'Login',
   login_failed: 'Login failed',
   logout: 'Logout',
@@ -50,32 +58,36 @@ export const EVENT_TYPE_GROUPS: EventTypeGroup[] = [
       'case_unhidden',
       'case_attachment_downloaded',
       'case_attachment_uploaded',
-      'case_attachment_deleted'
+      'case_attachment_deleted',
+      'case_billing_updated'
     ]
   },
   {
     label: 'Candidate activity',
-    eventTypes: ['candidate_updated', 'candidate_withdrawn', 'candidate_clinician_assigned']
+    eventTypes: ['candidate_created', 'candidate_updated', 'candidate_withdrawn', 'candidate_clinician_assigned']
   },
   {
     label: 'User accounts',
     eventTypes: [
       'user_created',
+      'user_updated',
       'user_deleted',
       'user_activated',
       'user_deactivated',
       'user_password_reset',
+      'user_permission_overrides_updated',
       'account_activated',
+      'password_changed',
       'password_reset_completed'
     ]
   },
   {
     label: 'Sessions & access',
-    eventTypes: ['login_success', 'login_failed', 'logout', 'logout_idle_timeout', 'access_denied']
+    eventTypes: ['login_success', 'login_failed', 'logout', 'logout_idle_timeout', 'sessions_revoked', 'access_denied']
   },
   {
     label: 'Settings',
-    eventTypes: ['settings_updated']
+    eventTypes: ['settings_updated', 'medical_office_created', 'message_resent']
   }
 ];
 

@@ -1,7 +1,6 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
@@ -32,15 +31,12 @@ export async function withdrawCandidateAction(formData: FormData): Promise<void>
     throw error;
   }
 
-  await updateCandidate(candidateId, { status: 'withdrawn', withdrawalReason });
-
-  await auditRepository.append({
-    eventType: 'candidate_withdrawn',
-    actorUserId: session.user.id,
-    entityType: 'candidate',
-    entityId: candidateId,
-    details: { withdrawalReason }
-  });
+  await updateCandidate(
+    candidateId,
+    { status: 'withdrawn', withdrawalReason },
+    session.user.id,
+    { eventType: 'candidate_withdrawn', details: { withdrawalReason } }
+  );
 
   revalidatePath('/candidates');
 }

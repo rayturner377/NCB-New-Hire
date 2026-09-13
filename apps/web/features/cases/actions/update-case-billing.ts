@@ -44,7 +44,7 @@ export async function updateCaseBillingAction(formData: FormData): Promise<void>
   const payableAmount = payableAmountRaw === '' ? null : Number(payableAmountRaw);
   if (payableAmount !== null && (!Number.isFinite(payableAmount) || payableAmount < 0)) return;
 
-  await setCaseBilling(caseId, payableAmount, paymentStatus);
+  await setCaseBilling(caseId, payableAmount, paymentStatus, session.user.id);
   revalidatePath(`/cases/${caseId}`);
   revalidatePath('/cases');
 }

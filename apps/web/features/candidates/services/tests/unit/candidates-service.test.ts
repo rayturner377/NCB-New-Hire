@@ -6,6 +6,7 @@ const save = vi.fn();
 const listAll = vi.fn();
 const listForUser = vi.fn();
 const findById = vi.fn();
+const auditAppend = vi.fn();
 
 vi.mock('@ncb/database', () => ({
   candidatesRepository: {
@@ -13,6 +14,9 @@ vi.mock('@ncb/database', () => ({
     listAll: (...args: unknown[]) => listAll(...args),
     listForUser: (...args: unknown[]) => listForUser(...args),
     findById: (...args: unknown[]) => findById(...args)
+  },
+  auditRepository: {
+    append: (...args: unknown[]) => auditAppend(...args)
   }
 }));
 
@@ -69,6 +73,7 @@ describe('candidates service', () => {
     listForUser.mockReset();
     findById.mockReset();
     createUser.mockReset();
+    auditAppend.mockReset();
   });
 
   it('createCandidate builds the full payload and persists it', async () => {
@@ -89,6 +94,9 @@ describe('candidates service', () => {
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ id: created.id, fullName: 'Jane Doe' }),
       masterKey
+    );
+    expect(auditAppend).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'candidate_created', actorUserId: 'usr_reviewer_demo', entityId: created.id })
     );
   });
 
@@ -155,27 +163,31 @@ describe('candidates service', () => {
 
   it('updateCandidate throws when the candidate does not exist', async () => {
     findById.mockResolvedValue(null);
-    await expect(updateCandidate('missing', { fullName: 'New Name' })).rejects.toThrow('Candidate not found');
+    await expect(updateCandidate('missing', { fullName: 'New Name' }, 'usr_reviewer_demo')).rejects.toThrow('Candidate not found');
   });
 
   it('updateCandidate merges the patch and resets a withdrawn status on reassignment', async () => {
     findById.mockResolvedValue({ payload: samplePayload({ status: 'withdrawn' }) });
     save.mockResolvedValue(undefined);
 
-    const updated = await updateCandidate('cand_1', {
-      assignedClinicianId: 'usr_doctor_demo',
-      assignedClinicianName: 'Demo Doctor'
-    });
+    const updated = await updateCandidate(
+      'cand_1',
+      { assignedClinicianId: 'usr_doctor_demo', assignedClinicianName: 'Demo Doctor' },
+      'usr_reviewer_demo'
+    );
 
     expect(updated.status).toBe('assigned');
     expect(updated.assignedClinicianId).toBe('usr_doctor_demo');
+    expect(auditAppend).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'candidate_updated', actorUserId: 'usr_reviewer_demo', entityId: 'cand_1' })
+    );
   });
 
   it('updateCandidate applies an explicit status change as-is', async () => {
     findById.mockResolvedValue({ payload: samplePayload() });
     save.mockResolvedValue(undefined);
 
-    const updated = await updateCandidate('cand_1', { status: 'archived' });
+    const updated = await updateCandidate('cand_1', { status: 'archived' }, 'usr_reviewer_demo');
 
     expect(updated.status).toBe('archived');
   });
@@ -205,7 +217,7 @@ describe('candidates service', () => {
       withdrawalReason: 'N/A'
     };
 
-    const updated = await updateCandidate('cand_1', patch);
+    const updated = await updateCandidate('cand_1', patch, 'usr_reviewer_demo');
 
     expect(updated).toMatchObject(patch);
   });
@@ -215,7 +227,7 @@ describe('candidates service', () => {
     findById.mockResolvedValue({ payload: existing });
     save.mockResolvedValue(undefined);
 
-    const updated = await updateCandidate('cand_1', {});
+    const updated = await updateCandidate('cand_1', {}, 'usr_reviewer_demo');
 
     expect(updated).toEqual(existing);
   });

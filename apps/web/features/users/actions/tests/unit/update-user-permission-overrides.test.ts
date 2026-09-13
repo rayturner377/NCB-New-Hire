@@ -3,13 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const getSessionMock = vi.fn();
 const updateUserMock = vi.fn();
 const getUserRoleMock = vi.fn();
-const auditAppendMock = vi.fn();
 const revalidatePathMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
 vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
-vi.mock('@ncb/database', () => ({ auditRepository: { append: (...args: unknown[]) => auditAppendMock(...args) } }));
 vi.mock('../../../services/users-service', () => ({
   updateUser: (...args: unknown[]) => updateUserMock(...args),
   getUserRole: (...args: unknown[]) => getUserRoleMock(...args)
@@ -31,7 +29,6 @@ describe('updateUserPermissionOverridesAction', () => {
     getSessionMock.mockReset();
     updateUserMock.mockReset();
     getUserRoleMock.mockReset();
-    auditAppendMock.mockReset();
     revalidatePathMock.mockClear();
     getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', role: 'admin' } });
   });
@@ -79,7 +76,12 @@ describe('updateUserPermissionOverridesAction', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(updateUserMock).toHaveBeenCalledWith('usr_1', { permissionOverrides: { grant: [], revoke: [PERMISSIONS.REPORTS_VIEW] } });
+    expect(updateUserMock).toHaveBeenCalledWith(
+      'usr_1',
+      { permissionOverrides: { grant: [], revoke: [PERMISSIONS.REPORTS_VIEW] } },
+      'usr_admin_demo',
+      { eventType: 'user_permission_overrides_updated', details: { grant: [], revoke: [PERMISSIONS.REPORTS_VIEW] } }
+    );
   });
 
   it('saves valid grant/revoke overrides for a non-admin target', async () => {
@@ -91,9 +93,11 @@ describe('updateUserPermissionOverridesAction', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(updateUserMock).toHaveBeenCalledWith('usr_1', {
-      permissionOverrides: { grant: [PERMISSIONS.MEDICAL_CASES_TRANSITION], revoke: [] }
-    });
-    expect(auditAppendMock).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'user_permission_overrides_updated' }));
+    expect(updateUserMock).toHaveBeenCalledWith(
+      'usr_1',
+      { permissionOverrides: { grant: [PERMISSIONS.MEDICAL_CASES_TRANSITION], revoke: [] } },
+      'usr_admin_demo',
+      expect.objectContaining({ eventType: 'user_permission_overrides_updated' })
+    );
   });
 });

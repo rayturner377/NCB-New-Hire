@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { candidatesRepository } from '@ncb/database';
+import { auditRepository, candidatesRepository } from '@ncb/database';
 import { loadMasterKey } from '../../../lib/master-key';
 import { createUser } from '../../users/services/users-service';
 import type { CreateCandidateSchemaInput, UpdateCandidateSchemaInput } from '../schemas/candidate';
@@ -88,6 +88,15 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
   };
 
   await persist(payload);
+
+  await auditRepository.append({
+    eventType: 'candidate_created',
+    actorUserId: input.createdBy,
+    entityType: 'candidate',
+    entityId: payload.id,
+    details: { fullName: payload.fullName, portalAccessGranted: Boolean(linkedUserId) }
+  });
+
   return payload;
 }
 
@@ -109,8 +118,20 @@ export async function getCandidateById(id: string): Promise<CandidatePayload | n
   return row?.payload ?? null;
 }
 
-/** Ported from server.js updateCandidateFromReviewer (~L3041-3064). */
-export async function updateCandidate(id: string, patch: UpdateCandidateSchemaInput): Promise<CandidatePayload> {
+/**
+ * Ported from server.js updateCandidateFromReviewer (~L3041-3064). Every caller — HR editing a
+ * candidate's own profile fields, a patient editing their own via update-own-profile.ts, and the
+ * more specific withdraw/assign actions — routes through here, so `actorId` is required and every
+ * write gets an audit event: 'candidate_updated' by default, or the caller's own more specific
+ * `audit.eventType` (e.g. 'candidate_withdrawn') when this same patch also represents a distinct,
+ * nameable action worth its own label in the audit log rather than a generic "updated."
+ */
+export async function updateCandidate(
+  id: string,
+  patch: UpdateCandidateSchemaInput,
+  actorId: string,
+  audit?: { eventType: string; details?: Record<string, unknown> }
+): Promise<CandidatePayload> {
   const existing = await getCandidateById(id);
   if (!existing) {
     throw new Error(`Candidate not found: ${id}`);
@@ -148,5 +169,14 @@ export async function updateCandidate(id: string, patch: UpdateCandidateSchemaIn
   }
 
   await persist(updated);
+
+  await auditRepository.append({
+    eventType: audit?.eventType ?? 'candidate_updated',
+    actorUserId: actorId,
+    entityType: 'candidate',
+    entityId: id,
+    details: audit?.details
+  });
+
   return updated;
 }

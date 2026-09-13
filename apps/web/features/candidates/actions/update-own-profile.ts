@@ -71,7 +71,7 @@ export async function updateOwnProfileAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid profile details.', fieldErrors };
   }
 
-  await updateCandidate(own.id, parsed.data);
+  await updateCandidate(own.id, parsed.data, session.user.id);
 
   revalidatePath('/profile');
   return { ok: true, message: 'Profile updated.' };

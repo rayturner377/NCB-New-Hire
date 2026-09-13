@@ -72,7 +72,7 @@ describe('updateUserAction', () => {
     const result = await updateUserAction(null, formData(validFields));
 
     expect(result.ok).toBe(true);
-    expect(updateUserMock).toHaveBeenCalledWith('usr_1', expect.objectContaining({ displayName: 'Demo Doctor' }));
+    expect(updateUserMock).toHaveBeenCalledWith('usr_1', expect.objectContaining({ displayName: 'Demo Doctor' }), 'usr_reviewer_demo');
   });
 
   it('refuses to let a reviewer edit an admin account, regardless of what the form claims the role is', async () => {

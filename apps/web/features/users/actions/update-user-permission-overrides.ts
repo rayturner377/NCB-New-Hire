@@ -2,7 +2,6 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { auditRepository } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ASSIGNABLE_PERMISSIONS, ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
@@ -72,15 +71,12 @@ export async function updateUserPermissionOverridesAction(
   const revokeSet = new Set(parsed.data.revoke);
   const grant = parsed.data.grant.filter((permission) => !revokeSet.has(permission));
 
-  await updateUser(parsed.data.userId, { permissionOverrides: { grant, revoke: parsed.data.revoke } });
-
-  await auditRepository.append({
-    eventType: 'user_permission_overrides_updated',
-    actorUserId: session.user.id,
-    entityType: 'user',
-    entityId: parsed.data.userId,
-    details: { grant, revoke: parsed.data.revoke }
-  });
+  await updateUser(
+    parsed.data.userId,
+    { permissionOverrides: { grant, revoke: parsed.data.revoke } },
+    session.user.id,
+    { eventType: 'user_permission_overrides_updated', details: { grant, revoke: parsed.data.revoke } }
+  );
 
   revalidatePath('/doctors');
   revalidatePath('/reviewers');

@@ -136,8 +136,22 @@ export interface UpdateUserInput extends UpdateUserSchemaInput {
   permissionOverrides?: { grant: string[]; revoke: string[] };
 }
 
-export async function updateUser(id: string, patch: UpdateUserInput): Promise<UserSummary> {
+export async function updateUser(
+  id: string,
+  patch: UpdateUserInput,
+  actorId?: string,
+  audit?: { eventType: string; details?: Record<string, unknown> }
+): Promise<UserSummary> {
   const updated = await usersRepository.update(id, patch);
+
+  await auditRepository.append({
+    eventType: audit?.eventType ?? 'user_updated',
+    actorUserId: actorId,
+    entityType: 'user',
+    entityId: id,
+    details: audit?.details ?? { role: updated.role, displayName: updated.displayName }
+  });
+
   return toSummary(updated);
 }
 
@@ -166,6 +180,13 @@ export async function deleteUser(id: string, actorId?: string): Promise<void> {
 export async function changePassword(id: string, newPassword: string): Promise<void> {
   await usersRepository.update(id, { mustChangePassword: false });
   await setUserPassword(id, newPassword);
+
+  await auditRepository.append({
+    eventType: 'password_changed',
+    actorUserId: id,
+    entityType: 'user',
+    entityId: id
+  });
 }
 
 /**
