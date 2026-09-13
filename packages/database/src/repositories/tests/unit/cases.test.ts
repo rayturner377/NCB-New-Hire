@@ -162,23 +162,17 @@ describe('cases repository', () => {
     });
   });
 
-  it('setPaymentStatus() leaves payableAmount untouched', async () => {
-    const update = vi.fn().mockResolvedValue({ id: 'case_1', paymentStatus: 'paid' });
-    const db = { medicalCase: { update } } as unknown as PrismaClient;
-
-    await createCasesRepository(db).setPaymentStatus('case_1', 'paid');
-
-    expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { paymentStatus: 'paid' } });
-  });
-
-  it('setPaymentConfirmedAt() records the real payment instant', async () => {
+  it('confirmPayment() sets paymentStatus and paymentConfirmedAt in one statement', async () => {
     const update = vi.fn().mockResolvedValue({ id: 'case_1' });
     const db = { medicalCase: { update } } as unknown as PrismaClient;
     const confirmedAt = new Date('2026-01-01T00:00:00.000Z');
 
-    await createCasesRepository(db).setPaymentConfirmedAt('case_1', confirmedAt);
+    await createCasesRepository(db).confirmPayment('case_1', confirmedAt);
 
-    expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { paymentConfirmedAt: confirmedAt } });
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'case_1' },
+      data: { paymentStatus: 'paid', paymentConfirmedAt: confirmedAt }
+    });
   });
 
   it('updatePayload() re-encrypts and overwrites only the payload column', async () => {
@@ -188,5 +182,80 @@ describe('cases repository', () => {
     await createCasesRepository(db).updatePayload('case_1', { notes: 'updated' }, masterKey);
 
     expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { casePayload: expect.any(Buffer) } });
+  });
+
+  describe('submitAndTransition()', () => {
+    /** A minimal fake PrismaClient whose $transaction just invokes the callback with itself as `tx` — same pattern as submissions.test.ts's fakeDb. */
+    function fakeDb(overrides: { caseStatus?: string | null; transitionRows?: { transition_medical_case: number }[] } = {}) {
+      const updates: { data: unknown }[] = [];
+      const db = {
+        medicalCase: {
+          update: vi.fn().mockImplementation(({ data }) => {
+            updates.push({ data });
+            return Promise.resolve(data);
+          }),
+          findFirst: vi.fn().mockResolvedValue(overrides.caseStatus === undefined ? { status: 'sent_to_patient' } : overrides.caseStatus ? { status: overrides.caseStatus } : null)
+        },
+        $queryRaw: vi.fn().mockResolvedValue(overrides.transitionRows ?? [{ transition_medical_case: 2 }])
+      };
+      (db as unknown as { $transaction: unknown }).$transaction = (callback: (tx: unknown) => unknown) => callback(db);
+      return { db: db as unknown as PrismaClient, updates };
+    }
+
+    it('writes the encrypted payload and the assigned clinician before transitioning', async () => {
+      const { db, updates } = fakeDb();
+
+      await createCasesRepository(db).submitAndTransition(
+        {
+          caseId: 'case_1',
+          payload: { notes: 'submitted' },
+          assignedClinicianId: 'usr_doctor_demo',
+          expectedVersion: 1,
+          newStatus: 'sent_to_doctor',
+          actorId: 'usr_patient_demo'
+        },
+        masterKey
+      );
+
+      expect(updates).toHaveLength(2);
+      expect(updates[0]!.data).toEqual({ casePayload: expect.any(Buffer) });
+      expect(updates[1]!.data).toEqual({ assignedClinicianId: 'usr_doctor_demo', assignedAt: expect.any(Date) });
+    });
+
+    it('returns the new case version and the status the case had before the transition', async () => {
+      const { db } = fakeDb({ caseStatus: 'sent_to_patient', transitionRows: [{ transition_medical_case: 2 }] });
+
+      const result = await createCasesRepository(db).submitAndTransition(
+        {
+          caseId: 'case_1',
+          payload: {},
+          assignedClinicianId: 'usr_doctor_demo',
+          expectedVersion: 1,
+          newStatus: 'sent_to_doctor',
+          actorId: 'usr_patient_demo'
+        },
+        masterKey
+      );
+
+      expect(result).toEqual({ newVersion: 2, previousStatus: 'sent_to_patient' });
+    });
+
+    it('throws (rolling back the payload/clinician writes) when the stored procedure reports no matching row', async () => {
+      const { db } = fakeDb({ transitionRows: [] });
+
+      await expect(
+        createCasesRepository(db).submitAndTransition(
+          {
+            caseId: 'case_1',
+            payload: {},
+            assignedClinicianId: 'usr_doctor_demo',
+            expectedVersion: 99,
+            newStatus: 'sent_to_doctor',
+            actorId: 'usr_patient_demo'
+          },
+          masterKey
+        )
+      ).rejects.toThrow('Medical case changed or does not exist');
+    });
   });
 });

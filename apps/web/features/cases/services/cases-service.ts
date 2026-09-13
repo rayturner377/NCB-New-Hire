@@ -112,9 +112,11 @@ export async function savePatientCaseProgress(
  * The patient intake form's final Submit — persists the form data, records
  * the chosen doctor on the case's own column (listForClinician/listForPatient
  * filter on it, not the payload), and transitions sent_to_patient ->
- * sent_to_doctor. Unlike the old app, choosing a doctor is mandatory here
- * (medical-office selection was deferred, so there's no "leave it
- * unassigned" path to fall back to).
+ * sent_to_doctor, all atomically (see casesRepository.submitAndTransition —
+ * a stale expectedVersion rolls back the payload/clinician writes too,
+ * instead of leaving the submission looking silently lost). Unlike the old
+ * app, choosing a doctor is mandatory here (medical-office selection was
+ * deferred, so there's no "leave it unassigned" path to fall back to).
  */
 export async function submitPatientCase(
   caseId: string,
@@ -124,9 +126,23 @@ export async function submitPatientCase(
   existingPayload?: CasePayload | null
 ): Promise<number> {
   const masterKey = loadMasterKey();
-  await casesRepository.updatePayload(caseId, { ...existingPayload, patientCaseData } satisfies CasePayload, masterKey);
-  await casesRepository.setAssignedClinician(caseId, patientCaseData.assignedClinicianId);
-  return transitionCase(caseId, expectedVersion, 'sent_to_doctor', actorId);
+  const payload = { ...existingPayload, patientCaseData } satisfies CasePayload;
+
+  const { newVersion, previousStatus } = await casesRepository.submitAndTransition(
+    {
+      caseId,
+      payload,
+      assignedClinicianId: patientCaseData.assignedClinicianId,
+      expectedVersion,
+      newStatus: 'sent_to_doctor',
+      actorId
+    },
+    masterKey
+  );
+
+  await finalizeCaseTransition(caseId, actorId, previousStatus, 'sent_to_doctor');
+
+  return newVersion;
 }
 
 /**
@@ -175,13 +191,12 @@ export async function transitionCase(
 ): Promise<number> {
   const masterKey = loadMasterKey();
   const before = await casesRepository.findById(caseId, masterKey);
-  const newVersion = await casesRepository.transition(caseId, expectedVersion, newStatus, actorId);
   // A canceled case (whether HR withdraws it or a doctor declines it) is never payable — mirrors
-  // the legacy app's normalizeCasePaymentStatus, applied here rather than in the stored procedure
-  // so any caller going through transitionCase gets it, not just the guided "Cancel case" action.
-  if (newStatus === 'withdrawn' || newStatus === 'canceled_by_doctor') {
-    await casesRepository.setPaymentStatus(caseId, 'not_payable');
-  }
+  // the legacy app's normalizeCasePaymentStatus. Applied inside transition_medical_case itself
+  // (the same stored procedure the version-checked transition below already runs through), not as
+  // a separate UPDATE afterward — a prior version did that as two statements, which could leave a
+  // withdrawn/canceled case with a stale payable payment_status if the second one failed.
+  const newVersion = await casesRepository.transition(caseId, expectedVersion, newStatus, actorId);
   await finalizeCaseTransition(caseId, actorId, before?.status ?? null, newStatus);
 
   return newVersion;
@@ -284,16 +299,28 @@ export async function listCaseAuditEvents(caseId: string) {
 }
 
 /**
- * Snapshots a fixed billing amount onto the case — used both when a doctor
- * submits their assessment (their *current* rate at that moment, see
- * create-submission.ts) and for an admin's later manual override (see
- * actions/update-case-billing.ts). Deliberately just writes whatever it's
- * given rather than reading a doctor's live rate itself — that's what keeps
- * a case's billed amount loosely coupled from a doctor's rate changing
- * afterward.
+ * An admin/reviewer's manual override of a case's billed amount/status (see
+ * actions/update-case-billing.ts) — the doctor-submission snapshot (their *current* rate at
+ * submission time) is a separate write inside submissionsRepository.saveAndTransition's own
+ * transaction, not this function. Deliberately just writes whatever it's given rather than
+ * reading a doctor's live rate itself — that's what keeps a case's billed amount loosely coupled
+ * from a doctor's rate changing afterward.
  */
-export async function setCaseBilling(caseId: string, payableAmount: number | null, paymentStatus: string | null): Promise<void> {
+export async function setCaseBilling(
+  caseId: string,
+  payableAmount: number | null,
+  paymentStatus: string | null,
+  actorId: string
+): Promise<void> {
   await casesRepository.setBilling(caseId, payableAmount, paymentStatus);
+
+  await auditRepository.append({
+    eventType: 'case_billing_updated',
+    actorUserId: actorId,
+    entityType: 'case',
+    entityId: caseId,
+    details: { payableAmount, paymentStatus }
+  });
 }
 
 /** Statuses reached before a doctor has actually submitted an assessment — a case's billed amount/payment status don't exist yet at any of these (create-submission.ts snapshots the billed amount only at submission time), so billing/payment controls should stay disabled until past this set. */
@@ -326,8 +353,7 @@ export async function listReviewQueueCases() {
  * day they're clicking this.
  */
 export async function confirmCasePayment(caseId: string, paidOn: string, actorId: string): Promise<void> {
-  await casesRepository.setPaymentStatus(caseId, 'paid');
-  await casesRepository.setPaymentConfirmedAt(caseId, new Date(paidOn));
+  await casesRepository.confirmPayment(caseId, new Date(paidOn));
   await auditRepository.append({
     eventType: 'case_payment_confirmed',
     actorUserId: actorId,

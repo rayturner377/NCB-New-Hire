@@ -8,8 +8,8 @@ const findById = vi.fn();
 const findByIdWithPatient = vi.fn();
 const transition = vi.fn();
 const setAssignedClinician = vi.fn();
-const setPaymentStatus = vi.fn();
-const setPaymentConfirmedAt = vi.fn();
+const confirmPayment = vi.fn();
+const submitAndTransition = vi.fn();
 const updatePayload = vi.fn();
 const setBilling = vi.fn();
 const listForClinician = vi.fn();
@@ -29,8 +29,8 @@ vi.mock('@ncb/database', () => ({
     findByIdWithPatient: (...args: unknown[]) => findByIdWithPatient(...args),
     transition: (...args: unknown[]) => transition(...args),
     setAssignedClinician: (...args: unknown[]) => setAssignedClinician(...args),
-    setPaymentStatus: (...args: unknown[]) => setPaymentStatus(...args),
-    setPaymentConfirmedAt: (...args: unknown[]) => setPaymentConfirmedAt(...args),
+    confirmPayment: (...args: unknown[]) => confirmPayment(...args),
+    submitAndTransition: (...args: unknown[]) => submitAndTransition(...args),
     updatePayload: (...args: unknown[]) => updatePayload(...args),
     setBilling: (...args: unknown[]) => setBilling(...args),
     listForClinician: (...args: unknown[]) => listForClinician(...args)
@@ -70,6 +70,7 @@ const {
   listCaseAuditEvents,
   reassignClinician,
   transitionCase,
+  submitPatientCase,
   setCaseHidden,
   confirmCasePayment,
   setCaseBilling,
@@ -87,8 +88,8 @@ describe('cases service', () => {
     findByIdWithPatient.mockReset();
     transition.mockReset();
     setAssignedClinician.mockReset();
-    setPaymentStatus.mockReset();
-    setPaymentConfirmedAt.mockReset();
+    confirmPayment.mockReset();
+    submitAndTransition.mockReset();
     updatePayload.mockReset();
     setBilling.mockReset();
     listForClinician.mockReset();
@@ -196,23 +197,12 @@ describe('cases service', () => {
     expect(auditAppend).not.toHaveBeenCalled();
   });
 
-  it('transitionCase to withdrawn also marks the case not_payable — a canceled case is never billable', async () => {
-    findById.mockResolvedValue({ status: 'doctor_submitted' });
-    transition.mockResolvedValue(2);
-
-    await transitionCase('case_1', 1, 'withdrawn', 'usr_reviewer_demo');
-
-    expect(setPaymentStatus).toHaveBeenCalledWith('case_1', 'not_payable');
-  });
-
-  it('transitionCase to any other status leaves payment status alone', async () => {
-    findById.mockResolvedValue({ status: 'doctor_submitted' });
-    transition.mockResolvedValue(2);
-
-    await transitionCase('case_1', 1, 'reviewed', 'usr_reviewer_demo');
-
-    expect(setPaymentStatus).not.toHaveBeenCalled();
-  });
+  // Payment-status normalization on withdraw/cancel (a canceled case is never billable) now
+  // happens inside the transition_medical_case stored procedure itself (see
+  // packages/database's 0018_atomic_case_transitions migration) as part of the same atomic
+  // statement as the transition, not as a separate JS-layer call — so there's no longer a
+  // repository call on this side to assert against; that behavior is covered by the migration's
+  // own SQL, not a unit test here.
 
   it('transitionCase to doctor_submitted notifies the configured reviewer address', async () => {
     findById.mockResolvedValue({ status: 'sent_to_doctor', patientId: 'cand_1' });
@@ -250,8 +240,26 @@ describe('cases service', () => {
     expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 
+  it('confirmCasePayment sets paid status and the confirmed-at timestamp in one call', async () => {
+    confirmPayment.mockResolvedValue(undefined);
+    findById.mockResolvedValue({ patientId: 'cand_1', assignedClinicianId: null });
+
+    await confirmCasePayment('case_1', '2026-01-05', 'usr_reviewer_demo');
+
+    expect(confirmPayment).toHaveBeenCalledWith('case_1', new Date('2026-01-05'));
+    expect(auditAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'case_payment_confirmed',
+        actorUserId: 'usr_reviewer_demo',
+        entityType: 'case',
+        entityId: 'case_1',
+        details: { paidOn: '2026-01-05' }
+      })
+    );
+  });
+
   it('confirmCasePayment notifies the assigned doctor, and does nothing when no doctor is assigned', async () => {
-    setPaymentStatus.mockResolvedValue(undefined);
+    confirmPayment.mockResolvedValue(undefined);
     findById.mockResolvedValue({ patientId: 'cand_1', assignedClinicianId: 'usr_doctor_demo' });
     usersFindById.mockResolvedValue({ email: 'doctor@ncb.local', displayName: 'Dr. One' });
     getCandidateByIdMock.mockResolvedValue({ fullName: 'Jane Doe' });
@@ -365,9 +373,71 @@ describe('cases service', () => {
     expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 
-  it('setCaseBilling writes payableAmount/paymentStatus straight through', async () => {
-    await setCaseBilling('case_1', 150, 'unpaid');
+  it('setCaseBilling writes payableAmount/paymentStatus straight through and audits it', async () => {
+    await setCaseBilling('case_1', 150, 'unpaid', 'usr_admin_demo');
+
     expect(setBilling).toHaveBeenCalledWith('case_1', 150, 'unpaid');
+    expect(auditAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'case_billing_updated',
+        actorUserId: 'usr_admin_demo',
+        entityType: 'case',
+        entityId: 'case_1',
+        details: { payableAmount: 150, paymentStatus: 'unpaid' }
+      })
+    );
+  });
+
+  describe('submitPatientCase', () => {
+    it('delegates the atomic write to submitAndTransition with the expected version and clinician', async () => {
+      submitAndTransition.mockResolvedValue({ newVersion: 2, previousStatus: 'sent_to_patient' });
+
+      await submitPatientCase(
+        'case_1',
+        { assignedClinicianId: 'usr_doctor_demo' } as never,
+        1,
+        'usr_patient_demo',
+        { caseType: 'pre_employment' }
+      );
+
+      expect(submitAndTransition).toHaveBeenCalledWith(
+        {
+          caseId: 'case_1',
+          payload: { caseType: 'pre_employment', patientCaseData: { assignedClinicianId: 'usr_doctor_demo' } },
+          assignedClinicianId: 'usr_doctor_demo',
+          expectedVersion: 1,
+          newStatus: 'sent_to_doctor',
+          actorId: 'usr_patient_demo'
+        },
+        masterKey
+      );
+    });
+
+    it('finalizes the transition (audit + notify) only after the transaction resolves, using its reported previousStatus', async () => {
+      submitAndTransition.mockResolvedValue({ newVersion: 2, previousStatus: 'sent_to_patient' });
+      findById.mockResolvedValue({ patientId: 'cand_1', assignedClinicianId: null });
+
+      const newVersion = await submitPatientCase('case_1', { assignedClinicianId: 'usr_doctor_demo' } as never, 1, 'usr_patient_demo');
+
+      expect(newVersion).toBe(2);
+      expect(auditAppend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'case_transition',
+          actorUserId: 'usr_patient_demo',
+          entityId: 'case_1',
+          details: { from: 'sent_to_patient', to: 'sent_to_doctor' }
+        })
+      );
+    });
+
+    it('propagates a version-mismatch rejection without calling finalizeCaseTransition', async () => {
+      submitAndTransition.mockRejectedValue(new Error('Medical case changed or does not exist'));
+
+      await expect(
+        submitPatientCase('case_1', { assignedClinicianId: 'usr_doctor_demo' } as never, 99, 'usr_patient_demo')
+      ).rejects.toThrow('Medical case changed or does not exist');
+      expect(auditAppend).not.toHaveBeenCalled();
+    });
   });
 
   describe('hasDoctorSubmitted', () => {

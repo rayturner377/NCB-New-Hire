@@ -107,29 +107,26 @@ export function createCasesRepository(db: PrismaClient) {
     },
 
     /**
-     * Sets billing directly on the case row — used both to snapshot a
-     * doctor's rate onto a case at submission time (a fixed amount from then
-     * on, independent of the doctor's own rate changing later) and for an
-     * admin's later manual override. Never reads the doctor's *current* rate
-     * itself; callers decide what value to write.
+     * Sets billing directly on the case row — an admin/reviewer's manual override of the amount a
+     * doctor is billed (the doctor-submission snapshot is a separate write inside
+     * submissionsRepository.saveAndTransition's own transaction, not this method). Never reads the
+     * doctor's *current* rate itself; callers decide what value to write.
      */
     setBilling(id: string, payableAmount: number | null, paymentStatus: string | null): Promise<MedicalCase> {
       return db.medicalCase.update({ where: { id }, data: { payableAmount, paymentStatus } });
     },
 
-    /** Flips just the payment status — unlike setBilling above, leaves payableAmount alone, since confirming a case as paid shouldn't require re-submitting (or risk clobbering) the billed amount already on it. */
-    setPaymentStatus(id: string, paymentStatus: string): Promise<MedicalCase> {
-      return db.medicalCase.update({ where: { id }, data: { paymentStatus } });
-    },
-
     /**
-     * Records the real "doctor paid" instant as an actual timestamp column —
-     * the SLA manager's "time to pay" / end-to-end targets (features/cases/sla.ts)
-     * need this queryable on every case-list row, which the audit event's
-     * `paidOn` detail (case-history.ts) can't offer without an N+1 lookup.
+     * Marks a case paid and records the real "doctor paid" instant in one statement — a prior
+     * version did these as two separate UPDATEs (setPaymentStatus + a standalone
+     * paymentConfirmedAt write), which could leave a case marked 'paid' with no confirmed-at
+     * timestamp if the second one failed. The timestamp itself feeds the SLA manager's "time to
+     * pay" / end-to-end targets (features/cases/sla.ts), which need it queryable on every
+     * case-list row — the audit event's own `paidOn` detail (case-history.ts) can't offer that
+     * without an N+1 lookup.
      */
-    setPaymentConfirmedAt(id: string, paymentConfirmedAt: Date): Promise<MedicalCase> {
-      return db.medicalCase.update({ where: { id }, data: { paymentConfirmedAt } });
+    confirmPayment(id: string, paymentConfirmedAt: Date): Promise<MedicalCase> {
+      return db.medicalCase.update({ where: { id }, data: { paymentStatus: 'paid', paymentConfirmedAt } });
     },
 
     /** Overwrites the encrypted payload only — used for the patient intake form's save-progress/submit, which never touches status/version directly (that's `transition`'s job). */
@@ -172,6 +169,51 @@ export function createCasesRepository(db: PrismaClient) {
         throw new Error('Medical case changed or does not exist');
       }
       return row.transition_medical_case;
+    },
+
+    /**
+     * Atomically: saves the patient intake form's final payload, records the chosen doctor on the
+     * case's own column, and calls the version-checked transition_medical_case stored procedure —
+     * all in one DB transaction. A prior version ran these as three independent statements ending
+     * in the version check; a concurrent modification (another tab, a reviewer hiding the case)
+     * between the payload write and the transition could leave the case fully updated with the
+     * patient's answers and a newly assigned doctor, yet still sitting at its old status — the
+     * submission would look silently lost from the workflow's perspective. A version mismatch now
+     * rolls back the payload/clinician writes too, matching submissionsRepository.saveAndTransition's
+     * same fix for the doctor-submission path.
+     */
+    async submitAndTransition(
+      input: {
+        caseId: string;
+        payload: unknown;
+        assignedClinicianId: string;
+        expectedVersion: number;
+        newStatus: string;
+        actorId: string;
+      },
+      masterKey: Buffer
+    ): Promise<{ newVersion: number; previousStatus: string | null }> {
+      return db.$transaction(async (tx) => {
+        const record = encryptJson(masterKey, input.payload ?? {});
+        const casePayload = Buffer.from(JSON.stringify(record), 'utf8');
+        await tx.medicalCase.update({ where: { id: input.caseId }, data: { casePayload } });
+        await tx.medicalCase.update({
+          where: { id: input.caseId },
+          data: { assignedClinicianId: input.assignedClinicianId, assignedAt: new Date() }
+        });
+
+        const before = await tx.medicalCase.findFirst({ where: { id: input.caseId }, select: { status: true } });
+
+        const rows = await tx.$queryRaw<{ transition_medical_case: number }[]>`
+          SELECT transition_medical_case(${input.caseId}::varchar, ${input.expectedVersion}::integer, ${input.newStatus}::varchar, ${input.actorId}::varchar) AS transition_medical_case
+        `;
+        const row = rows[0];
+        if (!row) {
+          throw new Error('Medical case changed or does not exist');
+        }
+
+        return { newVersion: row.transition_medical_case, previousStatus: before?.status ?? null };
+      });
     }
   };
 }
