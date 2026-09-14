@@ -16,5 +16,5 @@ export const SAMPLE_VARIABLE_VALUES: Record<string, string> = {
   resetCode: '482913',
   activationCode: '482913',
   loginUrl: 'https://portal.ncb.local/login',
-  resetUrl: 'https://portal.ncb.local/forgot-password'
+  resetUrl: 'https://portal.ncb.local/login'
 };

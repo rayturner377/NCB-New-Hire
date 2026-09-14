@@ -73,8 +73,9 @@ const ROLE_CASES: RoleCase[] = [
 ];
 
 async function login(page: Page, email: string): Promise<void> {
-  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await page.goto('/login', { waitUntil: 'networkidle' });
   await page.fill('#email', email);
+  await page.getByRole('button', { name: 'Next' }).click();
   await page.fill('#password', PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForURL('/');

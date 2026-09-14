@@ -56,23 +56,55 @@ async function getLatestCode(page: Page, email: string): Promise<string> {
   return codeMatch![1]!;
 }
 
-/** /forgot-password redirects away for an already-authenticated session, so this must run signed out. */
-async function redeemCode(page: Page, email: string, code: string, password: string): Promise<void> {
-  await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
+async function login(page: Page, email: string, password = PASSWORD): Promise<void> {
+  await page.goto('/login', { waitUntil: 'networkidle' });
   await page.fill('#email', email);
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.fill('#password', password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.waitForURL('/');
+}
+
+/**
+ * Fills email and clicks Next, then lands wherever checkSignInMethodAction routes to: straight to
+ * code entry when the email already has a live code (a fresh activation, or an unredeemed reset),
+ * or to the ordinary password step — in which case "Forgot password?" needs an explicit click to
+ * reach the same code step. Leaves the page on the code step either way. Must run signed out: an
+ * authenticated session is redirected away from /login before any of this renders.
+ */
+async function proceedToCodeStep(page: Page, email: string): Promise<void> {
+  await page.goto('/login', { waitUntil: 'networkidle' });
+  await page.fill('#email', email);
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  const codeInput = page.locator('#code');
+  const forgotPasswordButton = page.getByRole('button', { name: /forgot password/i });
+  await expect(codeInput.or(forgotPasswordButton)).toBeVisible({ timeout: 10000 });
+  if (await forgotPasswordButton.isVisible().catch(() => false)) {
+    await forgotPasswordButton.click();
+    await expect(codeInput).toBeVisible({ timeout: 10000 });
+  }
+}
+
+/** Drives the unified /login page's code branch end to end: {@link proceedToCodeStep}, then the code (the new-password fields unfold automatically once 6 digits verify, see login-form.tsx) → new password → auto sign-in → redirect to /. */
+async function redeemCode(page: Page, email: string, code: string, password: string): Promise<void> {
+  await proceedToCodeStep(page, email);
   await page.fill('#code', code);
+  await expect(page.getByLabel('New password', { exact: true })).toBeVisible({ timeout: 10000 });
   await page.fill('#password', password);
   await page.fill('#confirmPassword', password);
   await page.getByRole('button', { name: /set new password/i }).click();
-  await expect(page.getByText(/password has been set/i)).toBeVisible({ timeout: 10000 });
+  await page.waitForURL('/', { timeout: 10000 });
 }
 
-async function login(page: Page, email: string, password = PASSWORD): Promise<void> {
-  await page.goto('/login', { waitUntil: 'domcontentloaded' });
-  await page.fill('#email', email);
-  await page.fill('#password', password);
-  await page.click('button[type="submit"]');
-  await page.waitForURL('/');
+/**
+ * Same as redeemCode up through entering the code, for asserting on a code that should be
+ * rejected (reused/expired/wrong) — stops right after entering it instead of going on to the
+ * new-password step, which never appears.
+ */
+async function attemptRedeemWithBadCode(page: Page, email: string, code: string): Promise<void> {
+  await proceedToCodeStep(page, email);
+  await page.fill('#code', code);
 }
 
 /** /login redirects straight back to / for an already-authenticated session — every role switch mid-test needs an explicit sign-out first, or the next login() call hangs waiting for a #email field that's never shown. */
@@ -80,6 +112,13 @@ async function signOut(page: Page, displayName: string): Promise<void> {
   await page.getByRole('button', { name: displayName }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await page.waitForURL('/login');
+}
+
+/** Talks directly to the same Postgres the Docker-built app is running against, for assertions no UI surfaces (row-level DB state) — see its use in the atomicity test below. */
+function psql(sql: string): string {
+  return execFileSync('docker', ['compose', 'exec', '-T', 'postgres', 'psql', '-U', 'ncb_medical_app', '-d', 'ncb_medical', '-tA', '-c', sql], {
+    encoding: 'utf8'
+  }).trim();
 }
 
 test('public self-signup is disabled', async ({ request }: { request: APIRequestContext }) => {
@@ -138,28 +177,19 @@ test('account creation emails an activation code, never a raw password, and it c
 
   await signOut(page, 'Demo Admin');
 
-  // 4. Redeem the code at the public /forgot-password page to set a real password — no admin ever
-  // chose or saw this password.
-  await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
-  await page.fill('#email', uniqueEmail);
-  await page.fill('#code', activationCode);
-  await page.fill('#password', newPassword);
-  await page.fill('#confirmPassword', newPassword);
-  await page.getByRole('button', { name: /set new password/i }).click();
-  await expect(page.getByText(/password has been set/i)).toBeVisible({ timeout: 10000 });
-
-  // 5. Confirm the new account can actually sign in with the password it just set.
-  await login(page, uniqueEmail, newPassword);
+  // 4. Redeem the code on the unified /login page — entering this email routes straight to code
+  // entry since the account has a live activation code, no "Forgot password?" click needed — to
+  // set a real password (no admin ever chose or saw it) and confirm it seamlessly signs the
+  // account in rather than dumping them back at a sign-in form they'd have to fill out again.
+  await redeemCode(page, uniqueEmail, activationCode, newPassword);
   await expect(page.getByRole('button', { name: 'E2E CandidateA' })).toBeVisible();
 
-  // A reused/expired code must not work a second time (single-use).
+  // The now-consumed code must not work a second time. With no live code left, /login's email
+  // step routes to the ordinary password field instead of code entry — attemptRedeemWithBadCode
+  // clicks through "Forgot password?" to reach a code field again, so this proves the *old* code
+  // specifically is dead (a fresh request would issue a different one, and this one still fails).
   await signOut(page, 'E2E CandidateA');
-  await page.goto('/forgot-password', { waitUntil: 'domcontentloaded' });
-  await page.fill('#email', uniqueEmail);
-  await page.fill('#code', activationCode);
-  await page.fill('#password', 'AnotherPassword123!');
-  await page.fill('#confirmPassword', 'AnotherPassword123!');
-  await page.getByRole('button', { name: /set new password/i }).click();
+  await attemptRedeemWithBadCode(page, uniqueEmail, activationCode);
   await expect(page.getByText(/invalid or has expired/i)).toBeVisible({ timeout: 10000 });
 });
 
@@ -181,8 +211,12 @@ test('a patient cannot view or edit another patient\'s candidate profile (IDOR)'
   const codeB = await getLatestCode(page, emailB);
   await signOut(page, 'Demo Admin');
 
+  // redeemCode now seamlessly signs the account in as its very last step (see login-form.tsx) — an
+  // explicit sign-out is needed between the two before /login is reachable again for the next one.
   await redeemCode(page, emailA, codeA, passwordA);
+  await signOut(page, 'E2E PatientA');
   await redeemCode(page, emailB, codeB, passwordB);
+  await signOut(page, 'E2E PatientB');
 
   // Patient A tries to reach Patient B's candidate profile directly by URL — requireOwnsCandidate
   // renders a generic "not found" at the same URL (no redirect, so as not to confirm the candidate
@@ -217,14 +251,14 @@ test('mutations closed in the audit-coverage pass are actually recorded in /audi
   await expect(page.getByText(/candidate profile updated/i)).toBeVisible({ timeout: 10000 });
   await signOut(page, 'Demo Reviewer');
 
-  // 3. account_activated (via /forgot-password redemption) then candidate_updated a second time
-  // (self-edit path, update-own-profile.ts — previously had NO actorId/audit at all).
+  // 3. account_activated (via the unified /login page's code-redemption branch) then
+  // candidate_updated a second time (self-edit path, update-own-profile.ts — previously had NO
+  // actorId/audit at all).
   await login(page, 'admin@ncb.local');
   const code = await getLatestCode(page, email);
   await signOut(page, 'Demo Admin');
+  // redeemCode already signs the account in as its last step — no separate login() call needed.
   await redeemCode(page, email, code, password);
-
-  await login(page, email, password);
   await page.goto('/profile', { waitUntil: 'domcontentloaded' });
   await page.fill('input[name="city"]', 'Montego Bay');
   await page.getByRole('button', { name: /save changes/i }).click();
@@ -283,14 +317,6 @@ test('case transitions are atomic and version-guarded (transition_medical_case)'
   const patientId = `cand_e2e_atomic_${Date.now()}`;
   const userId = `usr_e2e_atomic_${Date.now()}`;
 
-  function psql(sql: string): string {
-    return execFileSync(
-      'docker',
-      ['compose', 'exec', '-T', 'postgres', 'psql', '-U', 'ncb_medical_app', '-d', 'ncb_medical', '-tA', '-c', sql],
-      { encoding: 'utf8' }
-    ).trim();
-  }
-
   try {
     psql(
       `INSERT INTO app_users (id, email, display_name, role) VALUES ('${userId}', '${userId}@example.com', 'E2E Atomic Test', 'reviewer')`
@@ -322,4 +348,90 @@ test('case transitions are atomic and version-guarded (transition_medical_case)'
     psql(`DELETE FROM patient_profiles WHERE id = '${patientId}'`);
     psql(`DELETE FROM app_users WHERE id = '${userId}'`);
   }
+});
+
+test('an already-activated account can self-serve a new password via "Forgot password?" with no admin involved', async ({ page }) => {
+  const email = `e2e-self-reset-${Date.now()}@example.com`;
+  const firstPassword = 'FirstPassword123!';
+  const secondPassword = 'SecondPassword456!';
+
+  // Set up and activate an account the ordinary way first — this test is specifically about the
+  // *second* code, the one nobody (no HR, no admin) had any part in requesting.
+  await login(page, 'reviewer@ncb.local');
+  await createPatientCandidate(page, 'SelfReset', email);
+  await signOut(page, 'Demo Reviewer');
+  await login(page, 'admin@ncb.local');
+  const activationCode = await getLatestCode(page, email);
+  await signOut(page, 'Demo Admin');
+  await redeemCode(page, email, activationCode, firstPassword);
+  await expect(page.getByRole('button', { name: 'E2E SelfReset' })).toBeVisible();
+  await signOut(page, 'E2E SelfReset');
+
+  // Now, entirely self-service: click "Forgot password?" for an account that already has a real
+  // password, with no session and no admin/HR action anywhere in this flow.
+  await redeemCode(page, email, await getSelfRequestedCode(page, email), secondPassword);
+  await expect(page.getByRole('button', { name: 'E2E SelfReset' })).toBeVisible();
+  await signOut(page, 'E2E SelfReset');
+
+  // The old password must no longer work; the new one must.
+  await page.goto('/login', { waitUntil: 'networkidle' });
+  await page.fill('#email', email);
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.fill('#password', firstPassword);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByText(/invalid email or password/i)).toBeVisible({ timeout: 10000 });
+
+  await login(page, email, secondPassword);
+  await expect(page.getByRole('button', { name: 'E2E SelfReset' })).toBeVisible();
+
+  /**
+   * Triggers "Forgot password?" for `targetEmail` and reads the resulting code from the Message
+   * Centre — needs an admin/reviewer session to read the Message Centre with, but the trigger
+   * itself (the part actually under test) runs fully signed out.
+   */
+  async function getSelfRequestedCode(p: Page, targetEmail: string): Promise<string> {
+    await p.goto('/login', { waitUntil: 'networkidle' });
+    await p.fill('#email', targetEmail);
+    await p.getByRole('button', { name: 'Next' }).click();
+    await p.getByRole('button', { name: /forgot password/i }).click();
+    // Confirms the code step actually rendered (as opposed to the request silently no-opping)
+    // before switching sessions to go read it.
+    await expect(p.getByLabel('6-digit code')).toBeVisible({ timeout: 10000 });
+    await login(p, 'admin@ncb.local');
+    const requestedCode = await getLatestCode(p, targetEmail);
+    await signOut(p, 'Demo Admin');
+    return requestedCode;
+  }
+});
+
+test('HR can choose how long a new candidate\'s activation code stays valid', async ({ page }) => {
+  const email = `e2e-custom-ttl-${Date.now()}@example.com`;
+
+  await login(page, 'reviewer@ncb.local');
+  await page.goto('/candidates/new', { waitUntil: 'domcontentloaded' });
+  await page.fill('input[name="firstName"]', 'E2E');
+  await page.fill('input[name="lastName"]', 'CustomTtl');
+  await pickDate(page, 'dateOfBirth', 1992, 'March', 3);
+  await page.fill('input[name="position"]', 'Teller');
+  await page.fill('input[name="email"]', email);
+  await page.getByText('Grant portal access at the email above').click();
+
+  // The TTL picker only appears once portal access is checked, defaults to 24 hours, and offers
+  // exactly the presets HR was promised (15m/1h/24h/48h) — pick the shortest one.
+  const ttlTrigger = page.getByRole('combobox', { name: /activation code expires in/i });
+  await expect(ttlTrigger).toBeVisible();
+  await expect(ttlTrigger).toHaveText(/24 hours/i);
+  await ttlTrigger.click();
+  await page.getByRole('option', { name: '15 minutes' }).click();
+
+  await page.getByRole('button', { name: /create candidate/i }).click();
+  await page.waitForURL(/\/candidates\/cand_/);
+
+  const row = psql(
+    `SELECT EXTRACT(EPOCH FROM (ac.expires_at - ac.created_at)) FROM access_codes ac JOIN app_users u ON u.id = ac.user_id WHERE u.email = '${email}' ORDER BY ac.created_at DESC LIMIT 1`
+  );
+  const ttlSeconds = Number(row);
+  // Allow a little slack either side of exactly 15 minutes for the round trip through the request.
+  expect(ttlSeconds).toBeGreaterThan(14 * 60);
+  expect(ttlSeconds).toBeLessThan(16 * 60);
 });

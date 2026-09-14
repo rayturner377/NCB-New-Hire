@@ -117,7 +117,8 @@ describe('candidates service', () => {
     expect(createUser).toHaveBeenCalledWith({
       email: 'jane@example.com',
       displayName: 'Jane Doe',
-      role: 'patient'
+      role: 'patient',
+      activationCodeTtlMs: undefined
     });
     expect(created.linkedUserId).toBe('usr_new_patient');
     expect(save).toHaveBeenCalledWith(expect.objectContaining({ linkedUserId: 'usr_new_patient' }), masterKey);
@@ -137,6 +138,24 @@ describe('candidates service', () => {
 
     expect(createUser).not.toHaveBeenCalled();
     expect(created.linkedUserId).toBe('');
+  });
+
+  it('createCandidate forwards an admin-chosen activationCodeTtlMs through to createUser', async () => {
+    save.mockResolvedValue(undefined);
+    createUser.mockResolvedValue({ id: 'usr_new_patient' });
+
+    await createCandidate({
+      fullName: 'Jane Doe',
+      position: 'Teller',
+      dateOfBirth: '1990-01-01',
+      email: 'jane@example.com',
+      grantPortalAccess: true,
+      activationCodeTtlMs: 60 * 60 * 1000,
+      createdBy: 'usr_reviewer_demo',
+      createdByName: 'Demo Reviewer'
+    });
+
+    expect(createUser).toHaveBeenCalledWith(expect.objectContaining({ activationCodeTtlMs: 60 * 60 * 1000 }));
   });
 
   it('listCandidates filters out rows with no payload', async () => {

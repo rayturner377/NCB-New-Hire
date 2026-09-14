@@ -34,6 +34,8 @@ function isUniqueConstraintViolation(error: unknown): boolean {
 export interface CreateUserInput extends CreateUserSchemaInput {
   /** Doctor-only fields (facility, registration number, rate) — see lib/medical-profile.ts's combineMedicalProfile. */
   medicalProfile?: Record<string, unknown>;
+  /** Overrides issueAccessCode's own default window for the activation code — see activation-code-ttl.ts's admin-facing presets (candidate creation only; staff creation has no picker and just takes the default). */
+  activationCodeTtlMs?: number;
 }
 
 /**
@@ -79,7 +81,7 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
   // directly, so the row has to exist, but nobody needs to know its value.
   await setUserPassword(created.id, randomBytes(32).toString('base64url'));
 
-  const activationCode = await issueAccessCode(created.id, 'account_activation');
+  const activationCode = await issueAccessCode(created.id, 'account_activation', input.activationCodeTtlMs);
 
   await auditRepository.append({
     eventType: 'user_created',
@@ -92,7 +94,7 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
   await sendNotification({
     templateKey: 'account_created',
     to: created.email,
-    variables: { recipientName: created.displayName, email: created.email, activationCode, resetUrl: '/forgot-password' },
+    variables: { recipientName: created.displayName, email: created.email, activationCode, resetUrl: '/login' },
     entityType: 'user',
     entityId: created.id
   });
@@ -219,7 +221,7 @@ export async function resetUserPassword(id: string, actorId?: string): Promise<v
   await sendNotification({
     templateKey: 'password_reset',
     to: updated.email,
-    variables: { recipientName: updated.displayName, resetCode, resetUrl: '/forgot-password' },
+    variables: { recipientName: updated.displayName, resetCode, resetUrl: '/login' },
     entityType: 'user',
     entityId: id
   });
