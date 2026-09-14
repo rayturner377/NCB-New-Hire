@@ -15,8 +15,10 @@ import { Checkbox } from '../../../components/ui/checkbox';
 import { FormField } from '../../../components/ui/form-field';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import { Separator } from '../../../components/ui/separator';
 import { useValidatedForm } from '../../../lib/hooks/use-validated-form';
+import { ACTIVATION_CODE_TTL_PRESETS, DEFAULT_ACTIVATION_CODE_TTL_VALUE } from '../../auth/activation-code-ttl';
 import { createCandidateAction, type CandidateActionResult } from '../actions/create-candidate';
 
 const initialState: CandidateActionResult | null = null;
@@ -39,6 +41,8 @@ export function CandidateForm() {
   const [state, formAction] = useActionState(createCandidateAction, initialState);
   const { formRef, formValid, refreshValidity, handleSubmit, fieldError, hasClientErrors } = useValidatedForm(state?.fieldErrors);
   const [email, setEmail] = useState('');
+  const [grantPortalAccess, setGrantPortalAccess] = useState(false);
+  const [activationCodeTtl, setActivationCodeTtl] = useState(DEFAULT_ACTIVATION_CODE_TTL_VALUE);
 
   return (
     <form ref={formRef} action={formAction} onSubmit={handleSubmit} onChange={refreshValidity} className="flex flex-col gap-8">
@@ -85,18 +89,67 @@ export function CandidateForm() {
       <FormSection title="Contact information" description="How to reach the candidate directly.">
         <div className="flex flex-col gap-5">
           <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-            <FormField label="Email" name="email" error={fieldError('email')}>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                maxLength={254}
-                placeholder="e.g. jane.doe@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </FormField>
+            <div className="flex flex-col gap-3">
+              <FormField label="Email" name="email" error={fieldError('email')}>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  maxLength={254}
+                  placeholder="e.g. jane.doe@example.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </FormField>
+
+              {email.trim() ? (
+                <div className="flex flex-col gap-3 rounded-md border border-dashed border-input p-3">
+                  <div className="flex items-start gap-2.5">
+                    <Checkbox
+                      id="grantPortalAccess"
+                      name="grantPortalAccess"
+                      className="mt-0.5"
+                      checked={grantPortalAccess}
+                      onCheckedChange={(checked) => setGrantPortalAccess(checked === true)}
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <Label htmlFor="grantPortalAccess" className="text-sm font-medium leading-none">
+                        Grant portal access at the email above
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Optional — they&apos;ll receive an activation code by email to set their own password. Leave
+                        unchecked to grant access later.
+                      </p>
+                    </div>
+                  </div>
+
+                  {grantPortalAccess ? (
+                    <div className="flex flex-col gap-1.5 pl-6.5">
+                      <Label htmlFor="activation-code-ttl-select">Activation code expires in</Label>
+                      <input type="hidden" name="activationCodeTtl" value={activationCodeTtl} />
+                      <Select value={activationCodeTtl} onValueChange={setActivationCodeTtl}>
+                        <SelectTrigger id="activation-code-ttl-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ACTIVATION_CODE_TTL_PRESETS.map((preset) => (
+                            <SelectItem key={preset.value} value={preset.value}>
+                              {preset.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        How long they have to use the code before it expires and a new one needs to be sent.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Enter an email above to also set up portal access.</p>
+              )}
+            </div>
             <PhoneNumbersField name="contactNumber" error={fieldError('contactNumber')} />
           </div>
           <AddressFields line1Error={fieldError('address')} />
@@ -138,25 +191,6 @@ export function CandidateForm() {
           />
         </FormField>
       </FormSection>
-
-      {email.trim() ? (
-        <>
-          <Separator />
-          <FormSection
-            title="Portal access"
-            description="Optional — they'll receive an activation code by email to set their own password. Leave unchecked to grant access later."
-          >
-            <div className="flex items-start gap-2.5">
-              <Checkbox id="grantPortalAccess" name="grantPortalAccess" className="mt-0.5" />
-              <Label htmlFor="grantPortalAccess" className="text-sm font-medium leading-none">
-                Grant portal access at the email above
-              </Label>
-            </div>
-          </FormSection>
-        </>
-      ) : (
-        <p className="text-xs text-muted-foreground">Enter an email above to also set up the candidate&apos;s portal access.</p>
-      )}
 
       {state?.error && !Object.keys(state.fieldErrors ?? {}).length ? <Alert tone="error">{state.error}</Alert> : null}
     </form>

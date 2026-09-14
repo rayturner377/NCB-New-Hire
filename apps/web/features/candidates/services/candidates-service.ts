@@ -15,6 +15,8 @@ export interface CreateCandidateInput extends CreateCandidateSchemaInput {
   createdByName: string;
   /** HR's "grant portal access" checkbox — only takes effect when an email is also present. */
   grantPortalAccess?: boolean;
+  /** How long the activation code this issues should stay redeemable — see activation-code-ttl.ts's presets and CreateUserInput's own doc comment. Only meaningful alongside grantPortalAccess. */
+  activationCodeTtlMs?: number;
 }
 
 async function persist(payload: CandidatePayload): Promise<void> {
@@ -50,7 +52,8 @@ export async function createCandidate(input: CreateCandidateInput): Promise<Cand
     const user = await createUser({
       email: input.email,
       displayName: input.fullName,
-      role: 'patient'
+      role: 'patient',
+      activationCodeTtlMs: input.activationCodeTtlMs
     });
     linkedUserId = user.id;
   }

@@ -175,7 +175,7 @@ describe('users service', () => {
     );
     // A real credential is set, but its value is never anything the caller chose or can see.
     expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', expect.any(String));
-    expect(issueAccessCodeMock).toHaveBeenCalledWith('usr_1', 'account_activation');
+    expect(issueAccessCodeMock).toHaveBeenCalledWith('usr_1', 'account_activation', undefined);
     expect(sendNotificationMock).toHaveBeenCalledWith(
       expect.objectContaining({
         templateKey: 'account_created',
@@ -185,6 +185,20 @@ describe('users service', () => {
     expect(sendNotificationMock.mock.calls[0]![0].variables).not.toHaveProperty('temporaryPassword');
     expect(result).not.toHaveProperty('passwordRecord');
     expect(result.id).toBe('usr_1');
+  });
+
+  it('createUser forwards an explicit activationCodeTtlMs (the candidate-creation admin picker) to issueAccessCode', async () => {
+    findByEmail.mockResolvedValue(null);
+    create.mockResolvedValue(sampleUser());
+
+    await createUser({
+      email: 'patient@example.com',
+      displayName: 'Jane Doe',
+      role: 'patient',
+      activationCodeTtlMs: 60 * 60 * 1000
+    });
+
+    expect(issueAccessCodeMock).toHaveBeenCalledWith('usr_1', 'account_activation', 60 * 60 * 1000);
   });
 
   it('listUsers maps repository rows to summaries', async () => {

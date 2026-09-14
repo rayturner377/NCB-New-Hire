@@ -109,10 +109,10 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
   {
     key: 'password_reset',
     label: 'Password reset',
-    description: "Sent to a user when an admin/HR triggers a password reset on their portal account.",
+    description: "Sent when an admin/HR resets a user's password, or the account holder requests one themselves via \"Forgot password?\" on the sign-in page.",
     defaultSubject: '{{portalName}}: your password reset code',
     defaultBody:
-      '<p>Hi {{recipientName}},</p><p>A password reset was requested for your {{portalName}} account.</p><p>Your reset code is: <strong>{{resetCode}}</strong></p><p>Enter it at {{resetUrl}} along with a new password of your choosing. This code expires in 15 minutes and can only be used once.</p><p>If you didn’t request this, you can ignore this email.</p>',
+      '<p>Hi {{recipientName}},</p><p>A password reset was requested for your {{portalName}} account.</p><p>Your reset code is: <strong>{{resetCode}}</strong></p><p>Enter it at {{resetUrl}} along with a new password of your choosing. This code expires soon and can only be used once.</p><p>If you didn’t request this, you can ignore this email.</p>',
     variables: [
       { name: 'recipientName', description: "The account holder's name" },
       { name: 'resetCode', description: 'The 6-digit, single-use reset code' },
@@ -125,7 +125,7 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
     description: 'Sent to a newly created user with an activation code to set their own password.',
     defaultSubject: 'Welcome to {{portalName}}',
     defaultBody:
-      '<p>Hi {{recipientName}},</p><p>An account has been created for you on {{portalName}}.</p><p>Your email is <strong>{{email}}</strong> and your activation code is: <strong>{{activationCode}}</strong></p><p>Enter it at {{resetUrl}} to choose your own password. This code expires in 15 minutes and can only be used once.</p>',
+      '<p>Hi {{recipientName}},</p><p>An account has been created for you on {{portalName}}.</p><p>Your email is <strong>{{email}}</strong> and your activation code is: <strong>{{activationCode}}</strong></p><p>Enter it at {{resetUrl}} to choose your own password. This code will expire and can only be used once — if it has, ask whoever set up your account for a new one.</p>',
     variables: [
       { name: 'recipientName', description: "The new account holder's name" },
       { name: 'email', description: 'Their sign-in email address' },

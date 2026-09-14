@@ -123,4 +123,44 @@ describe('createCandidateAction', () => {
 
     expect(createCandidateMock).toHaveBeenCalledWith(expect.objectContaining({ grantPortalAccess: true }));
   });
+
+  it('converts a chosen activationCodeTtl preset to milliseconds', async () => {
+    getSessionMock.mockResolvedValue({
+      user: { id: 'usr_reviewer_demo', displayName: 'Demo Reviewer', role: 'reviewer' }
+    });
+    createCandidateMock.mockResolvedValue({ id: 'cand_1' });
+
+    await expect(
+      createCandidateAction(
+        null,
+        formData({
+          firstName: 'Jane',
+          lastName: 'Doe',
+          position: 'Teller',
+          dateOfBirth: '1990-01-01',
+          email: 'jane@example.com',
+          grantPortalAccess: 'on',
+          activationCodeTtl: '1h'
+        })
+      )
+    ).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(createCandidateMock).toHaveBeenCalledWith(expect.objectContaining({ activationCodeTtlMs: 60 * 60 * 1000 }));
+  });
+
+  it('leaves activationCodeTtlMs undefined for an unrecognized/missing preset value', async () => {
+    getSessionMock.mockResolvedValue({
+      user: { id: 'usr_reviewer_demo', displayName: 'Demo Reviewer', role: 'reviewer' }
+    });
+    createCandidateMock.mockResolvedValue({ id: 'cand_1' });
+
+    await expect(
+      createCandidateAction(
+        null,
+        formData({ firstName: 'Jane', lastName: 'Doe', position: 'Teller', dateOfBirth: '1990-01-01' })
+      )
+    ).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(createCandidateMock).toHaveBeenCalledWith(expect.objectContaining({ activationCodeTtlMs: undefined }));
+  });
 });
