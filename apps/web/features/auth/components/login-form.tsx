@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { startTransition, useActionState, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
@@ -145,7 +145,12 @@ export function LoginForm() {
     setStep('sendingCode');
     const formData = new FormData();
     formData.set('email', email);
-    resetFormAction(formData);
+    // resetFormAction is useActionState's dispatch, called imperatively here (not via a form's
+    // action prop) — React requires that to happen inside a transition, or isPending/state updates
+    // silently misbehave.
+    startTransition(() => {
+      resetFormAction(formData);
+    });
   }
 
   function handleCodeChange(event: ChangeEvent<HTMLInputElement>) {
