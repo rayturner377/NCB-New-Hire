@@ -64,13 +64,25 @@ function EmailSummary({ email, onChangeEmail }: { email: string; onChangeEmail: 
   );
 }
 
-export function LoginForm() {
-  const [step, setStep] = useState<Step>('email');
-  const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState<string | null>(null);
+interface LoginFlowStepsProps {
+  email: string;
+  initialStep: Exclude<Step, 'email'>;
+  onChangeEmail: () => void;
+}
+
+/**
+ * Everything past the "email" step, as its own component so it can be
+ * remounted (see LoginForm's `key={attempt}`) whenever the person goes back
+ * to "email" and picks a different path. useActionState's result can only be
+ * cleared by unmounting the hook that owns it — without this split, going
+ * back to email and taking a different branch (e.g. code entry instead of
+ * password) could still show an error/success left over from the previous
+ * attempt's action call, for a completely unrelated email.
+ */
+function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsProps) {
+  const [step, setStep] = useState<Step>(initialStep);
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [checkingEmail, setCheckingEmail] = useState(false);
 
   const [loginState, loginFormAction] = useActionState<LoginResult | null, FormData>(login, null);
   const [resetState, resetFormAction] = useActionState<RequestPasswordResetResult | null, FormData>(
@@ -121,26 +133,6 @@ export function LoginForm() {
     }
   }, [step]);
 
-  function goToEmailStep() {
-    setStep('email');
-    setCode('');
-    setNewPassword('');
-  }
-
-  async function handleEmailSubmit(event: FormEvent) {
-    event.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed || !trimmed.includes('@')) {
-      setEmailError('Enter a valid email address.');
-      return;
-    }
-    setEmailError(null);
-    setCheckingEmail(true);
-    const { method } = await checkSignInMethodAction(trimmed);
-    setCheckingEmail(false);
-    setStep(method === 'code' ? 'code' : 'password');
-  }
-
   function sendResetCode() {
     setStep('sendingCode');
     const formData = new FormData();
@@ -162,36 +154,12 @@ export function LoginForm() {
     }
   }
 
-  if (step === 'email') {
-    return (
-      <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            autoFocus
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-          {emailError ? <p className="text-xs font-medium text-destructive">{emailError}</p> : null}
-        </div>
-        <Button type="submit" className="w-full" disabled={checkingEmail}>
-          {checkingEmail ? 'Checking…' : 'Next'}
-        </Button>
-      </form>
-    );
-  }
-
   if (step === 'password') {
     return (
       <div className="flex flex-col gap-4">
         <form action={loginFormAction} className="flex flex-col gap-4">
           <input type="hidden" name="email" value={email} />
-          <EmailSummary email={email} onChangeEmail={goToEmailStep} />
+          <EmailSummary email={email} onChangeEmail={onChangeEmail} />
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="password">Password</Label>
             <PasswordInput id="password" name="password" autoComplete="current-password" required autoFocus />
@@ -209,7 +177,7 @@ export function LoginForm() {
   if (step === 'sendingCode' || step === 'code') {
     return (
       <div className="flex flex-col gap-4">
-        <EmailSummary email={email} onChangeEmail={goToEmailStep} />
+        <EmailSummary email={email} onChangeEmail={onChangeEmail} />
 
         {step === 'sendingCode' ? (
           <p className="text-sm text-muted-foreground">Sending a code to {email}…</p>
@@ -308,4 +276,59 @@ export function LoginForm() {
       </form>
     </div>
   );
+}
+
+export function LoginForm() {
+  const [step, setStep] = useState<Step>('email');
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [checkingEmail, setCheckingEmail] = useState(false);
+  // Bumped every time we return to the email step, so LoginFlowSteps remounts (via its `key`
+  // below) instead of carrying over a previous attempt's leftover action results.
+  const [attempt, setAttempt] = useState(0);
+
+  function goToEmailStep() {
+    setStep('email');
+    setAttempt((current) => current + 1);
+  }
+
+  async function handleEmailSubmit(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      setEmailError('Enter a valid email address.');
+      return;
+    }
+    setEmailError(null);
+    setCheckingEmail(true);
+    const { method } = await checkSignInMethodAction(trimmed);
+    setCheckingEmail(false);
+    setStep(method === 'code' ? 'code' : 'password');
+  }
+
+  if (step === 'email') {
+    return (
+      <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            autoFocus
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          {emailError ? <p className="text-xs font-medium text-destructive">{emailError}</p> : null}
+        </div>
+        <Button type="submit" className="w-full" disabled={checkingEmail}>
+          {checkingEmail ? 'Checking…' : 'Next'}
+        </Button>
+      </form>
+    );
+  }
+
+  return <LoginFlowSteps key={attempt} email={email} initialStep={step} onChangeEmail={goToEmailStep} />;
 }
