@@ -1,8 +1,8 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import type { ZodError } from 'zod';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
+import { fieldErrorsFrom } from '../../../lib/field-errors';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
 import {
@@ -17,15 +17,6 @@ import {
 import { getSettings, updateSettingsSection } from '../services/settings-service';
 import { setDeviceVerificationRequiredForAll } from '../../users/services/users-service';
 import type { SettingsActionResult } from '../types-action';
-
-function fieldErrorsFrom(error: ZodError): Record<string, string> {
-  const flattened = error.flatten().fieldErrors;
-  return Object.fromEntries(
-    Object.entries(flattened)
-      .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
-      .map(([field, messages]) => [field, messages[0]!])
-  );
-}
 
 async function requireSettingsAccess() {
   await assertSameOrigin();

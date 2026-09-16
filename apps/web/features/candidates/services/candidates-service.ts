@@ -122,6 +122,41 @@ export async function getCandidateById(id: string): Promise<CandidatePayload | n
 }
 
 /**
+ * Plain 1:1 profile fields — patching one over the existing row is always just "take the caller's
+ * value if they sent one." assignedClinicianId/assignedClinicianName/status have follow-on effects
+ * (see updateCandidate below) and are deliberately not in this list.
+ */
+const CANDIDATE_PATCHABLE_FIELDS = [
+  'fullName',
+  'employeeId',
+  'nationalId',
+  'dateOfBirth',
+  'email',
+  'contactNumber',
+  'addressLine1',
+  'addressLine2',
+  'city',
+  'state',
+  'country',
+  'emergencyContactName',
+  'emergencyContactNumber',
+  'primaryPhysicianName',
+  'primaryPhysicianNumber',
+  'position',
+  'medicationInformation',
+  'withdrawalReason'
+] as const satisfies readonly (keyof CandidatePayload)[];
+
+/** Applies whichever CANDIDATE_PATCHABLE_FIELDS the caller actually included — an omitted field is
+ * left untouched, distinct from one explicitly sent as an empty string. */
+function applyCandidateProfilePatch(existing: CandidatePayload, patch: UpdateCandidateSchemaInput): CandidatePayload {
+  const definedFields = CANDIDATE_PATCHABLE_FIELDS.filter((field) => patch[field] !== undefined).map(
+    (field) => [field, patch[field]] as const
+  );
+  return { ...existing, ...Object.fromEntries(definedFields) };
+}
+
+/**
  * Ported from server.js updateCandidateFromReviewer (~L3041-3064). Every caller — HR editing a
  * candidate's own profile fields, a patient editing their own via update-own-profile.ts, and the
  * more specific withdraw/assign actions — routes through here, so `actorId` is required and every
@@ -140,25 +175,7 @@ export async function updateCandidate(
     throw new Error(`Candidate not found: ${id}`);
   }
 
-  const updated: CandidatePayload = { ...existing };
-  if (patch.fullName !== undefined) updated.fullName = patch.fullName;
-  if (patch.employeeId !== undefined) updated.employeeId = patch.employeeId;
-  if (patch.nationalId !== undefined) updated.nationalId = patch.nationalId;
-  if (patch.dateOfBirth !== undefined) updated.dateOfBirth = patch.dateOfBirth;
-  if (patch.email !== undefined) updated.email = patch.email;
-  if (patch.contactNumber !== undefined) updated.contactNumber = patch.contactNumber;
-  if (patch.addressLine1 !== undefined) updated.addressLine1 = patch.addressLine1;
-  if (patch.addressLine2 !== undefined) updated.addressLine2 = patch.addressLine2;
-  if (patch.city !== undefined) updated.city = patch.city;
-  if (patch.state !== undefined) updated.state = patch.state;
-  if (patch.country !== undefined) updated.country = patch.country;
-  if (patch.emergencyContactName !== undefined) updated.emergencyContactName = patch.emergencyContactName;
-  if (patch.emergencyContactNumber !== undefined) updated.emergencyContactNumber = patch.emergencyContactNumber;
-  if (patch.primaryPhysicianName !== undefined) updated.primaryPhysicianName = patch.primaryPhysicianName;
-  if (patch.primaryPhysicianNumber !== undefined) updated.primaryPhysicianNumber = patch.primaryPhysicianNumber;
-  if (patch.position !== undefined) updated.position = patch.position;
-  if (patch.medicationInformation !== undefined) updated.medicationInformation = patch.medicationInformation;
-  if (patch.withdrawalReason !== undefined) updated.withdrawalReason = patch.withdrawalReason;
+  const updated = applyCandidateProfilePatch(existing, patch);
 
   if (patch.assignedClinicianId !== undefined) {
     updated.assignedClinicianId = patch.assignedClinicianId;

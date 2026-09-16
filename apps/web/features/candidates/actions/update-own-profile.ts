@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { createActionRateLimiter } from '../../../lib/action-rate-limit';
+import { fieldErrorsFrom } from '../../../lib/field-errors';
 import { combineContactNumbers } from '../../../lib/phone-number';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
@@ -62,13 +63,7 @@ export async function updateOwnProfileAction(
     contactNumber: combineContactNumbers(formData)
   });
   if (!parsed.success) {
-    const flattened = parsed.error.flatten().fieldErrors;
-    const fieldErrors = Object.fromEntries(
-      Object.entries(flattened)
-        .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
-        .map(([field, messages]) => [field, messages[0]!])
-    );
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid profile details.', fieldErrors };
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid profile details.', fieldErrors: fieldErrorsFrom(parsed.error) };
   }
 
   await updateCandidate(own.id, parsed.data, session.user.id);

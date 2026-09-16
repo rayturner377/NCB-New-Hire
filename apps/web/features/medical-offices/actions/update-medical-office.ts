@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { createActionRateLimiter } from '../../../lib/action-rate-limit';
+import { fieldErrorsFrom } from '../../../lib/field-errors';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
 import { updateMedicalOfficeSchema } from '../schemas/medical-office';
@@ -46,16 +47,10 @@ export async function updateMedicalOfficeAction(
 
   const parsed = updateMedicalOfficeSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
-    const flattened = parsed.error.flatten().fieldErrors;
-    const fieldErrors = Object.fromEntries(
-      Object.entries(flattened)
-        .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
-        .map(([field, messages]) => [field, messages[0]!])
-    );
     return {
       ok: false,
       error: parsed.error.issues[0]?.message ?? 'Invalid facility details.',
-      fieldErrors
+      fieldErrors: fieldErrorsFrom(parsed.error)
     };
   }
 

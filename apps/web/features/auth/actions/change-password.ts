@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '@ncb/auth';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
+import { fieldErrorsFrom } from '../../../lib/field-errors';
 import { getSession } from '../../../lib/session';
 import { validatePasswordAgainstPolicy } from '../../settings/password-policy';
 import { getSettings } from '../../settings/services/settings-service';
@@ -30,13 +31,7 @@ export async function changePasswordAction(
 
   const parsed = changePasswordSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
-    const flattened = parsed.error.flatten().fieldErrors;
-    const fieldErrors = Object.fromEntries(
-      Object.entries(flattened)
-        .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
-        .map(([field, messages]) => [field, messages[0]!])
-    );
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid password.', fieldErrors };
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid password.', fieldErrors: fieldErrorsFrom(parsed.error) };
   }
 
   const { userPolicy } = await getSettings();

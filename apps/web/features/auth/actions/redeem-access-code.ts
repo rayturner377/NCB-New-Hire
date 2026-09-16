@@ -4,6 +4,7 @@ import { auditRepository } from '@ncb/database';
 import { revokeAllSessionsForUser } from '@ncb/auth/utils';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { getClientIp } from '../../../lib/client-ip';
+import { fieldErrorsFrom } from '../../../lib/field-errors';
 import { validatePasswordAgainstPolicy } from '../../settings/password-policy';
 import { getSettings } from '../../settings/services/settings-service';
 import { redeemAccessCodeSchema } from '../schemas/redeem-access-code';
@@ -31,13 +32,7 @@ export async function redeemAccessCodeAction(
 
   const parsed = redeemAccessCodeSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
-    const flattened = parsed.error.flatten().fieldErrors;
-    const fieldErrors = Object.fromEntries(
-      Object.entries(flattened)
-        .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
-        .map(([field, messages]) => [field, messages[0]!])
-    );
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid details.', fieldErrors };
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid details.', fieldErrors: fieldErrorsFrom(parsed.error) };
   }
 
   const { email, code, password } = parsed.data;

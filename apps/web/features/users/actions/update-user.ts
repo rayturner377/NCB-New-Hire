@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
+import { fieldErrorsFrom } from '../../../lib/field-errors';
 import { combineFullName } from '../../../lib/full-name';
 import { combineMedicalProfile } from '../../../lib/medical-profile';
 import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
@@ -54,13 +55,7 @@ export async function updateUserAction(
     delegateForClinicianId: targetRole === 'delegate' ? String(formData.get('delegateForClinicianId') || '') : undefined
   });
   if (!parsed.success) {
-    const flattened = parsed.error.flatten().fieldErrors;
-    const fieldErrors = Object.fromEntries(
-      Object.entries(flattened)
-        .filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].length > 0)
-        .map(([field, messages]) => [field, messages[0]!])
-    );
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid details.', fieldErrors };
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid details.', fieldErrors: fieldErrorsFrom(parsed.error) };
   }
   if (targetRole === 'delegate' && !parsed.data.delegateForClinicianId) {
     return { ok: false, error: 'Choose which doctor this delegate supports.', fieldErrors: { delegateForClinicianId: 'Required.' } };
