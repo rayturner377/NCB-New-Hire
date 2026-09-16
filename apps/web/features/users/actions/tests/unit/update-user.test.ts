@@ -5,8 +5,15 @@ const updateUserMock = vi.fn();
 const getUserRoleMock = vi.fn();
 const revalidatePathMock = vi.fn();
 const assertSameOriginMock = vi.fn();
+const redirectMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
+vi.mock('next/navigation', () => ({
+  redirect: (path: string) => {
+    redirectMock(path);
+    throw new Error('NEXT_REDIRECT');
+  }
+}));
 vi.mock('../../../../../lib/assert-same-origin', () => ({
   assertSameOrigin: (...args: unknown[]) => assertSameOriginMock(...args)
 }));
@@ -32,6 +39,7 @@ describe('updateUserAction', () => {
     updateUserMock.mockReset();
     getUserRoleMock.mockReset();
     revalidatePathMock.mockClear();
+    redirectMock.mockClear();
     assertSameOriginMock.mockReset().mockResolvedValue(undefined);
   });
 
@@ -64,15 +72,15 @@ describe('updateUserAction', () => {
     expect(updateUserMock).not.toHaveBeenCalled();
   });
 
-  it('lets a reviewer (STAFF_ACCOUNTS_MANAGE) edit a doctor account', async () => {
+  it('lets a reviewer (STAFF_ACCOUNTS_MANAGE) edit a doctor account, then redirects to the doctors list', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
     getUserRoleMock.mockResolvedValue('clinician');
     updateUserMock.mockResolvedValue({ id: 'usr_1' });
 
-    const result = await updateUserAction(null, formData(validFields));
+    await expect(updateUserAction(null, formData(validFields))).rejects.toThrow('NEXT_REDIRECT');
 
-    expect(result.ok).toBe(true);
     expect(updateUserMock).toHaveBeenCalledWith('usr_1', expect.objectContaining({ displayName: 'Demo Doctor' }), 'usr_reviewer_demo');
+    expect(redirectMock).toHaveBeenCalledWith('/doctors');
   });
 
   it('refuses to let a reviewer edit an admin account, regardless of what the form claims the role is', async () => {
@@ -86,14 +94,46 @@ describe('updateUserAction', () => {
     expect(updateUserMock).not.toHaveBeenCalled();
   });
 
-  it('updates the user and revalidates every role list', async () => {
+  it('updates the user and revalidates the target role list', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', role: 'admin' } });
     getUserRoleMock.mockResolvedValue('clinician');
     updateUserMock.mockResolvedValue({ id: 'usr_1' });
 
-    const result = await updateUserAction(null, formData(validFields));
+    await expect(updateUserAction(null, formData(validFields))).rejects.toThrow('NEXT_REDIRECT');
 
-    expect(result.ok).toBe(true);
     expect(revalidatePathMock).toHaveBeenCalledWith('/doctors');
+  });
+
+  it('rejects a delegate edit with no chosen doctor', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', role: 'admin' } });
+    getUserRoleMock.mockResolvedValue('delegate');
+
+    const result = await updateUserAction(
+      null,
+      formData({ userId: 'usr_delegate_1', role: 'delegate', firstName: 'Demo', lastName: 'Delegate' })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(updateUserMock).not.toHaveBeenCalled();
+  });
+
+  it('lets an admin reassign a delegate to a different doctor, then redirects to the delegates list', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', role: 'admin' } });
+    getUserRoleMock.mockResolvedValue('delegate');
+    updateUserMock.mockResolvedValue({ id: 'usr_delegate_1' });
+
+    await expect(
+      updateUserAction(
+        null,
+        formData({ userId: 'usr_delegate_1', role: 'delegate', firstName: 'Demo', lastName: 'Delegate', delegateForClinicianId: 'usr_doctor_2' })
+      )
+    ).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(updateUserMock).toHaveBeenCalledWith(
+      'usr_delegate_1',
+      expect.objectContaining({ delegateForClinicianId: 'usr_doctor_2' }),
+      'usr_admin_demo'
+    );
+    expect(redirectMock).toHaveBeenCalledWith('/delegates');
   });
 });

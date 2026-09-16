@@ -1,7 +1,8 @@
 /**
- * Admin-facing presets for how long a candidate's initial activation code
- * stays redeemable, offered on the candidate-creation form (see
- * candidate-form.tsx's "Portal access" section) — not used for
+ * Admin-facing presets for how long an initial activation code stays
+ * redeemable — offered on the candidate-creation form (see candidate-form.tsx's
+ * "Portal access" section) and, for a delegate account, user-form.tsx's own
+ * copy of the same picker (appears once an email is entered). Not used for
  * password-reset codes, which always get access-codes-service.ts's own
  * fixed default regardless of who triggers them. Plain values (no server-
  * only imports) so this can be shared by both the client form and the

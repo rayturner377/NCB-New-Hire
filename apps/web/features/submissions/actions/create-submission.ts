@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { parseNestedFormData } from '../../../lib/form-data-to-object';
-import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
+import { ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import type { CandidatePayload } from '../../candidates/types';
@@ -54,6 +54,14 @@ export async function createSubmissionAction(
   } catch (error) {
     if (error instanceof ForbiddenError) return { ok: false, error: error.message };
     throw error;
+  }
+
+  // A delegate holds SUBMISSIONS_CREATE too (they need it to save drafts — see
+  // save-submission-draft.ts), but final submission is doctor-only: it requires the doctor's own
+  // attestation/signature, which the UI never lets a delegate fill in (doctor-case-form.tsx locks
+  // that whole tab for them). Checked here regardless, since this action is reachable directly.
+  if (session.user.role === ROLES.DELEGATE) {
+    return { ok: false, error: 'Only the assigned doctor can submit this assessment.' };
   }
 
   const caseId = String(formData.get('caseId') || '');

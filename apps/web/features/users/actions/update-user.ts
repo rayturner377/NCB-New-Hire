@@ -1,11 +1,13 @@
 'use server';
 
+import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { combineFullName } from '../../../lib/full-name';
 import { combineMedicalProfile } from '../../../lib/medical-profile';
 import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
+import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
 import { updateUserSchema } from '../schemas/user';
 import { getUserRole, updateUser } from '../services/users-service';
 
@@ -47,7 +49,10 @@ export async function updateUserAction(
     throw error;
   }
 
-  const parsed = updateUserSchema.safeParse({ displayName: combineFullName(formData) });
+  const parsed = updateUserSchema.safeParse({
+    displayName: combineFullName(formData),
+    delegateForClinicianId: targetRole === 'delegate' ? String(formData.get('delegateForClinicianId') || '') : undefined
+  });
   if (!parsed.success) {
     const flattened = parsed.error.flatten().fieldErrors;
     const fieldErrors = Object.fromEntries(
@@ -56,6 +61,9 @@ export async function updateUserAction(
         .map(([field, messages]) => [field, messages[0]!])
     );
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid details.', fieldErrors };
+  }
+  if (targetRole === 'delegate' && !parsed.data.delegateForClinicianId) {
+    return { ok: false, error: 'Choose which doctor this delegate supports.', fieldErrors: { delegateForClinicianId: 'Required.' } };
   }
 
   await updateUser(
@@ -67,9 +75,7 @@ export async function updateUserAction(
     session.user.id
   );
 
-  revalidatePath('/doctors');
-  revalidatePath('/reviewers');
-  revalidatePath('/auditors');
-  revalidatePath('/admins');
-  return { ok: true };
+  const listPath = LIST_PATH_BY_ROLE[targetRole] ?? '/cases';
+  revalidatePath(listPath);
+  redirect(listPath);
 }

@@ -33,6 +33,18 @@ export interface DoctorCaseFormProps {
   doctors: UserSummary[];
   draft: DoctorAssessmentDraft;
   attachments: CaseDocumentSummary[];
+  /**
+   * A delegate can fill in Assessment/Physical exam/Lab results and upload
+   * attachments exactly like the doctor they support, but never the
+   * Determination & Attestation tab (fitness status, conclusions,
+   * signature) and never Submit — that stays doctor-only, enforced here in
+   * the UI and again server-side in create-submission.ts (a hidden button
+   * alone isn't enough, that action is reachable directly).
+   */
+  isDelegate?: boolean;
+  /** Who last saved a draft on this case, if it wasn't the current viewer — see cases-service.ts's saveDoctorAssessmentDraft. Null when no one else has touched it, or the last save was the current viewer's own. */
+  lastEditedByName?: string | null;
+  lastEditedAt?: string | null;
 }
 
 const initialState: SubmissionActionResult | null = null;
@@ -108,7 +120,10 @@ export function DoctorCaseForm({
   submission,
   doctors,
   draft,
-  attachments
+  attachments,
+  isDelegate = false,
+  lastEditedByName = null,
+  lastEditedAt = null
 }: DoctorCaseFormProps) {
   const [state, formAction] = useActionState(createSubmissionAction, initialState);
 
@@ -171,7 +186,11 @@ export function DoctorCaseForm({
 
   const attestationComplete = Boolean(signedBy.trim()) && Boolean(signatureDataUrl) && consentConfirmed;
   const determinationComplete = Boolean(determinationStatus) && attestationComplete;
-  const canSubmit = uncontrolledComplete.assessment && uncontrolledComplete.exam && determinationComplete;
+  // A delegate can never submit — Determination & Attestation is locked to them (see the `tabs`
+  // array below), so canSubmit staying false here is what keeps both the Submit button and the
+  // Documents tab's own visibility gate from ever activating for them client-side. The real
+  // enforcement is server-side in create-submission.ts; this just keeps the UI honest about it.
+  const canSubmit = !isDelegate && uncontrolledComplete.assessment && uncontrolledComplete.exam && determinationComplete;
 
   // If the Documents tab disappears (see `tabs` below) while it's the active
   // one — the doctor had finished everything, opened it, then went back and
@@ -191,6 +210,7 @@ export function DoctorCaseForm({
           employeeId={candidate.employeeId}
           email={candidate.email}
           doctors={doctors}
+          hideNationalId
           layout="flat"
         />
       ) : (
@@ -221,7 +241,15 @@ export function DoctorCaseForm({
       key: 'determination',
       label: TAB_LABELS.determination,
       complete: determinationComplete,
-      content: (
+      content: isDelegate ? (
+        <div className="flex flex-col gap-2 rounded-md border border-dashed border-input p-4 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">Only the assigned doctor can complete this section.</p>
+          <p>
+            The fitness determination and attestation — including the signature — require the doctor&apos;s own
+            clinical judgment and sign-off, and aren&apos;t part of what a delegate can enter on their behalf.
+          </p>
+        </div>
+      ) : (
         <DeterminationAttestationTab
           draft={draft}
           determinationStatus={determinationStatus}
@@ -252,8 +280,11 @@ export function DoctorCaseForm({
     // rather than showing up locked (see case-detail-container.tsx's
     // Documents tab, which greys out for the same reason once the doctor's
     // own record of the case moves there — this is the one place a doctor
-    // still building the assessment could reach it prematurely).
-    ...(canSubmit
+    // still building the assessment could reach it prematurely). A delegate
+    // gets it unconditionally instead — they can never make canSubmit true
+    // (Determination & Attestation is locked to them above), but still need
+    // to upload/view attachments while doing the rest of the data entry.
+    ...(canSubmit || isDelegate
       ? [
           {
             key: 'documents',
@@ -270,6 +301,7 @@ export function DoctorCaseForm({
                   caseTypeLabel={caseTypeLabel}
                   patientCaseData={patientCaseData}
                   submission={submission}
+                  hidePosition
                 />
                 <CaseAttachmentUpload caseId={caseId} />
                 <CaseAttachmentList caseId={caseId} attachments={attachments} />
@@ -288,9 +320,13 @@ export function DoctorCaseForm({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col">
           <h1 className="text-xl font-semibold">{candidate.fullName}</h1>
-          <p className="text-sm text-muted-foreground">
-            {candidate.position} · Employee ID: {candidate.employeeId || '—'}
-          </p>
+          <p className="text-sm text-muted-foreground">Employee ID: {candidate.employeeId || '—'}</p>
+          {lastEditedByName ? (
+            <p className="text-xs text-muted-foreground">
+              Last updated by {lastEditedByName}
+              {lastEditedAt ? ` on ${new Date(lastEditedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}` : ''}
+            </p>
+          ) : null}
         </div>
         <AutosaveIndicator status={autosaveStatus} />
       </div>
@@ -303,13 +339,19 @@ export function DoctorCaseForm({
         onValueChange={(value) => setTab(value as TabValue)}
         onNavigate={() => void saveNow()}
         finalSlotTabKey="determination"
+        // No Submit control at all for a delegate — they can never finish the case (see the
+        // Determination & Attestation lock above), so a disabled button here would just be a
+        // confusing dead end rather than an honest reflection of what they can do. Their work is
+        // done entirely via autosave (see AutosaveIndicator above), same as every other tab.
         lastTabSlot={
-          <div className="flex flex-col items-end gap-1">
-            <SubmitButton canSubmit={canSubmit} />
-            {!canSubmit ? (
-              <p className="text-xs text-muted-foreground">Complete the assessment, choose a determination, and sign to submit.</p>
-            ) : null}
-          </div>
+          isDelegate ? undefined : (
+            <div className="flex flex-col items-end gap-1">
+              <SubmitButton canSubmit={canSubmit} />
+              {!canSubmit ? (
+                <p className="text-xs text-muted-foreground">Complete the assessment, choose a determination, and sign to submit.</p>
+              ) : null}
+            </div>
+          )
         }
       />
     </form>

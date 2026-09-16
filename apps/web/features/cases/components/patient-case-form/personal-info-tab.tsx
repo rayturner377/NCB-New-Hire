@@ -1,19 +1,34 @@
 'use client';
 
+import { useState } from 'react';
 import { AddressFields } from '../../../../components/form/address-fields';
 import { ContactFields } from '../../../../components/form/contact-fields';
+import { DateField } from '../../../../components/form/date-field';
 import { EmailsField } from '../../../../components/form/emails-field';
+import { SelectInput } from '../../../../components/form/select-input';
 import { FormField } from '../../../../components/ui/form-field';
 import { Input } from '../../../../components/ui/input';
 import { PhoneNumbersField } from '../../../../components/form/phone-numbers-field';
 import { PHONE_TYPE_OPTIONS, type PatientCaseData } from '../../patient-case-data';
 
-const SELECT_CLASS =
-  'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
+const SEX_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' }
+];
+
+const MARITAL_STATUS_OPTIONS = [
+  { value: 'single', label: 'Single' },
+  { value: 'married', label: 'Married' },
+  { value: 'divorced', label: 'Divorced' },
+  { value: 'separated', label: 'Separated' },
+  { value: 'widowed', label: 'Widowed' }
+];
 
 export interface PersonalInfoTabProps {
   data: PatientCaseData;
   employeeId: string;
+  /** Omits the National ID / TRN field from this render — see patient-case-data.ts's PatientPersonalInfo.nationalId comment. Only ever set true by the doctor/delegate-facing read-only view (patient-case-read-only-view.tsx); the patient's own editable form and every other viewer still see it. */
+  hideNationalId?: boolean;
   email: string;
   disabled: boolean;
 }
@@ -28,8 +43,10 @@ export interface PersonalInfoTabProps {
  * everything HR already has on file. Consent/signature now live in their own
  * tab — see consent-tab.tsx.
  */
-export function PersonalInfoTab({ data, employeeId, email, disabled }: PersonalInfoTabProps) {
+export function PersonalInfoTab({ data, employeeId, hideNationalId, email, disabled }: PersonalInfoTabProps) {
   const { personalInfo } = data;
+  const [sex, setSex] = useState(personalInfo.sex);
+  const [maritalStatus, setMaritalStatus] = useState(personalInfo.maritalStatus);
 
   return (
     <div className="flex flex-col gap-3">
@@ -47,30 +64,46 @@ export function PersonalInfoTab({ data, employeeId, email, disabled }: PersonalI
         <FormField label="Employee / applicant ID" name="employeeIdDisplay" description="Set by HR — not editable here.">
           <Input id="employeeIdDisplay" defaultValue={employeeId || '—'} readOnly disabled />
         </FormField>
+        <FormField label="Date of birth" name="personalInfo.dateOfBirth" required>
+          <DateField
+            id="personalInfo.dateOfBirth"
+            name="personalInfo.dateOfBirth"
+            defaultValue={personalInfo.dateOfBirth}
+            toYear={new Date().getFullYear()}
+            required
+            readOnly={disabled}
+          />
+        </FormField>
+        {hideNationalId ? null : (
+          <FormField label="National ID / TRN" name="personalInfo.nationalId">
+            <Input
+              id="personalInfo.nationalId"
+              name="personalInfo.nationalId"
+              defaultValue={personalInfo.nationalId}
+              disabled={disabled}
+            />
+          </FormField>
+        )}
         <FormField label="Sex" name="personalInfo.sex" required>
-          <select id="personalInfo.sex" name="personalInfo.sex" defaultValue={personalInfo.sex} required disabled={disabled} className={SELECT_CLASS}>
-            <option value="" disabled>
-              Select…
-            </option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-          </select>
+          <SelectInput
+            id="personalInfo.sex"
+            name="personalInfo.sex"
+            value={sex}
+            onValueChange={setSex}
+            options={SEX_OPTIONS}
+            required
+            disabled={disabled}
+          />
         </FormField>
         <FormField label="Marital status" name="personalInfo.maritalStatus">
-          <select
+          <SelectInput
             id="personalInfo.maritalStatus"
             name="personalInfo.maritalStatus"
-            defaultValue={personalInfo.maritalStatus}
+            value={maritalStatus}
+            onValueChange={setMaritalStatus}
+            options={MARITAL_STATUS_OPTIONS}
             disabled={disabled}
-            className={SELECT_CLASS}
-          >
-            <option value="">Select…</option>
-            <option value="single">Single</option>
-            <option value="married">Married</option>
-            <option value="divorced">Divorced</option>
-            <option value="separated">Separated</option>
-            <option value="widowed">Widowed</option>
-          </select>
+          />
         </FormField>
       </div>
 

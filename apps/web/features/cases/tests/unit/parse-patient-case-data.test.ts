@@ -27,6 +27,17 @@ describe('parsePatientCaseData', () => {
     expect(data.personalInfo.phones).toEqual([{ type: 'Mobile', number: '+18761234567' }]);
   });
 
+  it('parses dateOfBirth and nationalId, trimmed', () => {
+    const data = parsePatientCaseData(
+      formData([
+        ['personalInfo.dateOfBirth', '1990-01-15'],
+        ['personalInfo.nationalId', '  123-456-789  ']
+      ])
+    );
+    expect(data.personalInfo.dateOfBirth).toBe('1990-01-15');
+    expect(data.personalInfo.nationalId).toBe('123-456-789');
+  });
+
   it('defaults a phone entry with no type to Mobile', () => {
     const data = parsePatientCaseData(formData([['personalInfo.contactNumber', '+18760000000']]));
     expect(data.personalInfo.phones).toEqual([{ type: 'Mobile', number: '+18760000000' }]);

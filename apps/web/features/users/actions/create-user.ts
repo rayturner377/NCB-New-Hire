@@ -9,6 +9,7 @@ import { combineMedicalProfile } from '../../../lib/medical-profile';
 import { ForbiddenError, requireCanManageUserAccount } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
 import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
+import { activationCodeTtlMinutesFor } from '../../auth/activation-code-ttl';
 import { createUserSchema } from '../schemas/user';
 import { createUser, DuplicateEmailError } from '../services/users-service';
 
@@ -65,12 +66,15 @@ export async function createUserAction(
     };
   }
 
+  const activationCodeTtlMinutes = activationCodeTtlMinutesFor(String(formData.get('activationCodeTtl') || ''));
+
   let created;
   try {
     created = await createUser(
       {
         ...parsed.data,
-        medicalProfile: parsed.data.role === 'clinician' ? combineMedicalProfile(formData) : undefined
+        medicalProfile: parsed.data.role === 'clinician' ? combineMedicalProfile(formData) : undefined,
+        activationCodeTtlMs: activationCodeTtlMinutes ? activationCodeTtlMinutes * 60 * 1000 : undefined
       },
       session.user.id
     );

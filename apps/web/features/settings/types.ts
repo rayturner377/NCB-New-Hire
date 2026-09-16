@@ -38,6 +38,10 @@ export interface AppSettings {
     largeLogoDataUrl: string;
     /** The right-hand panel image on the login screen (see components/layout/auth-layout.tsx's `imageSrc`) — purely decorative/branding, distinct from the logos above. Uploading a new one replaces this field outright; there's no history of past images kept anywhere. */
     loginImageDataUrl: string;
+    /** The same login-screen image, but hosted elsewhere and referenced by URL instead of uploaded inline — an admin picks which of the two is actually shown via `loginImageMode` (see login-image-field.tsx). Kept as its own field, separate from loginImageDataUrl, specifically so switching modes back and forth never loses whichever one isn't currently active. */
+    loginImageUrl: string;
+    /** Which of loginImageDataUrl / loginImageUrl is the one actually rendered on the login screen (see login/page.tsx). */
+    loginImageMode: 'upload' | 'url';
   };
   notifications: {
     /** "To" address for notifications with no single case-specific recipient (a doctor submitting an assessment — there's no one "assigned reviewer" to send it to). */
@@ -57,6 +61,8 @@ export interface AppSettings {
     sessionTimeoutMinutes: number;
     loginMaxAttempts: number;
     loginWindowMinutes: number;
+    /** The new-device emailed-code challenge (see packages/auth/src/index.ts's twoFactor() plugin) — @default true. This is the break-glass switch: since every account's AppUser.twoFactorEnabled is the actual thing Better Auth checks, turning this off bulk-updates that column to false for every account (see updateUserPolicySettingsAction), and back to true when re-enabled. Only meant for "outbound email is broken and everyone is locked out" — not a routine setting to toggle. */
+    requireDeviceVerification: boolean;
   };
   sla: {
     definitions: SlaDefinition[];
@@ -125,7 +131,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     supportContact: '',
     smallLogoDataUrl: '',
     largeLogoDataUrl: '',
-    loginImageDataUrl: ''
+    loginImageDataUrl: '',
+    loginImageUrl: '',
+    loginImageMode: 'upload'
   },
   notifications: {
     reviewerNotificationEmail: '',
@@ -142,7 +150,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     requireSymbol: false,
     sessionTimeoutMinutes: 15,
     loginMaxAttempts: 5,
-    loginWindowMinutes: 15
+    loginWindowMinutes: 15,
+    requireDeviceVerification: true
   },
   sla: {
     definitions: DEFAULT_SLA_DEFINITIONS

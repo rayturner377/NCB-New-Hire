@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 import { canManageUserAccount, type Role } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
-import { listActiveMedicalOffices } from '../../medical-offices/services/medical-offices-service';
+import { listActiveMedicalOfficeOptions } from '../../medical-offices/services/medical-offices-service';
 import { UserForm } from '../components/user-form';
+import { listActiveDoctors } from '../services/users-service';
 
 export interface NewRoleUserContainerProps {
   role: Role;
@@ -26,15 +27,18 @@ export async function NewRoleUserContainer({ role, roleLabel, cancelHref }: NewR
     redirect(cancelHref);
   }
 
-  const offices = role === 'clinician' ? await listActiveMedicalOffices() : [];
+  const offices = role === 'clinician' ? await listActiveMedicalOfficeOptions() : [];
+  const doctors = role === 'delegate' ? await listActiveDoctors() : [];
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
       <div>
         <h1 className="text-xl font-semibold">New {roleLabel.toLowerCase()}</h1>
-        <p className="text-sm text-muted-foreground">Create a {roleLabel.toLowerCase()} account and share the temporary password with them directly.</p>
+        <p className="text-sm text-muted-foreground">
+          Create a {roleLabel.toLowerCase()} account — they&apos;ll receive an activation code by email to set their own password.
+        </p>
       </div>
-      <UserForm role={role} roleLabel={roleLabel} cancelHref={cancelHref} offices={offices} />
+      <UserForm role={role} roleLabel={roleLabel} cancelHref={cancelHref} offices={offices} doctors={doctors} />
     </div>
   );
 }

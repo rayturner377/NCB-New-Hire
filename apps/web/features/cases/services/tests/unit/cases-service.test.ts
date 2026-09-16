@@ -76,7 +76,8 @@ const {
   setCaseBilling,
   hasDoctorSubmitted,
   listReviewQueueCases,
-  countCasesForClinician
+  countCasesForClinician,
+  saveDoctorAssessmentDraft
 } = await import('../../cases-service');
 
 describe('cases service', () => {
@@ -321,6 +322,17 @@ describe('cases service', () => {
 
     expect(updatePayload).toHaveBeenCalledWith('case_1', { hidden: false }, masterKey);
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'case_unhidden' }));
+  });
+
+  it('saveDoctorAssessmentDraft persists the draft and stamps who last edited it, alongside whatever else was in the payload', async () => {
+    await saveDoctorAssessmentDraft('case_1', { assessment: { note: 'wip' } }, { caseType: 'pre_employment' }, 'usr_delegate_demo');
+
+    expect(updatePayload).toHaveBeenCalledWith(
+      'case_1',
+      { caseType: 'pre_employment', doctorAssessmentDraft: { assessment: { note: 'wip' } } },
+      masterKey,
+      { lastEditedById: 'usr_delegate_demo', lastEditedAt: expect.any(Date) }
+    );
   });
 
   it('transitionCase to sent_to_doctor notifies the assigned doctor, cc-ing the configured doctor notification address', async () => {

@@ -23,6 +23,20 @@ describe('createUserSchema', () => {
   it('rejects an unrecognized role', () => {
     expect(createUserSchema.safeParse({ ...valid, role: 'superadmin' }).success).toBe(false);
   });
+
+  it('accepts a delegate with a doctor chosen', () => {
+    expect(
+      createUserSchema.safeParse({ ...valid, role: 'delegate', delegateForClinicianId: 'usr_doctor_demo' }).success
+    ).toBe(true);
+  });
+
+  it('rejects a delegate with no doctor chosen', () => {
+    expect(createUserSchema.safeParse({ ...valid, role: 'delegate' }).success).toBe(false);
+  });
+
+  it('does not require delegateForClinicianId for a non-delegate role', () => {
+    expect(createUserSchema.safeParse(valid).success).toBe(true);
+  });
 });
 
 describe('updateUserSchema', () => {
@@ -36,5 +50,9 @@ describe('updateUserSchema', () => {
 
   it('rejects an unrecognized role', () => {
     expect(updateUserSchema.safeParse({ role: 'not-a-role' }).success).toBe(false);
+  });
+
+  it('accepts reassigning a delegate to a different doctor', () => {
+    expect(updateUserSchema.safeParse({ delegateForClinicianId: 'usr_doctor_new' }).success).toBe(true);
   });
 });

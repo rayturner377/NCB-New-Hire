@@ -18,6 +18,8 @@ model AppUser {
   displayName    String    @map("display_name") @db.VarChar(140)
   role           String    @db.VarChar(30)
   active         Boolean   @default(true)
+  /// Set only for role === 'delegate' — the one doctor this assistant account acts on behalf of (1:1, not a list: a delegate supports exactly one doctor). Null for every other role. See ownsCase()'s ROLES.DELEGATE branch and the delegate dashboard query, both of which use this in place of the user's own id.
+  delegateForClinicianId String? @map("delegate_for_clinician_id") @db.VarChar(80)
   mustChangePassword Boolean @default(false) @map("must_change_password")
   /// Required by Better Auth's own core user schema (unconditional, not a plugin) — this app has
   /// no email-verification flow (emailAndPassword.requireEmailVerification stays off), so this
@@ -26,6 +28,11 @@ model AppUser {
   emailVerified  Boolean   @default(false) @map("email_verified")
   /// Same reasoning as emailVerified — part of Better Auth's core user schema, unused by this app.
   image          String?   @db.Text
+  /// Required by Better Auth's `two-factor` plugin's own schema (OTP method) — @default(true) means
+  /// every account, existing and new, is covered without a settings opt-in: this app enforces the
+  /// emailed-code new-device challenge for everyone, not per-account. See packages/auth/src/index.ts's
+  /// twoFactor() registration and login.ts's handling of signInEmail's twoFactorRedirect response.
+  twoFactorEnabled Boolean @default(true) @map("two_factor_enabled")
   medicalProfile Json      @default("{}") @map("medical_profile")
   /// Per-user exceptions on top of their role's own permissions — `{ grant: string[], revoke: string[] }`. Revoke wins over grant if a permission is somehow in both. See lib/permissions.ts's getEffectivePermissions.
   permissionOverrides Json @default("{}") @map("permission_overrides")
@@ -33,20 +40,50 @@ model AppUser {
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
 
+  twoFactor              TwoFactor?
   createdPatientProfiles PatientProfile[]      @relation("PatientCreatedBy")
   linkedPatientProfiles  PatientProfile[]      @relation("PatientLinkedUser")
   officeMemberships      MedicalOfficeMember[]
   createdCases           MedicalCase[]         @relation("CaseCreatedBy")
   assignedCases          MedicalCase[]         @relation("CaseAssignedClinician")
   reviewedCases          MedicalCase[]         @relation("CaseReviewedBy")
+  lastEditedCases        MedicalCase[]         @relation("CaseLastEditedBy")
   submissions            MedicalSubmission[]   @relation("SubmissionSubmittedBy")
   attachments            CaseAttachment[]      @relation("AttachmentUploadedBy")
   settingUpdates         ApplicationSetting[]  @relation("SettingUpdatedBy")
   accounts               Account[]
   accessCodes            AccessCode[]
+  /// The doctor this delegate acts on behalf of (see delegateForClinicianId above).
+  delegateForClinician   AppUser?              @relation("DelegateForClinician", fields: [delegateForClinicianId], references: [id], onDelete: SetNull)
+  /// Every delegate account currently linked to this user (only ever populated when this user is a doctor).
+  delegates              AppUser[]             @relation("DelegateForClinician")
 
   @@index([role, active], map: "idx_users_role_active")
+  @@index([delegateForClinicianId], map: "idx_users_delegate_for_clinician")
   @@map("app_users")
+}
+
+/// Required by Better Auth's `two-factor` plugin's own schema (see node_modules/better-auth/dist/plugins/two-factor/schema.mjs)
+/// — this app never enables the TOTP method (only OTP, via AppUser.twoFactorEnabled), so no row is
+/// ever actually created here, but the table itself still has to exist: the plugin's signInEmail
+/// `after` hook unconditionally calls adapter.findOne({model: 'twoFactor', ...}) on every 2FA-gated
+/// sign-in to check for a stored TOTP secret (plugins/two-factor/index.mjs), and verifyTwoFactorOTP
+/// does the same on every OTP verification to check the (also-unused) account lockout state
+/// (plugins/two-factor/otp/index.mjs) — both throw if the underlying table is simply missing,
+/// regardless of whether a row exists. Confirmed by reading better-auth's actual source, not
+/// assumed from its docs.
+model TwoFactor {
+  id                      String    @id @db.VarChar(64)
+  secret                  String    @db.Text
+  backupCodes             String    @map("backup_codes") @db.Text
+  userId                  String    @unique @map("user_id") @db.VarChar(80)
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0) @map("failed_verification_count")
+  lockedUntil             DateTime? @map("locked_until") @db.Timestamptz(6)
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("two_factor")
 }
 
 /// One-time codes emailed for account activation and password reset, replacing the previous
@@ -140,7 +177,11 @@ model PatientProfile {
 model MedicalOffice {
   id                String    @id @db.VarChar(80)
   name              String    @db.VarChar(180)
-  address           String?   @db.VarChar(500)
+  addressLine1      String?   @map("address_line1") @db.VarChar(120)
+  addressLine2      String?   @map("address_line2") @db.VarChar(120)
+  city              String?   @db.VarChar(80)
+  state             String?   @db.VarChar(80)
+  country           String?   @db.VarChar(80)
   phone             String?   @db.VarChar(50)
   email             String?   @db.VarChar(254)
   defaultMedicalFee Decimal   @default(0) @map("default_medical_fee") @db.Decimal(12, 2)
@@ -190,6 +231,9 @@ model MedicalCase {
   reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz(6)
   reviewedBy          String?   @map("reviewed_by") @db.VarChar(80)
   paymentConfirmedAt  DateTime? @map("payment_confirmed_at") @db.Timestamptz(6)
+  /// Who last saved a draft against this case's assessment, and when — a lightweight byline, not an audit trail (autosave is silent for everyone, doctor included; see saveDoctorAssessmentDraft). Set on every draft save regardless of actor, so it also updates for a doctor's own edits, not just a delegate's — this is what lets a doctor/reviewer see at a glance that a delegate touched the case since it was last opened.
+  lastEditedById      String?   @map("last_edited_by_id") @db.VarChar(80)
+  lastEditedAt        DateTime? @map("last_edited_at") @db.Timestamptz(6)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   deletedAt           DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -199,6 +243,7 @@ model MedicalCase {
   assignedOffice    MedicalOffice?  @relation(fields: [assignedOfficeId], references: [id], onDelete: SetNull)
   assignedClinician AppUser?        @relation("CaseAssignedClinician", fields: [assignedClinicianId], references: [id], onDelete: SetNull)
   reviewer          AppUser?        @relation("CaseReviewedBy", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  lastEditedBy      AppUser?        @relation("CaseLastEditedBy", fields: [lastEditedById], references: [id], onDelete: SetNull)
   submissions       MedicalSubmission[]
   attachments       CaseAttachment[]
 

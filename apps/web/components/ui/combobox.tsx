@@ -20,6 +20,11 @@ export interface ComboboxProps {
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  /** For FormField's `htmlFor={name}` to land on the actual trigger button — omit for a Combobox with no associated label. */
+  id?: string;
+  /** Overrides the trigger's own `w-full` — pass a max-width (e.g. `sm:max-w-md`) so a short list of options doesn't stretch a Combobox edge-to-edge in a wide layout. */
+  className?: string;
+  disabled?: boolean;
 }
 
 /** Type-ahead search-and-select, the shadcn/ui Popover+Command recipe — for lists too long for a plain dropdown to browse comfortably. */
@@ -29,20 +34,25 @@ export function Combobox({
   onChange,
   placeholder = 'Select…',
   searchPlaceholder = 'Search…',
-  emptyText = 'No results found.'
+  emptyText = 'No results found.',
+  id,
+  className,
+  disabled
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
   const selected = options.find((option) => option.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open && !disabled} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           type="button"
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between font-normal"
+          disabled={disabled}
+          className={cn('w-full justify-between font-normal', className)}
         >
           <span className={cn('truncate', !selected && 'text-muted-foreground')}>{selected ? selected.label : placeholder}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

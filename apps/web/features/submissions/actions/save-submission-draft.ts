@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { parseNestedFormData } from '../../../lib/form-data-to-object';
-import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
+import { ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
 import { ownsCase } from '../../cases/case-authorization';
 import { getCaseById, saveDoctorAssessmentDraft } from '../../cases/services/cases-service';
@@ -59,7 +59,15 @@ export async function saveSubmissionDraftAction(
   delete draft.caseId;
   delete draft.caseVersion;
 
-  await saveDoctorAssessmentDraft(caseId, draft, medicalCase.payload);
+  // Defense in depth: the UI never renders the Determination & Attestation tab's fields for a
+  // delegate (see doctor-case-form.tsx), but this action still receives the whole form's FormData
+  // in one request — strip them here too rather than trusting the client not to have sent them.
+  if (session.user.role === ROLES.DELEGATE) {
+    delete draft.determination;
+    delete draft.attestation;
+  }
+
+  await saveDoctorAssessmentDraft(caseId, draft, medicalCase.payload, session.user.id);
   revalidatePath(`/cases/${caseId}`);
   return { ok: true };
 }

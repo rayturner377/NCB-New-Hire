@@ -80,6 +80,8 @@ export function parsePatientCaseData(formData: FormData): PatientCaseData {
       firstName: str(formData, 'personalInfo.firstName'),
       middleInitial: str(formData, 'personalInfo.middleInitial'),
       lastName: str(formData, 'personalInfo.lastName'),
+      dateOfBirth: str(formData, 'personalInfo.dateOfBirth'),
+      nationalId: str(formData, 'personalInfo.nationalId'),
       emails: formData
         .getAll('personalInfo.email')
         .map((value) => String(value).trim())

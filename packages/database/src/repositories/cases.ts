@@ -129,11 +129,23 @@ export function createCasesRepository(db: PrismaClient) {
       return db.medicalCase.update({ where: { id }, data: { paymentStatus: 'paid', paymentConfirmedAt } });
     },
 
-    /** Overwrites the encrypted payload only — used for the patient intake form's save-progress/submit, which never touches status/version directly (that's `transition`'s job). */
-    async updatePayload(id: string, payload: unknown, masterKey: Buffer): Promise<MedicalCase> {
+    /**
+     * Overwrites the encrypted payload — used for the patient intake form's save-progress/submit
+     * and the doctor assessment draft's autosave, neither of which ever touches status/version
+     * directly (that's `transition`'s job). `plainColumns` is an escape hatch for the handful of
+     * un-encrypted columns a payload save sometimes needs to touch alongside it in the same
+     * statement — currently just lastEditedById/lastEditedAt (see saveDoctorAssessmentDraft), not
+     * meant to grow into a general-purpose update method.
+     */
+    async updatePayload(
+      id: string,
+      payload: unknown,
+      masterKey: Buffer,
+      plainColumns?: { lastEditedById?: string | null; lastEditedAt?: Date | null }
+    ): Promise<MedicalCase> {
       const record = encryptJson(masterKey, payload ?? {});
       const casePayload = Buffer.from(JSON.stringify(record), 'utf8');
-      return db.medicalCase.update({ where: { id }, data: { casePayload } });
+      return db.medicalCase.update({ where: { id }, data: { casePayload, ...plainColumns } });
     },
 
     async create(input: NewCaseInput, masterKey: Buffer): Promise<MedicalCase> {

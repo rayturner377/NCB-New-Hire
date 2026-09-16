@@ -22,6 +22,8 @@ export interface MedicalAssessmentDocumentProps {
   submission: SubmissionPayload | null;
   /** The large logo configured under Settings → General — see pdf-header-section.tsx. */
   logoUrl?: string;
+  /** See PdfEmployeeSection's own doc comment — omits "Position applied for" for a doctor/delegate viewer. */
+  hidePosition?: boolean;
 }
 
 /**
@@ -44,12 +46,12 @@ export interface MedicalAssessmentDocumentProps {
  * PHYSICIAN") — everything else flows and paginates automatically wherever
  * it naturally runs long, which is react-pdf's default <Page> behavior.
  */
-export function MedicalAssessmentDocument({ candidate, patientCaseData, submission, logoUrl }: MedicalAssessmentDocumentProps) {
+export function MedicalAssessmentDocument({ candidate, patientCaseData, submission, logoUrl, hidePosition }: MedicalAssessmentDocumentProps) {
   return (
     <Document title={`Medical assessment — ${candidate.fullName}`}>
       <Page size="LETTER" style={pdfStyles.page} wrap>
         <PdfHeaderSection logoUrl={logoUrl} />
-        <PdfEmployeeSection candidate={candidate} patientCaseData={patientCaseData} />
+        <PdfEmployeeSection candidate={candidate} patientCaseData={patientCaseData} hidePosition={hidePosition} />
 
         {patientCaseData ? (
           <>

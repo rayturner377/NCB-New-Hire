@@ -134,6 +134,27 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
     ]
   },
   {
+    key: 'device_verification_code',
+    label: 'New device verification code',
+    description: 'Sent during sign-in when the browser/device isn’t recognized — must be entered before the sign-in completes.',
+    defaultSubject: '{{portalName}}: your verification code',
+    defaultBody:
+      '<p>Hi {{recipientName}},</p><p>We don’t recognize the device you’re signing in from. Enter this code to continue:</p><p><strong style="font-size:20px;letter-spacing:2px">{{otp}}</strong></p><p>This code expires soon and can only be used once. If you didn’t just try to sign in, you can safely ignore this email — your account is still protected by your password.</p>',
+    variables: [
+      { name: 'recipientName', description: "The account holder's name" },
+      { name: 'otp', description: 'The one-time verification code' }
+    ]
+  },
+  {
+    key: 'new_device_signed_in',
+    label: 'New device signed in',
+    description: 'Sent right after a new device is successfully verified — informational, since the code already proved it was really them.',
+    defaultSubject: '{{portalName}}: your account was signed into from a new device',
+    defaultBody:
+      '<p>Hi {{recipientName}},</p><p>Your {{portalName}} account was just signed into from a new device or browser. For your security, only one device can be signed in at a time, so any other active session has been signed out.</p><p>If this was you, no action is needed. If it wasn’t, change your password immediately and contact an administrator.</p>',
+    variables: [{ name: 'recipientName', description: "The account holder's name" }]
+  },
+  {
     key: 'email_header',
     label: 'Email header',
     description: 'Shown below the logo, at the top of every outgoing email — shared across every notification type.',

@@ -22,6 +22,7 @@ const EDITABLE_ROLES: { role: string; label: string }[] = [
   { role: ROLES.REVIEWER, label: 'Reviewer' },
   { role: ROLES.AUDITOR, label: 'Auditor' },
   { role: ROLES.DOCTOR, label: 'Doctor' },
+  { role: ROLES.DELEGATE, label: 'Delegate' },
   { role: ROLES.PATIENT, label: 'Patient' }
 ];
 

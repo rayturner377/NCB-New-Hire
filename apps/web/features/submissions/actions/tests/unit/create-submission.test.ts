@@ -84,6 +84,16 @@ describe('createSubmissionAction', () => {
     expect(createSubmissionAndTransitionCaseMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a delegate outright, even one holding SUBMISSIONS_CREATE for draft-saving', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_delegate_demo', role: 'delegate', delegateForClinicianId: 'usr_doctor_demo' } });
+
+    const result = await createSubmissionAction(null, formData(validFields()));
+
+    expect(result.ok).toBe(false);
+    expect(getCaseByIdMock).not.toHaveBeenCalled();
+    expect(createSubmissionAndTransitionCaseMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a missing case id', async () => {
     getSessionMock.mockResolvedValue({ user: { role: 'clinician' } });
     const result = await createSubmissionAction(null, formData(validFields({ caseId: '' })));

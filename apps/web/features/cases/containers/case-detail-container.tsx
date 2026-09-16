@@ -84,11 +84,13 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
     // physician, and emergency contact all map straight across since both
     // forms use the exact same fields (AddressFields/PhoneNumbersField/
     // ContactFields) for them; see patient-case-data.ts's top comment.
-    const data =
+    const baseData =
       existingData ??
       emptyPatientCaseData({
         firstName,
         lastName,
+        dateOfBirth: ownCandidate.dateOfBirth,
+        nationalId: ownCandidate.nationalId,
         addressLine1: ownCandidate.addressLine1,
         addressLine2: ownCandidate.addressLine2,
         city: ownCandidate.city,
@@ -108,6 +110,18 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
         emergencyContactName: ownCandidate.emergencyContactName,
         emergencyContactNumber: ownCandidate.emergencyContactNumber
       });
+    // Backfills from the candidate profile even for an already-in-progress case (existingData) —
+    // not just a brand-new one — so a draft saved before dateOfBirth/nationalId existed on this
+    // form (or one where the patient just hasn't touched that field yet) still shows HR's own value
+    // instead of a blank the patient has to go dig up and retype themselves.
+    const data = {
+      ...baseData,
+      personalInfo: {
+        ...baseData.personalInfo,
+        dateOfBirth: baseData.personalInfo.dateOfBirth || ownCandidate.dateOfBirth,
+        nationalId: baseData.personalInfo.nationalId || ownCandidate.nationalId
+      }
+    };
 
     return (
       <div className="flex flex-col gap-4 p-6">
@@ -173,15 +187,22 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
   const latestSubmission = submissions[0] ?? null;
 
   const canUpdateBilling = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_BILLING_UPDATE);
+  // Read-only visibility into the payable amount — previously shown unconditionally to anyone who
+  // could view the case at all; gated now so a delegate's access to it can be toggled per-account
+  // (see permissionOverrides) without changing what admin/reviewer/auditor/doctor already see.
+  const canViewBilling = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_BILLING_VIEW);
   const canConfirmPayment = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_PAYMENT_CONFIRM);
   const isPaid = medicalCase.paymentStatus === 'paid';
   const canTransition = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_TRANSITION);
   const canReassign = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_REASSIGN);
   const canHide = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_HIDE);
   const canUploadDocuments = hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_ATTACH) && ownsCase(session.user, medicalCase);
-  // Doctors shouldn't see the audit trail while assessing/reviewing a case — History is an
-  // HR/admin oversight tool, not something relevant to the clinician's own workflow.
-  const canViewHistory = session.user.role !== ROLES.DOCTOR;
+  // Doctors (and their delegates) shouldn't see the audit trail while assessing/reviewing a case —
+  // History is an HR/admin oversight tool, not something relevant to the clinician's own workflow.
+  const canViewHistory = session.user.role !== ROLES.DOCTOR && session.user.role !== ROLES.DELEGATE;
+  // Nor the role the candidate applied for — showing it to the examining clinician risks biasing
+  // the assessment toward (or against) fitness for that specific role.
+  const hidePositionFromViewer = session.user.role === ROLES.DOCTOR || session.user.role === ROLES.DELEGATE;
 
   const usersById = new Map(allUsers.map((user) => [user.id, { displayName: user.displayName, role: user.role }]));
   const assignedClinicianName = medicalCase.assignedClinicianId
@@ -281,7 +302,7 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
             {[
               ['Patient', medicalCase.patient.fullName],
               ['Employee ID', medicalCase.patient.employeeId || '—'],
-              ['Position applied for', medicalCase.payload?.positionAppliedFor || '—'],
+              ...(hidePositionFromViewer ? [] : [['Position applied for', medicalCase.payload?.positionAppliedFor || '—']]),
               ['Medical type', caseTypeLabel(medicalCase.payload?.caseType)],
               ['Initial routing', caseRouteLabel(medicalCase.route)],
               ['Assigned clinician', assignedClinicianName],
@@ -322,6 +343,7 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
               employeeId={candidate.employeeId}
               email={candidate.email}
               doctors={doctors}
+              hideNationalId={hidePositionFromViewer}
             />
           ) : (
             <p className="text-sm text-muted-foreground">The patient hasn&apos;t completed their intake form yet.</p>
@@ -378,10 +400,12 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
                 <dt className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">Payment status</dt>
                 <dd className="text-sm">{medicalCase.paymentStatus ? statusLabel(medicalCase.paymentStatus) : '—'}</dd>
               </div>
-              <div className="flex flex-col">
-                <dt className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">Payable amount</dt>
-                <dd className="text-sm">{medicalCase.payableAmount ? formatCurrency(Number(medicalCase.payableAmount)) : '—'}</dd>
-              </div>
+              {canViewBilling ? (
+                <div className="flex flex-col">
+                  <dt className="text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground">Payable amount</dt>
+                  <dd className="text-sm">{medicalCase.payableAmount ? formatCurrency(Number(medicalCase.payableAmount)) : '—'}</dd>
+                </div>
+              ) : null}
             </dl>
           )}
 
@@ -417,6 +441,7 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
             caseTypeLabel={caseTypeLabel(medicalCase.payload?.caseType)}
             patientCaseData={medicalCase.payload?.patientCaseData ?? null}
             submission={latestSubmission}
+            hidePosition={hidePositionFromViewer}
             lockedMessage={exportLockedMessage}
             logoUrl={settings.general.largeLogoDataUrl || undefined}
           />

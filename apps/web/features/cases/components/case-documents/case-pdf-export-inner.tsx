@@ -21,6 +21,8 @@ export interface CasePdfExportProps {
   lockedMessage?: string;
   /** The large logo configured under Settings → General — see medical-assessment-document.tsx. */
   logoUrl?: string;
+  /** See PdfEmployeeSection's own doc comment — omits "Position applied for" for a doctor/delegate viewer. */
+  hidePosition?: boolean;
 }
 
 /**
@@ -41,7 +43,7 @@ export interface CasePdfExportProps {
  * they type) meant it could get stuck perpetually back in its "Preparing…"
  * state and never settle into something actually clickable.
  */
-export function CasePdfExportInner({ caseId, candidate, caseTypeLabel, patientCaseData, submission, lockedMessage, logoUrl }: CasePdfExportProps) {
+export function CasePdfExportInner({ caseId, candidate, caseTypeLabel, patientCaseData, submission, lockedMessage, logoUrl, hidePosition }: CasePdfExportProps) {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const documentElement = useMemo(
     () => (
@@ -52,9 +54,10 @@ export function CasePdfExportInner({ caseId, candidate, caseTypeLabel, patientCa
         patientCaseData={patientCaseData}
         submission={submission}
         logoUrl={logoUrl}
+        hidePosition={hidePosition}
       />
     ),
-    [caseId, candidate, caseTypeLabel, patientCaseData, submission, logoUrl]
+    [caseId, candidate, caseTypeLabel, patientCaseData, submission, logoUrl, hidePosition]
   );
 
   return (

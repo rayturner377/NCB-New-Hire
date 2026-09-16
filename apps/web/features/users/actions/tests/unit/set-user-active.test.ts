@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const getSessionMock = vi.fn();
 const setUserActiveMock = vi.fn();
 const getUserRoleMock = vi.fn();
+const isOwnDelegateMock = vi.fn();
 const revalidatePathMock = vi.fn();
 const assertSameOriginMock = vi.fn();
 
@@ -13,7 +14,8 @@ vi.mock('../../../../../lib/assert-same-origin', () => ({
 vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) => getSessionMock(...args), requireFullSession: (...args: unknown[]) => getSessionMock(...args) }));
 vi.mock('../../../services/users-service', () => ({
   setUserActive: (...args: unknown[]) => setUserActiveMock(...args),
-  getUserRole: (...args: unknown[]) => getUserRoleMock(...args)
+  getUserRole: (...args: unknown[]) => getUserRoleMock(...args),
+  isOwnDelegate: (...args: unknown[]) => isOwnDelegateMock(...args)
 }));
 
 const { setUserActiveAction } = await import('../../set-user-active');
@@ -29,6 +31,7 @@ describe('setUserActiveAction', () => {
     getSessionMock.mockReset();
     setUserActiveMock.mockReset();
     getUserRoleMock.mockReset();
+    isOwnDelegateMock.mockReset();
     revalidatePathMock.mockClear();
     assertSameOriginMock.mockReset().mockResolvedValue(undefined);
   });
@@ -42,10 +45,43 @@ describe('setUserActiveAction', () => {
   });
 
   it('does nothing when the caller lacks any account-management permission', async () => {
-    getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor_demo', role: 'clinician' } });
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_auditor_demo', role: 'auditor' } });
     getUserRoleMock.mockResolvedValue('clinician');
 
     await setUserActiveAction(formData({ userId: 'usr_1', active: 'false' }));
+
+    expect(setUserActiveMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a doctor deactivate the one delegate account linked to them', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor_demo', role: 'clinician' } });
+    getUserRoleMock.mockResolvedValue('delegate');
+    isOwnDelegateMock.mockResolvedValue(true);
+    setUserActiveMock.mockResolvedValue({ id: 'usr_delegate_1', active: false });
+
+    await setUserActiveAction(formData({ userId: 'usr_delegate_1', active: 'false' }));
+
+    expect(isOwnDelegateMock).toHaveBeenCalledWith('usr_doctor_demo', 'usr_delegate_1');
+    expect(setUserActiveMock).toHaveBeenCalledWith('usr_delegate_1', false, 'usr_doctor_demo');
+    expect(revalidatePathMock).toHaveBeenCalledWith('/delegates');
+  });
+
+  it('refuses a doctor toggling a delegate linked to a different doctor', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor_demo', role: 'clinician' } });
+    getUserRoleMock.mockResolvedValue('delegate');
+    isOwnDelegateMock.mockResolvedValue(false);
+
+    await setUserActiveAction(formData({ userId: 'usr_someone_elses_delegate', active: 'false' }));
+
+    expect(setUserActiveMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a doctor toggling an account that isn't a delegate at all (e.g. another doctor)", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor_demo', role: 'clinician' } });
+    getUserRoleMock.mockResolvedValue('clinician');
+    isOwnDelegateMock.mockResolvedValue(false);
+
+    await setUserActiveAction(formData({ userId: 'usr_other_doctor', active: 'false' }));
 
     expect(setUserActiveMock).not.toHaveBeenCalled();
   });

@@ -101,6 +101,32 @@ export function SessionIdleManager({ sessionTtlMs }: SessionIdleManagerProps) {
     return () => clearInterval(interval);
   }, [showWarning, getRemainingTime]);
 
+  /**
+   * Belt-and-suspenders check for a tab that was gone long enough to be
+   * fully discarded/suspended by the browser (backgrounded for a while under
+   * memory pressure, or the OS/browser just froze its timers), not merely
+   * hidden — react-idle-timer's own countdown lives in an in-memory ref, so
+   * a real discard wipes out its notion of "how long has it actually been"
+   * along with the rest of this component's state, and a freshly-remounted
+   * timer has no way to know it should already have fired. That left the
+   * form looking perfectly normal on return, with only a manual refresh
+   * (which hits the server fresh) actually discovering the session was
+   * already dead. Checking the real session the moment the tab becomes
+   * visible again closes that gap without waiting for another full idle
+   * window to elapse.
+   */
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState !== 'visible') return;
+      void refreshSessionAction().then((result) => {
+        if (!result.ok) void signOut('idle');
+      });
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function staySignedIn() {
     setShowWarning(false);
     activate();

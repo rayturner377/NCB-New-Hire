@@ -47,7 +47,11 @@ const {
   DuplicateEmailError,
   listUsers,
   listActiveDoctors,
+  listDelegatesForClinician,
+  isOwnDelegate,
+  getUserById,
   getUserRole,
+  getUserDisplayName,
   setUserActive,
   updateUser,
   deleteUser,
@@ -114,6 +118,22 @@ describe('users service', () => {
     expect(await getUserRole('missing')).toBeNull();
   });
 
+  it('getUserById returns a summary for an existing user, or null when none exists', async () => {
+    findById.mockResolvedValue(sampleUser({ id: 'usr_1', displayName: 'Demo Reviewer' }));
+    expect((await getUserById('usr_1'))?.displayName).toBe('Demo Reviewer');
+
+    findById.mockResolvedValue(null);
+    expect(await getUserById('missing')).toBeNull();
+  });
+
+  it('getUserDisplayName returns the name, or null for a deleted/nonexistent user', async () => {
+    findById.mockResolvedValue(sampleUser({ displayName: 'Demo Reviewer' }));
+    expect(await getUserDisplayName('usr_1')).toBe('Demo Reviewer');
+
+    findById.mockResolvedValue(null);
+    expect(await getUserDisplayName('missing')).toBeNull();
+  });
+
   it('listActiveDoctors filters to active clinicians only', async () => {
     listUsersMock.mockResolvedValue([
       sampleUser({ id: 'doc_1', role: 'clinician', active: true }),
@@ -124,6 +144,32 @@ describe('users service', () => {
     const result = await listActiveDoctors();
 
     expect(result.map((u) => u.id)).toEqual(['doc_1']);
+  });
+
+  it('listDelegatesForClinician returns only delegates linked to this doctor', async () => {
+    listUsersMock.mockResolvedValue([
+      sampleUser({ id: 'del_1', role: 'delegate', delegateForClinicianId: 'doc_1' }),
+      sampleUser({ id: 'del_2', role: 'delegate', delegateForClinicianId: 'doc_2' }),
+      sampleUser({ id: 'doc_1', role: 'clinician' })
+    ]);
+
+    const result = await listDelegatesForClinician('doc_1');
+
+    expect(result.map((u) => u.id)).toEqual(['del_1']);
+  });
+
+  it('isOwnDelegate is true only for a delegate account currently linked to that clinician', async () => {
+    findById.mockResolvedValue(sampleUser({ id: 'del_1', role: 'delegate', delegateForClinicianId: 'doc_1' }));
+    expect(await isOwnDelegate('doc_1', 'del_1')).toBe(true);
+    expect(await isOwnDelegate('doc_2', 'del_1')).toBe(false);
+  });
+
+  it('isOwnDelegate is false for a non-delegate account or a nonexistent one', async () => {
+    findById.mockResolvedValue(sampleUser({ id: 'doc_2', role: 'clinician' }));
+    expect(await isOwnDelegate('doc_1', 'doc_2')).toBe(false);
+
+    findById.mockResolvedValue(null);
+    expect(await isOwnDelegate('doc_1', 'missing')).toBe(false);
   });
 
   it('updateUser passes the patch through and returns a summary', async () => {

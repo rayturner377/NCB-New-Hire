@@ -138,9 +138,7 @@ export function ConsentTab({
         </div>
       </div>
 
-      <FormField label="Doctor / medical office" name="assignedClinicianId" required description="Who will complete your assessment.">
-        <DoctorOfficeSelect doctors={doctors} value={assignedClinicianId} onChange={onAssignedClinicianChange} disabled={disabled} />
-      </FormField>
+      <DoctorOfficeSelect doctors={doctors} value={assignedClinicianId} onChange={onAssignedClinicianChange} disabled={disabled} />
     </div>
   );
 }

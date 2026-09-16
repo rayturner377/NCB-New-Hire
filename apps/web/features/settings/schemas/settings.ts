@@ -28,13 +28,24 @@ const logoDataUrlSchema = z.string().max(MAX_LOGO_DATA_URL_LENGTH, 'Image is too
   }
 });
 
+/** An externally-hosted image URL — the "link" half of login-image-field.tsx's upload/URL switch. Only http(s) accepted (no data:/javascript:), and empty is fine (nothing chosen in URL mode yet). */
+const imageUrlSchema = z
+  .string()
+  .trim()
+  .max(2000, 'URL is too long.')
+  .optional()
+  .default('')
+  .refine((value) => value === '' || /^https?:\/\//i.test(value), 'Must be a valid http(s) URL.');
+
 export const generalSettingsSchema = z.object({
   organizationName: z.string().trim().min(1, 'Organization name is required').max(200),
   portalName: z.string().trim().min(1, 'Portal name is required').max(200),
   supportContact: z.string().trim().max(200).optional().default(''),
   smallLogoDataUrl: logoDataUrlSchema.optional().default(''),
   largeLogoDataUrl: logoDataUrlSchema.optional().default(''),
-  loginImageDataUrl: logoDataUrlSchema.optional().default('')
+  loginImageDataUrl: logoDataUrlSchema.optional().default(''),
+  loginImageUrl: imageUrlSchema,
+  loginImageMode: z.enum(['upload', 'url']).optional().default('upload')
 });
 
 export const notificationSettingsSchema = z.object({
@@ -59,7 +70,8 @@ export const userPolicySettingsSchema = z.object({
   requireSymbol: z.boolean().default(false),
   sessionTimeoutMinutes: z.coerce.number().int().min(1).max(1440),
   loginMaxAttempts: z.coerce.number().int().min(1).max(50),
-  loginWindowMinutes: z.coerce.number().int().min(1).max(1440)
+  loginWindowMinutes: z.coerce.number().int().min(1).max(1440),
+  requireDeviceVerification: z.boolean().default(true)
 });
 
 export const slaDefinitionSchema = z

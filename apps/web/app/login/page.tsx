@@ -13,9 +13,10 @@ export default async function LoginPage(props: { searchParams: Promise<{ reason?
   }
 
   const { general } = await getPublicSettings();
+  const loginImageSrc = general.loginImageMode === 'url' ? general.loginImageUrl : general.loginImageDataUrl;
 
   return (
-    <AuthLayout logoSrc={general.largeLogoDataUrl || undefined} imageSrc={general.loginImageDataUrl || undefined}>
+    <AuthLayout logoSrc={general.largeLogoDataUrl || undefined} imageSrc={loginImageSrc || undefined}>
       <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
       <p className="mt-1 text-sm text-muted-foreground">Sign in with your NCB Medical Platform account.</p>
       {searchParams.reason === 'idle' ? (

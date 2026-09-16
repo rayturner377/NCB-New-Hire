@@ -10,4 +10,6 @@ export interface UserSummary {
   medicalProfile: Record<string, unknown>;
   /** Extra permissions granted/revoked on top of this user's role — see lib/effective-permissions.ts's getEffectivePermissions. */
   permissionOverrides: { grant: string[]; revoke: string[] };
+  /** Delegate-only: the one doctor this assistant acts on behalf of. Null for every other role. */
+  delegateForClinicianId: string | null;
 }

@@ -4,9 +4,8 @@ import { redirect } from 'next/navigation';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { Button } from '../../../components/ui/button';
 import { countCasesForClinician } from '../../cases/services/cases-service';
-import { PERMISSIONS, canManageUserAccount, hasPermission, permissionCatalog, type Permission } from '../../../lib/permissions';
+import { canManageUserAccount, hasPermission, type Permission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
-import { listActiveMedicalOffices } from '../../medical-offices/services/medical-offices-service';
 import { UserStats } from '../components/user-stats';
 import { UsersTable } from '../components/users-table';
 import { listUsers } from '../services/users-service';
@@ -51,15 +50,12 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
   }
 
   const canCreate = canManageUserAccount(session.user, role);
-  const allPermissions = hasPermission(session.user, PERMISSIONS.ROLES_MANAGE) ? permissionCatalog() : undefined;
   const users = (await listUsers()).filter((user) => user.role === role);
 
   let caseCounts: Record<string, { total: number; active: number }> | undefined;
-  let offices: Awaited<ReturnType<typeof listActiveMedicalOffices>> | undefined;
   if (role === 'clinician') {
     const entries = await Promise.all(users.map(async (user) => [user.id, await countCasesForClinician(user.id)] as const));
     caseCounts = Object.fromEntries(entries);
-    offices = await listActiveMedicalOffices();
   }
 
   return (
@@ -77,14 +73,7 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
       ) : null}
 
       <SectionCard title={`All ${roleLabel.toLowerCase()}`}>
-        <UsersTable
-          users={users}
-          currentUserId={session.user.id}
-          caseCounts={caseCounts}
-          offices={offices}
-          canManage={canCreate}
-          allPermissions={allPermissions}
-        />
+        <UsersTable users={users} currentUserId={session.user.id} caseCounts={caseCounts} canManage={canCreate} />
       </SectionCard>
     </div>
   );

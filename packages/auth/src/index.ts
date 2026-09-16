@@ -1,10 +1,13 @@
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
+import { twoFactor } from 'better-auth/plugins';
 import { nextCookies } from 'better-auth/next-js';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { redisStorage } from '@better-auth/redis-storage';
 import { prisma } from '@ncb/database';
 import { redis } from '@ncb/redis';
 import { hash, verify } from './password.js';
+import { sendOtpEmail } from './otp-email.js';
 
 const secret = process.env.BETTER_AUTH_SECRET;
 if (!secret) {
@@ -126,6 +129,28 @@ export const auth = betterAuth({
           if (!user || user.active === false) return false;
         }
       }
+    },
+    /**
+     * Blocks the one and only place Better Auth's own `two-factor` plugin ever sets
+     * twoFactorEnabled: false on a user — its self-service POST /two-factor/disable endpoint
+     * (node_modules/better-auth/dist/plugins/two-factor/index.mjs's disableTwoFactor handler),
+     * live and reachable at /api/auth/two-factor/disable for any authenticated caller with their
+     * own password, confirmed by reading its source. Without this, the entire point of this
+     * feature — that the new-device email challenge is mandatory and never opted into/out of
+     * per-account — would be a single unauthenticated-from-the-UI API call away from being
+     * permanently defeated by any account holder, including a compromised one. The admin-only
+     * break-glass bulk toggle (features/users/services/users-service.ts's
+     * setDeviceVerificationRequiredForAll) writes AppUser.twoFactorEnabled directly via Prisma, not
+     * through Better Auth's own API, so this hook never sees or blocks that path.
+     */
+    user: {
+      update: {
+        before: async (data: Record<string, unknown>) => {
+          if (data.twoFactorEnabled === false) {
+            throw new APIError('FORBIDDEN', { message: 'Device verification cannot be disabled from an account. Contact an administrator.' });
+          }
+        }
+      }
     }
   },
   user: {
@@ -146,7 +171,25 @@ export const auth = betterAuth({
       role: { type: 'string', defaultValue: 'patient', input: false }
     }
   },
-  plugins: [nextCookies()]
+  plugins: [
+    // Mandatory (never opted into per-account) new-device email verification — see AppUser's own
+    // twoFactorEnabled column doc comment (@default(true), so every account is covered from the
+    // day it's created with zero code in createUser()) and login.ts's handling of signInEmail's
+    // twoFactorRedirect response. Only the OTP method is configured; the plugin's own trust-device
+    // cookie (trustDeviceMaxAge defaults to 30 days — exactly what was asked for) is what lets a
+    // recognized browser skip the challenge on a later sign-in, with no custom device-fingerprint
+    // table needed.
+    twoFactor({
+      otpOptions: {
+        // Default is 'plain' — the raw 6-digit code sitting in Redis verification records, even for
+        // its short ~3-minute life. 'hashed' means a Redis dump/log never exposes a live, usable
+        // code, matching this app's own posture on secrets elsewhere (passwords, AccessCode.codeHash).
+        storeOTP: 'hashed',
+        sendOTP: async ({ user, otp }) => sendOtpEmail({ id: user.id, email: user.email, name: user.name }, otp)
+      }
+    }),
+    nextCookies()
+  ]
 });
 
 // hashPassword/setUserPassword/revokeAllSessionsForUser live at the

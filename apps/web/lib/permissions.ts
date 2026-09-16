@@ -12,6 +12,8 @@ export const ROLES = Object.freeze({
   /** Read-only HR/reviewer tier for auditors — new in this rebuild, no equivalent in the old app: same visibility as a reviewer, none of the write permissions (no review/transition/create). */
   AUDITOR: 'auditor',
   DOCTOR: 'clinician',
+  /** An assistant acting on behalf of exactly one doctor (AppUser.delegateForClinicianId) — same permission set as DOCTOR, scoped down to that one doctor's own cases by ownsCase() and the dashboard query, never the doctor's determination/attestation/signature or final submission. */
+  DELEGATE: 'delegate',
   PATIENT: 'patient'
 } as const);
 
@@ -32,6 +34,8 @@ export const PERMISSIONS = Object.freeze({
   MEDICAL_CASES_BILLING_UPDATE: 'medical_cases:billing_update',
   /** Marking a case as paid (the review queue's own exit condition) — deliberately separate from MEDICAL_CASES_BILLING_UPDATE: confirming payment is routine HR-reviewer work, not the same as adjusting the billed amount itself (though both are now held by the same roles). */
   MEDICAL_CASES_PAYMENT_CONFIRM: 'medical_cases:payment_confirm',
+  /** Seeing the payable amount on a case at all (case-detail-container.tsx's read-only display) — previously unconditional for anyone who could view the case; introduced specifically so a delegate's visibility into their doctor's billing can be toggled per-account via permissionOverrides, without changing what admin/reviewer/auditor/doctor could already see. */
+  MEDICAL_CASES_BILLING_VIEW: 'medical_cases:billing_view',
   /** Send a case forward/back a stage through the guided "Case actions" menu — see features/cases/case-transitions.ts. Not yet granted to DOCTOR (see that role's comment below) even though the state machine already supports a doctor-role caller correctly restricted to just "send back to patient". */
   MEDICAL_CASES_TRANSITION: 'medical_cases:transition',
   /** Change which doctor a case is assigned to without moving its stage — only meaningful while status === 'sent_to_doctor'. */
@@ -46,6 +50,7 @@ export const PERMISSIONS = Object.freeze({
   /** Staff-only: trigger a password-reset code for a candidate's portal account. Deliberately separate from PATIENT_PROFILES_UPDATE (which PATIENT also holds, for editing their own record) — a patient must never be able to reach this action, even against their own account (self-service goes through the normal change-password flow instead). */
   PATIENT_PROFILES_RESET_PASSWORD: 'patient_profiles:reset_password',
   DOCTORS_LIST: 'doctors:list',
+  DELEGATES_LIST: 'delegates:list',
   MEDICAL_OFFICES_LIST: 'medical_offices:list',
   MEDICAL_OFFICES_CREATE: 'medical_offices:create',
   REVIEWERS_LIST: 'reviewers:list',
@@ -93,12 +98,14 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
     PERMISSIONS.MEDICAL_CASES_ATTACH,
     PERMISSIONS.MEDICAL_CASES_PAYMENT_CONFIRM,
     PERMISSIONS.MEDICAL_CASES_BILLING_UPDATE,
+    PERMISSIONS.MEDICAL_CASES_BILLING_VIEW,
     PERMISSIONS.MEDICAL_CASES_PATIENT_UPDATE,
     PERMISSIONS.PATIENT_PROFILES_LIST,
     PERMISSIONS.PATIENT_PROFILES_CREATE,
     PERMISSIONS.PATIENT_PROFILES_UPDATE,
     PERMISSIONS.PATIENT_PROFILES_RESET_PASSWORD,
     PERMISSIONS.DOCTORS_LIST,
+    PERMISSIONS.DELEGATES_LIST,
     PERMISSIONS.MEDICAL_OFFICES_LIST,
     PERMISSIONS.MEDICAL_OFFICES_CREATE,
     PERMISSIONS.REVIEWERS_LIST,
@@ -122,13 +129,22 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
     PERMISSIONS.MEDICAL_CASES_LIST,
     PERMISSIONS.PATIENT_PROFILES_LIST,
     PERMISSIONS.DOCTORS_LIST,
+    PERMISSIONS.DELEGATES_LIST,
     PERMISSIONS.MEDICAL_OFFICES_LIST,
     PERMISSIONS.REVIEWERS_LIST,
     PERMISSIONS.AUDITORS_LIST,
     PERMISSIONS.REPORTS_VIEW,
     PERMISSIONS.NOTIFICATIONS_VIEW,
-    PERMISSIONS.AUDIT_LOG_VIEW
+    PERMISSIONS.AUDIT_LOG_VIEW,
+    PERMISSIONS.MEDICAL_CASES_BILLING_VIEW
   ]),
+  /**
+   * Shared by DOCTOR and DELEGATE below — a delegate is scoped down to exactly one doctor's own
+   * cases (see ownsCase() and the delegate dashboard query), never given a wider set of actions
+   * than the doctor themselves. MEDICAL_CASES_BILLING_VIEW is deliberately NOT in this shared
+   * list — it's the one thing that differs between the two roles, added to DOCTOR's own array
+   * below and left as an opt-in per-delegate override instead (see permissionOverrides).
+   */
   [ROLES.DOCTOR]: Object.freeze([
     PERMISSIONS.AUTH_READ,
     PERMISSIONS.SESSION_LOGOUT,
@@ -138,7 +154,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
     PERMISSIONS.SUBMISSIONS_FOLLOW_UP,
     PERMISSIONS.MEDICAL_CASES_LIST,
     PERMISSIONS.MEDICAL_CASES_UPDATE,
-    PERMISSIONS.MEDICAL_CASES_ATTACH
+    PERMISSIONS.MEDICAL_CASES_ATTACH,
+    PERMISSIONS.MEDICAL_CASES_BILLING_VIEW
     // Deliberately no PATIENT_PROFILES_LIST/UPDATE — a doctor sees a patient's
     // details only through a case actually assigned to them (case-detail-
     // container.tsx), never the full candidate roster or another patient's
@@ -152,6 +169,25 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
     // just that one edge regardless of what's granted here), but it's kept
     // off for doctors for now. Turning it on later is just adding the
     // permission to this array — no other code changes needed.
+  ]),
+  /**
+   * An assistant acting on behalf of exactly one doctor — same action set as DOCTOR (data entry,
+   * attachments, follow-up), minus MEDICAL_CASES_BILLING_VIEW by default (grantable per-account via
+   * permissionOverrides, see update-user-permission-overrides.ts). The determination/attestation
+   * lock and the final-submit block are NOT permission-based — they're enforced by role checks in
+   * the doctor case-entry form and create-submission.ts, since a delegate otherwise needs the exact
+   * same MEDICAL_CASES_UPDATE/SUBMISSIONS_CREATE actions a doctor uses just to save a draft.
+   */
+  [ROLES.DELEGATE]: Object.freeze([
+    PERMISSIONS.AUTH_READ,
+    PERMISSIONS.SESSION_LOGOUT,
+    PERMISSIONS.SUBMISSIONS_LIST,
+    PERMISSIONS.SUBMISSIONS_CREATE,
+    PERMISSIONS.SUBMISSIONS_VIEW,
+    PERMISSIONS.SUBMISSIONS_FOLLOW_UP,
+    PERMISSIONS.MEDICAL_CASES_LIST,
+    PERMISSIONS.MEDICAL_CASES_UPDATE,
+    PERMISSIONS.MEDICAL_CASES_ATTACH
   ]),
   [ROLES.PATIENT]: Object.freeze([
     PERMISSIONS.AUTH_READ,

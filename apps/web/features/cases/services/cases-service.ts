@@ -149,15 +149,25 @@ export async function submitPatientCase(
  * The doctor assessment form's autosave — mirrors savePatientCaseProgress's
  * shape (no status/version change, no validation, replace-the-whole-payload
  * carrying the rest of it forward) but for the doctor's side instead of the
- * patient's.
+ * patient's. Also stamps who last touched the draft and when — a lightweight
+ * byline (see MedicalCase.lastEditedById/lastEditedAt), not an audit-log
+ * entry; autosave is silent for everyone, doctor included, and stays that
+ * way. Set on every save regardless of actor, so the byline reflects the
+ * doctor's own edits too, not just a delegate's.
  */
 export async function saveDoctorAssessmentDraft(
   caseId: string,
   draft: Record<string, unknown>,
-  existingPayload?: CasePayload | null
+  existingPayload: CasePayload | null | undefined,
+  actorId: string
 ): Promise<void> {
   const masterKey = loadMasterKey();
-  await casesRepository.updatePayload(caseId, { ...existingPayload, doctorAssessmentDraft: draft } satisfies CasePayload, masterKey);
+  await casesRepository.updatePayload(
+    caseId,
+    { ...existingPayload, doctorAssessmentDraft: draft } satisfies CasePayload,
+    masterKey,
+    { lastEditedById: actorId, lastEditedAt: new Date() }
+  );
 }
 
 /** Clears a case's doctor-assessment draft once the real submission has been recorded, so a case later sent back to the doctor stage doesn't resurface stale draft data (see createSubmissionAction). */

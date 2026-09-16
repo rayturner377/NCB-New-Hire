@@ -6,6 +6,8 @@ export interface CredentialsFieldsProps {
   emailDefaultValue?: string;
   emailRequired?: boolean;
   emailError?: string;
+  /** Only needed by a caller that reacts to what's typed (e.g. UserForm's delegate activation-code-duration picker, which only appears once an email is entered) — the field stays uncontrolled (defaultValue) otherwise. */
+  onEmailChange?: (value: string) => void;
 }
 
 /**
@@ -15,7 +17,13 @@ export interface CredentialsFieldsProps {
  * accounts are activated by emailed code (see AccessCode's doc comment in
  * schema.prisma), not an admin-chosen password.
  */
-export function CredentialsFields({ emailLabel = 'Email', emailDefaultValue = '', emailRequired = false, emailError }: CredentialsFieldsProps) {
+export function CredentialsFields({
+  emailLabel = 'Email',
+  emailDefaultValue = '',
+  emailRequired = false,
+  emailError,
+  onEmailChange
+}: CredentialsFieldsProps) {
   return (
     <FormField label={emailLabel} name="email" required={emailRequired} error={emailError}>
       <Input
@@ -26,6 +34,7 @@ export function CredentialsFields({ emailLabel = 'Email', emailDefaultValue = ''
         maxLength={254}
         defaultValue={emailDefaultValue}
         required={emailRequired}
+        onChange={onEmailChange ? (event) => onEmailChange(event.target.value) : undefined}
       />
     </FormField>
   );

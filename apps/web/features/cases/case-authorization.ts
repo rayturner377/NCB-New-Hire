@@ -10,11 +10,23 @@ import { listCandidatesForUser } from '../candidates/services/candidates-service
  * this check — see save-submission-draft.ts, upload/delete-case-attachment.ts,
  * and case-detail-container.tsx for the pattern this was extracted from.
  *
- * Non-clinician roles (admin/reviewer/auditor) are intentionally NOT scoped
- * here — their access to a case is already gated by the coarser permission
- * check and isn't meant to be limited to "cases assigned to me."
+ * A delegate is scoped the same way, just one hop removed: instead of their
+ * own id, it's their linked doctor's id (delegateForClinicianId) that has to
+ * match the case's assignedClinicianId — a delegate with no doctor linked
+ * yet (delegateForClinicianId null) owns nothing.
+ *
+ * Non-clinician, non-delegate roles (admin/reviewer/auditor) are
+ * intentionally NOT scoped here — their access to a case is already gated by
+ * the coarser permission check and isn't meant to be limited to "cases
+ * assigned to me."
  */
-export function ownsCase(user: { role: string; id: string }, medicalCase: { assignedClinicianId: string | null }): boolean {
+export function ownsCase(
+  user: { role: string; id: string; delegateForClinicianId?: string | null },
+  medicalCase: { assignedClinicianId: string | null }
+): boolean {
+  if (user.role === ROLES.DELEGATE) {
+    return user.delegateForClinicianId != null && medicalCase.assignedClinicianId === user.delegateForClinicianId;
+  }
   if (user.role !== ROLES.DOCTOR) return true;
   return medicalCase.assignedClinicianId === user.id;
 }

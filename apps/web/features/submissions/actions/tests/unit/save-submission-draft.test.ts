@@ -90,7 +90,7 @@ describe('saveSubmissionDraftAction', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('saves the draft, stripping caseId/caseVersion, and revalidates the case page', async () => {
+  it('saves the draft, stripping caseId/caseVersion, stamps the actor, and revalidates the case page', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
 
     const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1', caseVersion: '3', 'exam.height': '170' }));
@@ -99,8 +99,50 @@ describe('saveSubmissionDraftAction', () => {
     expect(saveDoctorAssessmentDraftMock).toHaveBeenCalledWith(
       'case_1',
       expect.not.objectContaining({ caseId: expect.anything(), caseVersion: expect.anything() }),
-      assignedCase.payload
+      assignedCase.payload,
+      'usr_doc'
     );
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
+  });
+
+  it('lets a delegate save a draft on the case assigned to the doctor they support', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_delegate', role: 'delegate', delegateForClinicianId: 'usr_doc' } });
+
+    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1', 'exam.height': '170' }));
+
+    expect(result).toEqual({ ok: true });
+    expect(saveDoctorAssessmentDraftMock).toHaveBeenCalledWith('case_1', expect.anything(), assignedCase.payload, 'usr_delegate');
+  });
+
+  it('rejects a delegate whose linked doctor is not the one this case is assigned to', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_delegate', role: 'delegate', delegateForClinicianId: 'usr_other_doc' } });
+
+    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
+
+    expect(result.ok).toBe(false);
+    expect(saveDoctorAssessmentDraftMock).not.toHaveBeenCalled();
+  });
+
+  it("strips determination/attestation fields from a delegate's draft even if a raw request includes them", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_delegate', role: 'delegate', delegateForClinicianId: 'usr_doc' } });
+
+    await saveSubmissionDraftAction(
+      null,
+      formData({ caseId: 'case_1', 'exam.height': '170', 'determination.status': 'fit', 'attestation.signedBy': 'Dr. Example' })
+    );
+
+    const savedDraft = saveDoctorAssessmentDraftMock.mock.calls[0]![1];
+    expect(savedDraft).not.toHaveProperty('determination');
+    expect(savedDraft).not.toHaveProperty('attestation');
+    expect(savedDraft).toHaveProperty('exam');
+  });
+
+  it("does not strip determination/attestation from the doctor's own draft", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
+
+    await saveSubmissionDraftAction(null, formData({ caseId: 'case_1', 'determination.status': 'fit' }));
+
+    const savedDraft = saveDoctorAssessmentDraftMock.mock.calls[0]![1];
+    expect(savedDraft).toHaveProperty('determination');
   });
 });

@@ -8,11 +8,16 @@ import { NameFields } from '../../../components/form/name-fields';
 import { ValidatedSubmitButton } from '../../../components/form/submit-button';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
+import { Combobox } from '../../../components/ui/combobox';
+import { Label } from '../../../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import { Separator } from '../../../components/ui/separator';
+import { ACTIVATION_CODE_TTL_PRESETS, DEFAULT_ACTIVATION_CODE_TTL_VALUE } from '../../auth/activation-code-ttl';
 import { useValidatedForm } from '../../../lib/hooks/use-validated-form';
 import { createUserAction, type UserActionResult } from '../actions/create-user';
 import type { Role } from '../../../lib/permissions';
-import { useActionState } from 'react';
+import type { UserSummary } from '../types';
+import { useActionState, useEffect, useState } from 'react';
 
 const initialState: UserActionResult | null = null;
 
@@ -24,6 +29,8 @@ export interface UserFormProps {
   cancelHref: string;
   /** Only meaningful when role === 'clinician' — see DoctorProfileFields. */
   offices?: DoctorProfileFieldsOffice[];
+  /** Only meaningful when role === 'delegate' — which doctor this assistant can be assigned to support. */
+  doctors?: UserSummary[];
 }
 
 /**
@@ -33,9 +40,22 @@ export interface UserFormProps {
  * validated-submit treatment as CandidateForm (components/form/submit-button.tsx
  * + lib/hooks/use-validated-form.ts).
  */
-export function UserForm({ role, roleLabel, cancelHref, offices = [] }: UserFormProps) {
+export function UserForm({ role, roleLabel, cancelHref, offices = [], doctors = [] }: UserFormProps) {
   const [state, formAction] = useActionState(createUserAction, initialState);
   const { formRef, formValid, refreshValidity, handleSubmit, fieldError, hasClientErrors } = useValidatedForm(state?.fieldErrors);
+  const [email, setEmail] = useState('');
+  const [delegateForClinicianId, setDelegateForClinicianId] = useState('');
+  const [activationCodeTtl, setActivationCodeTtl] = useState(DEFAULT_ACTIVATION_CODE_TTL_VALUE);
+  const doctorOptions = doctors.map((doctor) => ({ value: doctor.id, label: doctor.displayName, description: doctor.email }));
+
+  // Picking an option in the Combobox's popover doesn't fire a native DOM "change" event the way a
+  // real <select>/<input> does, so the form's own onChange={refreshValidity} (see the <form> below)
+  // never notices it — without this, the Create button stayed disabled/stale until something else
+  // (e.g. the activation-code Select) happened to trigger a real change event afterward.
+  useEffect(() => {
+    refreshValidity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [delegateForClinicianId]);
 
   return (
     <form ref={formRef} action={formAction} onSubmit={handleSubmit} onChange={refreshValidity} className="flex flex-col gap-8">
@@ -72,14 +92,81 @@ export function UserForm({ role, roleLabel, cancelHref, offices = [] }: UserForm
       <Separator />
 
       <FormSection title="Login credentials" description="They'll receive an activation code by email to set their own password.">
-        <CredentialsFields emailRequired emailError={fieldError('email')} />
+        <div className="flex flex-col gap-3">
+          <CredentialsFields
+            emailRequired
+            emailError={fieldError('email')}
+            onEmailChange={role === 'delegate' ? setEmail : undefined}
+          />
+
+          {role === 'delegate' && email.trim() ? (
+            <div className="flex flex-col gap-1.5 pl-0.5 sm:max-w-sm">
+              <Label htmlFor="activation-code-ttl-select">Activation code expires in</Label>
+              <input type="hidden" name="activationCodeTtl" value={activationCodeTtl} />
+              <Select value={activationCodeTtl} onValueChange={setActivationCodeTtl}>
+                <SelectTrigger id="activation-code-ttl-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTIVATION_CODE_TTL_PRESETS.map((preset) => (
+                    <SelectItem key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                How long they have to use the code before it expires and a new one needs to be sent.
+              </p>
+            </div>
+          ) : null}
+        </div>
       </FormSection>
 
       {role === 'clinician' ? (
         <>
           <Separator />
-          <FormSection title="Doctor details" description="Facility and billing information ported from the old doctor setup form.">
+          <FormSection title="Doctor details" description="Which facility they're based at and how they bill for medicals.">
             <DoctorProfileFields offices={offices} />
+          </FormSection>
+        </>
+      ) : null}
+
+      {role === 'delegate' ? (
+        <>
+          <Separator />
+          <FormSection title="Delegate details" description="Which doctor this assistant will see the inbox and case history for.">
+            <div className="flex flex-col gap-1.5 sm:max-w-sm">
+              <Label htmlFor="delegateForClinicianId">
+                Supports doctor <span className="text-destructive">*</span>
+              </Label>
+              <Combobox
+                options={doctorOptions}
+                value={delegateForClinicianId}
+                onChange={setDelegateForClinicianId}
+                placeholder="Select a doctor…"
+                searchPlaceholder="Search by doctor name or email…"
+                emptyText="No doctor found."
+              />
+              {/* Deliberately not type="hidden" — a hidden input is barred from HTML constraint validation
+                  entirely, so `required` on one is silently ignored and the Create button would enable
+                  itself before a doctor is actually chosen. sr-only keeps it out of view while still
+                  participating in checkValidity()/reportValidity() like every other required field here. */}
+              <input
+                type="text"
+                id="delegateForClinicianId"
+                name="delegateForClinicianId"
+                value={delegateForClinicianId}
+                onChange={() => {}}
+                required
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+              />
+              {fieldError('delegateForClinicianId') ? (
+                <p className="text-xs font-medium text-destructive">{fieldError('delegateForClinicianId')}</p>
+              ) : null}
+            </div>
           </FormSection>
         </>
       ) : null}

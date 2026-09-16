@@ -18,6 +18,10 @@ export interface PatientPersonalInfo {
   firstName: string;
   middleInitial: string;
   lastName: string;
+  /** Pre-filled from the candidate's HR-entered profile, editable here (e.g. to fix a typo) — same "starting point, not locked" treatment as address/phone below, unlike Employee ID which stays a pure HR-owned lookup key. */
+  dateOfBirth: string;
+  /** See dateOfBirth's own comment. Not shown to the doctor/delegate's own read-only view of this data (patient-case-read-only-view.tsx's `hideNationalId`) — it isn't information the examining clinician needs. */
+  nationalId: string;
   /** Editable by the patient (unlike the old app, which only ever showed HR's email read-only) — one or more, in case they want to add a personal address alongside the work one HR has on file. */
   emails: string[];
   sex: string;
@@ -94,6 +98,8 @@ export function emptyPatientCaseData(defaults: PatientCaseDataDefaults = {}): Pa
       firstName: '',
       middleInitial: '',
       lastName: '',
+      dateOfBirth: '',
+      nationalId: '',
       emails: [],
       sex: '',
       maritalStatus: '',

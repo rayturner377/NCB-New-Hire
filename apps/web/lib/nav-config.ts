@@ -1,4 +1,4 @@
-import { Briefcase, DollarSign, LayoutDashboard, Mail, Settings, UserCog, type LucideIcon } from 'lucide-react';
+import { Briefcase, DollarSign, LayoutDashboard, Mail, Settings, UserCog, Users, type LucideIcon } from 'lucide-react';
 import { ROLES, type Role } from './permissions';
 
 export interface NavChildItem {
@@ -31,9 +31,15 @@ export interface NavItem {
  * shouldn't take away a doctor's access to it.
  */
 export const NAV_ITEMS: readonly NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR, ROLES.PATIENT] },
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR, ROLES.DELEGATE, ROLES.PATIENT] },
   { href: '/billing', label: 'Billing report', icon: DollarSign, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR] },
   { href: '/cases', label: 'Cases', icon: Briefcase, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
+  // Doctor-only, standalone rather than a child of "Users": that group is deliberately
+  // hidden from DOCTOR entirely (see its own comment below), and /delegates renders a
+  // completely different, narrower view for a doctor (MyDelegatesContainer, their own
+  // linked delegate(s) only) than it does for admin/reviewer/auditor (the full roster) —
+  // see app/(app)/delegates/page.tsx's role branch.
+  { href: '/delegates', label: 'Delegates', icon: Users, roles: [ROLES.DOCTOR] },
   {
     href: '/users',
     label: 'Users',
@@ -52,6 +58,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
       // was previously admin-only here despite that, leaving both roles with
       // no sidebar path to a page they could already reach directly by URL.
       { href: '/doctors?tab=doctors', label: 'Doctors', roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
+      { href: '/delegates', label: 'Delegates', roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
       { href: '/reviewers', label: 'Reviewers', roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
       { href: '/auditors', label: 'Auditors', roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
       { href: '/admins', label: 'Admins', roles: [ROLES.ADMIN] }

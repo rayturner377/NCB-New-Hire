@@ -4,6 +4,7 @@ import { updateGeneralSettingsAction } from '../actions/update-settings';
 import type { AppSettings } from '../types';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
+import { LoginImageField } from './login-image-field';
 import { LogoUploadField } from './logo-upload-field';
 import { SettingsSectionForm } from './settings-section-form';
 
@@ -42,11 +43,12 @@ export function GeneralSettingsForm({ settings }: GeneralSettingsFormProps) {
           hint="Shown above the sign-in form."
           defaultValue={settings.largeLogoDataUrl}
         />
-        <LogoUploadField
-          name="loginImageDataUrl"
+        <LoginImageField
           label="Login screen image (right side)"
-          hint="Fills the right-hand panel next to the sign-in form. Uploading a new one replaces this."
-          defaultValue={settings.loginImageDataUrl}
+          hint="Fills the right-hand panel next to the sign-in form — upload a file or link one hosted elsewhere."
+          defaultDataUrl={settings.loginImageDataUrl}
+          defaultUrl={settings.loginImageUrl}
+          defaultMode={settings.loginImageMode}
         />
       </div>
     </SettingsSectionForm>

@@ -15,6 +15,8 @@ export interface PatientCaseReadOnlyViewProps {
   employeeId: string;
   email: string;
   doctors: UserSummary[];
+  /** Omits the patient's TRN/national ID from this read-only view — see personal-info-tab.tsx's own `hideNationalId` doc comment. */
+  hideNationalId?: boolean;
   /**
    * 'tabs' (default): bite-sized sub-tabs, one section at a time — used by
    * the HR/admin/reviewer case workspace (case-detail-container.tsx), which
@@ -48,14 +50,14 @@ type TabValue = 'personal' | 'family' | 'medical' | 'consent';
  * layout), since this can end up nested inside the doctor's own outer
  * submission form.
  */
-export function PatientCaseReadOnlyView({ data, employeeId, email, doctors, layout = 'tabs' }: PatientCaseReadOnlyViewProps) {
+export function PatientCaseReadOnlyView({ data, employeeId, email, doctors, hideNationalId, layout = 'tabs' }: PatientCaseReadOnlyViewProps) {
   const [tab, setTab] = useState<TabValue>('personal');
 
   const sections: (TabbedFormShellTab & { key: TabValue })[] = [
     {
       key: 'personal',
       label: 'Personal info',
-      content: <PersonalInfoTab data={data} employeeId={employeeId} email={email} disabled />
+      content: <PersonalInfoTab data={data} employeeId={employeeId} email={email} hideNationalId={hideNationalId} disabled />
     },
     {
       key: 'family',

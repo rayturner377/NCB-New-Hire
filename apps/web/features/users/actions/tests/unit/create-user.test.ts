@@ -119,6 +119,42 @@ describe('createUserAction', () => {
     expect(redirectMock).toHaveBeenCalledWith('/doctors');
   });
 
+  it('creates a delegate account with the chosen doctor', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', displayName: 'Demo Admin', role: 'admin' } });
+    createUserMock.mockResolvedValue({ id: 'usr_1', role: 'delegate' });
+
+    await expect(
+      createUserAction(
+        null,
+        formData({
+          email: 'delegate@ncb.local',
+          firstName: 'Demo',
+          lastName: 'Delegate',
+          role: 'delegate',
+          delegateForClinicianId: 'usr_doctor_demo'
+        })
+      )
+    ).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(createUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'delegate', delegateForClinicianId: 'usr_doctor_demo' }),
+      'usr_admin_demo'
+    );
+    expect(redirectMock).toHaveBeenCalledWith('/delegates');
+  });
+
+  it('rejects creating a delegate with no doctor chosen', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', role: 'admin' } });
+
+    const result = await createUserAction(
+      null,
+      formData({ email: 'delegate@ncb.local', firstName: 'Demo', lastName: 'Delegate', role: 'delegate' })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(createUserMock).not.toHaveBeenCalled();
+  });
+
   it('surfaces a duplicate email as a friendly error', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', displayName: 'Demo Admin', role: 'admin' } });
     const { DuplicateEmailError } = await import('../../../services/users-service');

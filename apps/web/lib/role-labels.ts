@@ -3,6 +3,7 @@ const ROLE_LABELS: Record<string, string> = {
   reviewer: 'Reviewer',
   auditor: 'Auditor',
   clinician: 'Doctor',
+  delegate: 'Delegate',
   patient: 'Patient'
 };
 

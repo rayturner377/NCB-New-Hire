@@ -39,6 +39,31 @@ services:
       timeout: 3s
       retries: 10
 
+  # smtp4dev — local development mail catcher. Accepts every email unconditionally and never
+  # actually delivers it anywhere; view what got "sent" at http://localhost:5000. Point Settings →
+  # Mail at host=localhost (or smtp4dev if running the web app via this same compose file's own
+  # `web` service, on the compose network), port=25, secure=false, no username/password — nodemailer
+  # needs no auth against it. This is a different layer than the app's own Message Centre: Message
+  # Centre is this app's own audit record that a send was attempted (survives even if SMTP is
+  # completely unreachable); smtp4dev shows the real email as it would actually arrive — real
+  # headers, real MIME/HTML rendering — for testing delivery itself, e.g. verifying a real OTP
+  # actually arrives during local dev with no mail server of your own configured.
+  # SECURITY: every published port is bound to 127.0.0.1 (localhost only) — smtp4dev has no
+  # authentication of its own, so anyone who could reach these ports could read every captured
+  # email, OTP codes included. Never remove that binding or expose this on a shared network.
+  smtp4dev:
+    image: rnwood/smtp4dev:v3
+    container_name: ncbmedical-smtp4dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5000:80"  # Web UI
+      - "127.0.0.1:25:25"    # SMTP — this is what Settings → Mail talks to
+    volumes:
+      - ncb-medical-smtp4dev-data:/smtp4dev
+    environment:
+      - ServerOptions__Urls=http://*:80
+      - ServerOptions__HostName=smtp4dev
+
   # One-shot: applies Prisma migrations before the app starts. Kept separate
   # from `web` so a migration failure is visible on its own, matching how
   # .github/workflows/ci.yml's integration-tests job separates the two.
@@ -88,3 +113,5 @@ volumes:
     name: ncbmedical-postgres-data
   ncb-medical-redis-data:
     name: ncbmedical-redis-data
+  ncb-medical-smtp4dev-data:
+    name: ncbmedical-smtp4dev-data

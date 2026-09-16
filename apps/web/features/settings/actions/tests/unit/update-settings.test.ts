@@ -5,6 +5,7 @@ const getSessionMock = vi.fn();
 const getSettingsMock = vi.fn();
 const updateSettingsSectionMock = vi.fn();
 const revalidatePathMock = vi.fn();
+const setDeviceVerificationRequiredForAllMock = vi.fn();
 
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePathMock(...args) }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
@@ -12,6 +13,9 @@ vi.mock('../../../../../lib/session', () => ({ getSession: (...args: unknown[]) 
 vi.mock('../../../services/settings-service', () => ({
   getSettings: (...args: unknown[]) => getSettingsMock(...args),
   updateSettingsSection: (...args: unknown[]) => updateSettingsSectionMock(...args)
+}));
+vi.mock('../../../../users/services/users-service', () => ({
+  setDeviceVerificationRequiredForAll: (...args: unknown[]) => setDeviceVerificationRequiredForAllMock(...args)
 }));
 
 const {
@@ -50,7 +54,9 @@ describe('settings actions', () => {
     getSettingsMock.mockReset();
     updateSettingsSectionMock.mockReset();
     revalidatePathMock.mockClear();
+    setDeviceVerificationRequiredForAllMock.mockReset();
     getSessionMock.mockResolvedValue(adminSession);
+    getSettingsMock.mockResolvedValue({ userPolicy: { requireDeviceVerification: true } });
   });
 
   describe('shared access control (checked once, applies to every action below)', () => {
@@ -160,6 +166,33 @@ describe('settings actions', () => {
         expect.objectContaining({ requireUppercase: true, requireNumber: false }),
         'usr_admin'
       );
+    });
+
+    it('does not bulk-update AppUser.twoFactorEnabled when requireDeviceVerification is unchanged', async () => {
+      getSettingsMock.mockResolvedValue({ userPolicy: { requireDeviceVerification: true } });
+
+      const result = await updateUserPolicySettingsAction(null, formData({ ...validPolicy, requireDeviceVerification: 'on' }));
+
+      expect(result.ok).toBe(true);
+      expect(setDeviceVerificationRequiredForAllMock).not.toHaveBeenCalled();
+    });
+
+    it('bulk-disables AppUser.twoFactorEnabled for every account when the toggle is flipped off', async () => {
+      getSettingsMock.mockResolvedValue({ userPolicy: { requireDeviceVerification: true } });
+
+      const result = await updateUserPolicySettingsAction(null, formData({ ...validPolicy }));
+
+      expect(result.ok).toBe(true);
+      expect(setDeviceVerificationRequiredForAllMock).toHaveBeenCalledWith(false, 'usr_admin');
+    });
+
+    it('bulk-re-enables AppUser.twoFactorEnabled for every account when the toggle is flipped back on', async () => {
+      getSettingsMock.mockResolvedValue({ userPolicy: { requireDeviceVerification: false } });
+
+      const result = await updateUserPolicySettingsAction(null, formData({ ...validPolicy, requireDeviceVerification: 'on' }));
+
+      expect(result.ok).toBe(true);
+      expect(setDeviceVerificationRequiredForAllMock).toHaveBeenCalledWith(true, 'usr_admin');
     });
   });
 

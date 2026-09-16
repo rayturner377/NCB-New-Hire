@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { Alert } from '../../../components/ui/alert';
-import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
+import { PERMISSIONS, ROLES, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import { ownsCase } from '../../cases/case-authorization';
@@ -8,7 +8,7 @@ import type { CaseDocumentSummary } from '../../cases/components/case-documents/
 import { caseTypeLabel } from '../../cases/case-types';
 import { listCaseAttachments } from '../../cases/services/case-attachments-service';
 import { getCaseById } from '../../cases/services/cases-service';
-import { listActiveDoctors } from '../../users/services/users-service';
+import { getUserDisplayName, listActiveDoctors } from '../../users/services/users-service';
 import { DoctorCaseForm } from '../components/doctor-case-form/doctor-case-form';
 import { SubmissionAlreadyRecordedNotice } from '../components/doctor-case-form/submission-already-recorded-notice';
 import { submissionToDraft } from '../components/doctor-case-form/submission-to-draft';
@@ -84,6 +84,13 @@ export async function NewSubmissionContainer({ caseId }: NewSubmissionContainerP
     listSubmissionsForCase(caseId)
   ]);
   const latestSubmission = existingSubmissions[0] ?? null;
+  // "Last edited by" byline (see saveDoctorAssessmentDraft) — lets the doctor tell at a glance
+  // whether a delegate touched the case since they last opened it. Not shown for the doctor's own
+  // most recent edit (that's just "you were here last", not worth a byline).
+  const lastEditedByName =
+    medicalCase.lastEditedById && medicalCase.lastEditedById !== session.user.id
+      ? await getUserDisplayName(medicalCase.lastEditedById)
+      : null;
   const persistedDraft = (medicalCase.payload?.doctorAssessmentDraft ?? {}) as DoctorAssessmentDraft;
 
   // A case sent back to the doctor stage always clears doctorAssessmentDraft at the moment of
@@ -114,18 +121,23 @@ export async function NewSubmissionContainer({ caseId }: NewSubmissionContainerP
   // Physician identity/facility rarely change case to case — pre-fill from the doctor's own
   // profile (set up when their account was created, see lib/medical-profile.ts) so they aren't
   // retyping it every time, but a saved draft's own values (if this doctor already edited them
-  // for this case) still win.
-  const medicalProfile = session.user.medicalProfile as
+  // for this case) still win. For a delegate, this must still be the DOCTOR's identity, not the
+  // delegate's own — the assessment is recorded (and eventually signed) as the doctor's, so a
+  // delegate's name/email have no business ending up in these fields regardless of who typed them.
+  const identitySource =
+    session.user.role === ROLES.DELEGATE ? doctors.find((doctor) => doctor.id === session.user.delegateForClinicianId) : session.user;
+  const medicalProfile = identitySource?.medicalProfile as
     | { facilityName?: string; facilityAddress?: string; registrationNumber?: string }
-    | null;
+    | null
+    | undefined;
   const draft: DoctorAssessmentDraft = {
     ...savedDraft,
     assessment: {
       facilityName: medicalProfile?.facilityName ?? '',
       facilityAddress: medicalProfile?.facilityAddress ?? '',
-      clinicianName: session.user.displayName,
+      clinicianName: identitySource?.displayName ?? '',
       clinicianRegistrationNumber: medicalProfile?.registrationNumber ?? '',
-      emailAddress: session.user.email,
+      emailAddress: identitySource?.email ?? '',
       ...savedDraft.assessment
     }
   };
@@ -142,6 +154,9 @@ export async function NewSubmissionContainer({ caseId }: NewSubmissionContainerP
         doctors={doctors}
         draft={draft}
         attachments={attachments}
+        isDelegate={session.user.role === ROLES.DELEGATE}
+        lastEditedByName={lastEditedByName}
+        lastEditedAt={medicalCase.lastEditedAt ? medicalCase.lastEditedAt.toISOString() : null}
       />
     </div>
   );

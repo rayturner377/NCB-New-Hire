@@ -26,6 +26,30 @@ describe('ownsCase', () => {
     expect(ownsCase({ role: 'reviewer', id: 'usr_reviewer_1' }, { assignedClinicianId: null })).toBe(true);
     expect(ownsCase({ role: 'auditor', id: 'usr_auditor_1' }, { assignedClinicianId: 'usr_doctor_2' })).toBe(true);
   });
+
+  it('lets a delegate act on a case assigned to the doctor they support', () => {
+    expect(
+      ownsCase(
+        { role: 'delegate', id: 'usr_delegate_1', delegateForClinicianId: 'usr_doctor_1' },
+        { assignedClinicianId: 'usr_doctor_1' }
+      )
+    ).toBe(true);
+  });
+
+  it('blocks a delegate from a case assigned to a different doctor than the one they support', () => {
+    expect(
+      ownsCase(
+        { role: 'delegate', id: 'usr_delegate_1', delegateForClinicianId: 'usr_doctor_1' },
+        { assignedClinicianId: 'usr_doctor_2' }
+      )
+    ).toBe(false);
+  });
+
+  it('blocks a delegate with no doctor linked yet from every case, even an unassigned one', () => {
+    expect(ownsCase({ role: 'delegate', id: 'usr_delegate_1', delegateForClinicianId: null }, { assignedClinicianId: null })).toBe(
+      false
+    );
+  });
 });
 
 describe('patientOwnsCase', () => {

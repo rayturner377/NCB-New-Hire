@@ -30,21 +30,26 @@ export default async function DashboardPage(
   const from = searchParams.from || defaults.from;
   const to = searchParams.to || defaults.to;
 
-  return <div className="p-6">{dashboardForRole(session.user.role, session.user.id, from, to, searchParams)}</div>;
+  return <div className="p-6">{dashboardForRole(session.user, from, to, searchParams)}</div>;
 }
 
 function dashboardForRole(
-  role: string,
-  userId: string,
+  user: { role: string; id: string; delegateForClinicianId?: string | null },
   from: string,
   to: string,
   searchParams: { from?: string; to?: string; status?: string; page?: string }
 ) {
-  switch (role) {
+  switch (user.role) {
     case ROLES.DOCTOR:
-      return <DoctorDashboardContainer clinicianId={userId} basePath="/" searchParams={searchParams} />;
+      return <DoctorDashboardContainer clinicianId={user.id} basePath="/" searchParams={searchParams} />;
+    // A delegate's dashboard is the exact same container/query as their doctor's own, just scoped
+    // to the doctor they're linked to instead of their own id — see ownsCase()'s matching branch.
+    // No doctor linked yet resolves to an impossible clinicianId, so listForClinician legitimately
+    // returns nothing rather than the container needing its own "no doctor assigned" empty state.
+    case ROLES.DELEGATE:
+      return <DoctorDashboardContainer clinicianId={user.delegateForClinicianId ?? 'no-doctor-linked'} basePath="/" searchParams={searchParams} />;
     case ROLES.PATIENT:
-      return <PatientDashboardContainer userId={userId} />;
+      return <PatientDashboardContainer userId={user.id} />;
     case ROLES.REVIEWER:
     case ROLES.AUDITOR:
       return <ReviewerDashboard from={from} to={to} />;

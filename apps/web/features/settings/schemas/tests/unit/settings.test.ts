@@ -52,3 +52,29 @@ describe('generalSettingsSchema logo validation', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('generalSettingsSchema login image URL mode', () => {
+  it('accepts an empty loginImageUrl and defaults loginImageMode to upload', () => {
+    const result = generalSettingsSchema.safeParse(baseFields());
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.loginImageUrl).toBe('');
+      expect(result.data.loginImageMode).toBe('upload');
+    }
+  });
+
+  it('accepts a real http(s) URL', () => {
+    const result = generalSettingsSchema.safeParse(baseFields({ loginImageUrl: 'https://example.com/photo.jpg', loginImageMode: 'url' }));
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-http(s) value (e.g. a data: or javascript: URL)', () => {
+    const result = generalSettingsSchema.safeParse(baseFields({ loginImageUrl: 'javascript:alert(1)' }));
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects an unrecognized loginImageMode', () => {
+    const result = generalSettingsSchema.safeParse(baseFields({ loginImageMode: 'ftp' }));
+    expect(result.success).toBe(false);
+  });
+});

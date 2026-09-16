@@ -43,15 +43,20 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
     redirect('/login');
   }
 
-  // MEDICAL_CASES_LIST also covers a patient's own dashboard and a doctor's own
-  // case queue — this page is the reviewer/admin/auditor "every case in the
-  // system" view, which neither should reach even by direct URL (a patient's
-  // own cases show on their dashboard; a doctor's on theirs, see
-  // doctor-dashboard-service.ts's history section — both via /cases/[id] once
-  // ownership-checked there, not this unscoped list).
+  // MEDICAL_CASES_LIST also covers a patient's own dashboard and a doctor's (or
+  // their delegate's) own case queue — this page is the reviewer/admin/auditor
+  // "every case in the system" view, which none of those should reach even by
+  // direct URL (a patient's own cases show on their dashboard; a doctor's or
+  // delegate's on theirs, see doctor-dashboard-service.ts's history section —
+  // both via /cases/[id] once ownership-checked there, not this unscoped
+  // list). 'delegate' holds the exact same MEDICAL_CASES_LIST permission
+  // 'clinician' does, so it needs the same exclusion here or it would see
+  // every case in the system rather than just the ones assigned to the
+  // doctor it supports.
   if (
     session.user.role === 'patient' ||
     session.user.role === 'clinician' ||
+    session.user.role === 'delegate' ||
     !hasPermission(session.user, PERMISSIONS.MEDICAL_CASES_LIST)
   ) {
     await logAccessDenied({

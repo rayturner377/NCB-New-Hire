@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
+import { SelectInput } from '../../../../components/form/select-input';
 import { Button } from '../../../../components/ui/button';
 import { FormField } from '../../../../components/ui/form-field';
 import { Input } from '../../../../components/ui/input';
@@ -8,8 +10,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { FAMILY_DISORDER_CATALOG, FAMILY_RELATIVE_OPTIONS, type FamilyRelativeRow, type PatientCaseData } from '../../patient-case-data';
 import { FamilyDisorderRow } from './family-disorder-row';
 
-const SELECT_CLASS =
-  'flex h-9 w-full rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
+const RELATIVE_OPTIONS = FAMILY_RELATIVE_OPTIONS.map((option) => ({ value: option, label: option }));
+
+/** The relative-relationship dropdown for one family-history row — its own component (rather than inlined in the .map() below) since the Select needs its own local state, which a loop body can't hold directly. */
+function FamilyRelativeSelect({ defaultValue, disabled }: { defaultValue: string; disabled: boolean }) {
+  const [value, setValue] = useState(defaultValue);
+  return <SelectInput name="familyRelative.relative" value={value} onValueChange={setValue} options={RELATIVE_OPTIONS} disabled={disabled} />;
+}
 
 const TEXTAREA_CLASS =
   'flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
@@ -42,14 +49,7 @@ export function FamilyHistoryTab({ data, relatives, onAddRelative, onRemoveRelat
             {relatives.map((row, index) => (
               <TableRow key={index}>
                 <TableCell>
-                  <select name="familyRelative.relative" defaultValue={row.relative} disabled={disabled} className={SELECT_CLASS}>
-                    <option value="">Select…</option>
-                    {FAMILY_RELATIVE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
+                  <FamilyRelativeSelect defaultValue={row.relative} disabled={disabled} />
                 </TableCell>
                 <TableCell>
                   <Input name="familyRelative.ageIfAlive" type="number" min={0} max={130} defaultValue={row.ageIfAlive} disabled={disabled} />

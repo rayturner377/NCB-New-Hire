@@ -18,8 +18,8 @@ export interface UserPermissionOverridesFormProps {
 /**
  * "Extra permissions" — the one-off exception case (an HR reviewer who needs a permission the
  * rest of the reviewer role doesn't have) without inventing a new role for one person. Separate
- * `<form>` from EditUserDialog's own name/profile edit, so saving one never touches the other.
- * Only ever rendered for a viewer holding ROLES_MANAGE — see users-table.tsx.
+ * `<form>` from EditUserForm's own name/profile edit, so saving one never touches the other.
+ * Only ever rendered for a viewer holding ROLES_MANAGE — see edit-role-user-container.tsx.
  */
 export function UserPermissionOverridesForm({ userId, allPermissions, grant, revoke }: UserPermissionOverridesFormProps) {
   const [state, formAction] = useActionState(updateUserPermissionOverridesAction, null);

@@ -9,7 +9,7 @@ import { ASSIGNABLE_PERMISSIONS, ForbiddenError, PERMISSIONS, ROLES, requirePerm
 import { requireFullSession } from '../../../lib/session';
 import type { SettingsActionResult } from '../types-action';
 
-const EDITABLE_ROLES = new Set<string>([ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR, ROLES.PATIENT]);
+const EDITABLE_ROLES = new Set<string>([ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR, ROLES.DELEGATE, ROLES.PATIENT]);
 // Not Object.values(PERMISSIONS) — USERS_MANAGE/SETTINGS_MANAGE/ROLES_MANAGE must never be
 // assignable to a non-admin role through this action; see ASSIGNABLE_PERMISSIONS's own doc comment.
 const VALID_PERMISSIONS = new Set<string>(ASSIGNABLE_PERMISSIONS);

@@ -19,13 +19,19 @@ const GROUPS: Record<string, PermissionGroup> = {
   patients_view: { id: 'patients_view', permissions: [PERMISSIONS.PATIENT_PROFILES_LIST] },
   staff_directory_view: {
     id: 'staff_directory_view',
-    permissions: [PERMISSIONS.DOCTORS_LIST, PERMISSIONS.MEDICAL_OFFICES_LIST, PERMISSIONS.REVIEWERS_LIST, PERMISSIONS.AUDITORS_LIST]
+    permissions: [
+      PERMISSIONS.DOCTORS_LIST,
+      PERMISSIONS.DELEGATES_LIST,
+      PERMISSIONS.MEDICAL_OFFICES_LIST,
+      PERMISSIONS.REVIEWERS_LIST,
+      PERMISSIONS.AUDITORS_LIST
+    ]
   },
   reports_view: { id: 'reports_view', permissions: [PERMISSIONS.REPORTS_VIEW, PERMISSIONS.AUDIT_LOG_VIEW] },
   reviewer_view: {
     id: 'reviewer_view',
     extends: ['base', 'submissions_view', 'cases_view', 'patients_view', 'staff_directory_view', 'reports_view'],
-    permissions: [PERMISSIONS.NOTIFICATIONS_VIEW]
+    permissions: [PERMISSIONS.NOTIFICATIONS_VIEW, PERMISSIONS.MEDICAL_CASES_BILLING_VIEW]
   },
   reviewer_write: {
     id: 'reviewer_write',
@@ -76,6 +82,19 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<string, readonly Permissi
   reviewer: Object.freeze([...resolveGroup('reviewer_write')]),
   auditor: Object.freeze([...resolveGroup('reviewer_view')]),
   clinician: Object.freeze([
+    PERMISSIONS.AUTH_READ,
+    PERMISSIONS.SESSION_LOGOUT,
+    PERMISSIONS.SUBMISSIONS_LIST,
+    PERMISSIONS.SUBMISSIONS_CREATE,
+    PERMISSIONS.SUBMISSIONS_VIEW,
+    PERMISSIONS.SUBMISSIONS_FOLLOW_UP,
+    PERMISSIONS.MEDICAL_CASES_LIST,
+    PERMISSIONS.MEDICAL_CASES_UPDATE,
+    PERMISSIONS.MEDICAL_CASES_ATTACH,
+    PERMISSIONS.MEDICAL_CASES_BILLING_VIEW
+  ]),
+  /** Deliberately the same as clinician minus MEDICAL_CASES_BILLING_VIEW — see permissions.ts's ROLES.DELEGATE doc comment. */
+  delegate: Object.freeze([
     PERMISSIONS.AUTH_READ,
     PERMISSIONS.SESSION_LOGOUT,
     PERMISSIONS.SUBMISSIONS_LIST,

@@ -8,6 +8,7 @@ import flags from 'react-phone-number-input/flags';
 import { Button } from '../ui/button';
 import { FormField } from '../ui/form-field';
 import { CountrySelect } from './country-select';
+import { SelectInput } from './select-input';
 import { cn } from '../../lib/utils';
 
 export interface PhoneNumbersFieldProps {
@@ -42,9 +43,6 @@ const NumberInput = React.forwardRef<HTMLInputElement, React.ComponentPropsWitho
   />
 ));
 NumberInput.displayName = 'PhoneNumberInput';
-
-const TYPE_SELECT_CLASS =
-  'h-9 w-[6.5rem] shrink-0 rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
 
 /**
  * One or more phone numbers under the same field name (FormData.getAll picks
@@ -111,20 +109,15 @@ export function PhoneNumbersField({
         {numbers.map((value, index) => (
           <div key={index} className="flex items-center gap-2">
             {typeOptions?.length ? (
-              <select
+              <SelectInput
                 name={`${name}Type`}
-                value={types[index] ?? typeOptions[0]}
-                onChange={(event) => updateType(index, event.target.value)}
+                value={types[index] ?? typeOptions[0]!}
+                onValueChange={(next) => updateType(index, next)}
+                options={typeOptions.map((option) => ({ value: option, label: option }))}
                 disabled={disabled}
-                className={TYPE_SELECT_CLASS}
-                aria-label="Phone type"
-              >
-                {typeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                className="h-9 w-[6.5rem] shrink-0"
+                ariaLabel="Phone type"
+              />
             ) : null}
             <PhoneInput
               id={index === 0 ? name : undefined}

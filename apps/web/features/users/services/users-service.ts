@@ -16,7 +16,8 @@ function toSummary(user: AppUser): UserSummary {
     active: user.active,
     createdAt: user.createdAt.toISOString(),
     medicalProfile: (user.medicalProfile as Record<string, unknown>) ?? {},
-    permissionOverrides: { grant: overrides.grant ?? [], revoke: overrides.revoke ?? [] }
+    permissionOverrides: { grant: overrides.grant ?? [], revoke: overrides.revoke ?? [] },
+    delegateForClinicianId: user.delegateForClinicianId
   };
 }
 
@@ -67,7 +68,8 @@ export async function createUser(input: CreateUserInput, actorId?: string): Prom
       email,
       displayName: input.displayName,
       role: input.role,
-      medicalProfile: input.medicalProfile
+      medicalProfile: input.medicalProfile,
+      delegateForClinicianId: input.delegateForClinicianId
     });
   } catch (error) {
     if (isUniqueConstraintViolation(error)) {
@@ -113,10 +115,34 @@ export async function listUsers(): Promise<UserSummary[]> {
   return users.map(toSummary);
 }
 
+/** A single account's full summary — the edit page's own lookup (edit-role-user-container.tsx), where listUsers()'s whole-role-list scan would be wasteful for just one record. Null for a deleted/nonexistent user. */
+export async function getUserById(id: string): Promise<UserSummary | null> {
+  const user = await usersRepository.findById(id);
+  return user ? toSummary(user) : null;
+}
+
+/** For the "last edited by" byline on a case's assessment (see MedicalCase.lastEditedById) — just the name, not a full profile. Null for a deleted/nonexistent user id rather than throwing, since the byline degrades gracefully to nothing in that case. */
+export async function getUserDisplayName(id: string): Promise<string | null> {
+  const user = await usersRepository.findById(id);
+  return user?.displayName ?? null;
+}
+
 /** Active doctor accounts, for assigning a case directly to a clinician (medical-office rosters aren't wired up yet). */
 export async function listActiveDoctors(): Promise<UserSummary[]> {
   const users = await usersRepository.listUsers();
   return users.filter((user) => user.role === 'clinician' && user.active).map(toSummary);
+}
+
+/** Every delegate account linked to this one doctor — the doctor's own "Delegates" tab (see my-delegates-container.tsx), distinct from /delegates' admin/reviewer-facing full roster. A doctor can have more than one delegate (the link is many-delegates-to-one-doctor), so this returns a list, not a single record. */
+export async function listDelegatesForClinician(clinicianId: string): Promise<UserSummary[]> {
+  const users = await usersRepository.listUsers();
+  return users.filter((user) => user.role === 'delegate' && user.delegateForClinicianId === clinicianId).map(toSummary);
+}
+
+/** Whether `delegateId` is a delegate account currently linked to `clinicianId` — the doctor's own narrow self-service authority over their delegate(s) (activate/deactivate, the billing-view toggle), distinct from canManageUserAccount's broader admin/reviewer authority which a doctor never holds. */
+export async function isOwnDelegate(clinicianId: string, delegateId: string): Promise<boolean> {
+  const user = await usersRepository.findById(delegateId);
+  return Boolean(user && user.role === 'delegate' && user.delegateForClinicianId === clinicianId);
 }
 
 export async function setUserActive(id: string, active: boolean, actorId?: string): Promise<UserSummary> {
@@ -131,6 +157,25 @@ export async function setUserActive(id: string, active: boolean, actorId?: strin
   });
 
   return toSummary(updated);
+}
+
+/**
+ * The Settings → User Policy break-glass toggle — bulk-flips every account's
+ * twoFactorEnabled to match, since that's what Better Auth's `two-factor`
+ * plugin actually checks (see packages/database/src/repositories/users.ts's
+ * setTwoFactorEnabledForAll). Only meant for "outbound email is broken and
+ * everyone is locked out of the new-device challenge" — audited distinctly
+ * from a routine settings save since it immediately changes every account's
+ * sign-in behavior, not just a display preference.
+ */
+export async function setDeviceVerificationRequiredForAll(enabled: boolean, actorId?: string): Promise<void> {
+  const { count } = await usersRepository.setTwoFactorEnabledForAll(enabled);
+
+  await auditRepository.append({
+    eventType: enabled ? 'device_verification_enabled_for_all' : 'device_verification_disabled_for_all',
+    actorUserId: actorId,
+    details: { affectedUserCount: count }
+  });
 }
 
 export interface UpdateUserInput extends UpdateUserSchemaInput {

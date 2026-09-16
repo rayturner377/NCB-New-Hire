@@ -15,6 +15,7 @@ import {
   userPolicySettingsSchema
 } from '../schemas/settings';
 import { getSettings, updateSettingsSection } from '../services/settings-service';
+import { setDeviceVerificationRequiredForAll } from '../../users/services/users-service';
 import type { SettingsActionResult } from '../types-action';
 
 function fieldErrorsFrom(error: ZodError): Record<string, string> {
@@ -110,13 +111,23 @@ export async function updateUserPolicySettingsAction(
     requireSymbol: formData.get('requireSymbol') != null,
     sessionTimeoutMinutes: formData.get('sessionTimeoutMinutes'),
     loginMaxAttempts: formData.get('loginMaxAttempts'),
-    loginWindowMinutes: formData.get('loginWindowMinutes')
+    loginWindowMinutes: formData.get('loginWindowMinutes'),
+    requireDeviceVerification: formData.get('requireDeviceVerification') != null
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid settings.', fieldErrors: fieldErrorsFrom(parsed.error) };
   }
 
+  const before = await getSettings();
   await updateSettingsSection('userPolicy', parsed.data, access.actorId);
+
+  // The setting itself is just a display preference on its own — AppUser.twoFactorEnabled is what
+  // Better Auth's plugin actually checks on sign-in, so a change here has to be pushed out to every
+  // account for the toggle to do anything. Only fires on an actual flip, not every save.
+  if (parsed.data.requireDeviceVerification !== before.userPolicy.requireDeviceVerification) {
+    await setDeviceVerificationRequiredForAll(parsed.data.requireDeviceVerification, access.actorId);
+  }
+
   revalidatePath('/settings');
   return { ok: true };
 }
