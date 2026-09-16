@@ -92,6 +92,7 @@ describe('cases service', () => {
     confirmPayment.mockReset();
     submitAndTransition.mockReset();
     updatePayload.mockReset();
+    updatePayload.mockResolvedValue({ id: 'case_1', version: 5 });
     setBilling.mockReset();
     listForClinician.mockReset();
     auditAppend.mockReset();
@@ -324,9 +325,16 @@ describe('cases service', () => {
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'case_unhidden' }));
   });
 
-  it('saveDoctorAssessmentDraft persists the draft and stamps who last edited it, alongside whatever else was in the payload', async () => {
-    await saveDoctorAssessmentDraft('case_1', { assessment: { note: 'wip' } }, { caseType: 'pre_employment' }, 'usr_delegate_demo', 4);
+  it('saveDoctorAssessmentDraft persists the draft and stamps who last edited it, alongside whatever else was in the payload, returning the new version', async () => {
+    const newVersion = await saveDoctorAssessmentDraft(
+      'case_1',
+      { assessment: { note: 'wip' } },
+      { caseType: 'pre_employment' },
+      'usr_delegate_demo',
+      4
+    );
 
+    expect(newVersion).toBe(5);
     expect(updatePayload).toHaveBeenCalledWith(
       'case_1',
       { caseType: 'pre_employment', doctorAssessmentDraft: { assessment: { note: 'wip' } } },

@@ -144,10 +144,22 @@ export function DoctorCaseForm({
   );
   const [uncontrolledComplete, setUncontrolledComplete] = useState({ assessment: false, exam: false });
 
+  // Tracks the version this editor's own next save should check against — starts at whatever the
+  // page loaded with, then advances on every successful autosave (see saveSubmissionDraftAction's
+  // own newVersion return). Confirmed via external security review that updatePayload now genuinely
+  // increments the case's version on every save, so submitting the ORIGINAL page-load value on a
+  // second or third autosave would spuriously conflict with this editor's own prior save — this is
+  // what keeps repeated autosaves (and the final Submit button, which posts this same hidden field)
+  // advancing smoothly instead of self-conflicting.
+  const [currentVersion, setCurrentVersion] = useState(caseVersion);
+
   const { status: autosaveStatus, notifyChange, saveNow } = useAutosave({
     formRef,
     onSave: async (formData) => {
       const result = await saveSubmissionDraftAction(null, formData);
+      if (result.ok && result.newVersion !== undefined) {
+        setCurrentVersion(result.newVersion);
+      }
       return result.ok;
     }
   });
@@ -315,7 +327,7 @@ export function DoctorCaseForm({
   return (
     <form ref={formRef} action={formAction} onChange={handleFormChange} className="flex flex-col gap-3">
       <input type="hidden" name="caseId" value={caseId} />
-      <input type="hidden" name="caseVersion" value={caseVersion} />
+      <input type="hidden" name="caseVersion" value={currentVersion} />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-col">

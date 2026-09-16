@@ -12,15 +12,25 @@ import { getCaseById, saveDoctorAssessmentDraft } from '../../cases/services/cas
 export interface SaveSubmissionDraftResult {
   ok: boolean;
   error?: string;
+  /** The version the draft was saved at — the client updates its own tracked version to this after every successful save, so the NEXT save's caseVersion is never stale. Absent on failure. */
+  newVersion?: number;
 }
 
 /**
  * The doctor assessment form's autosave target — same shape as
  * save-patient-case.ts's draft path: no validation (a doctor mid-assessment
- * can leave anything blank), no status/version change, just a snapshot of
- * whatever's currently in the form. Lets the doctor dashboard tell "never
- * opened" from "started but not submitted" (see doctor-case-table.tsx) and
- * lets the doctor pick back up where they left off.
+ * can leave anything blank), no status change, just a snapshot of whatever's
+ * currently in the form. Lets the doctor dashboard tell "never opened" from
+ * "started but not submitted" (see doctor-case-table.tsx) and lets the
+ * doctor pick back up where they left off.
+ *
+ * `caseVersion` is read from the client's own form (same field
+ * create-submission.ts's real submit already uses), not re-fetched fresh
+ * here — confirmed via external security review that re-fetching made the
+ * version check a no-op, since it would always trivially match itself.
+ * Every successful save returns `newVersion` specifically so the client can
+ * update what it sends on the NEXT autosave — see doctor-case-form.tsx's own
+ * handling of this result.
  */
 export async function saveSubmissionDraftAction(
   _prevState: SaveSubmissionDraftResult | null,
@@ -41,7 +51,8 @@ export async function saveSubmissionDraftAction(
   }
 
   const caseId = String(formData.get('caseId') || '');
-  if (!caseId) {
+  const expectedVersion = Number.parseInt(String(formData.get('caseVersion') || ''), 10);
+  if (!caseId || !Number.isFinite(expectedVersion)) {
     return { ok: false, error: 'Missing case reference.' };
   }
 
@@ -68,8 +79,9 @@ export async function saveSubmissionDraftAction(
     delete draft.attestation;
   }
 
+  let newVersion: number;
   try {
-    await saveDoctorAssessmentDraft(caseId, draft, medicalCase.payload, session.user.id, medicalCase.version);
+    newVersion = await saveDoctorAssessmentDraft(caseId, draft, medicalCase.payload, session.user.id, expectedVersion);
   } catch (error) {
     if (error instanceof CaseVersionConflictError) {
       return { ok: false, error: error.message };
@@ -77,5 +89,5 @@ export async function saveSubmissionDraftAction(
     throw error;
   }
   revalidatePath(`/cases/${caseId}`);
-  return { ok: true };
+  return { ok: true, newVersion };
 }

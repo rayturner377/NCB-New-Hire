@@ -95,12 +95,19 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
-    env_file:
-      - .env
+    # Deliberately NOT `env_file: .env` — confirmed via external security review that blanket-loading
+    # the whole file into this container defeated the entire point of the ncb_app_runtime split above
+    # a compromised web process could just read POSTGRES_PASSWORD (ncb_medical_app, the superuser)
+    # straight out of its own environment and connect as the owner directly, bypassing the restricted
+    # runtime role entirely. .env also carries a lot of legacy cruft (SMTP_*, DATABASE_HOST/PORT/etc.,
+    # CLOUDSQL_*, INIT_*) from before this app's current Prisma/Next.js stack that nothing here reads
+    # at all — no reason for any of it to reach this process either. Every var this app's own source
+    # actually reads via `process.env` (confirmed by grep, not assumed) is listed explicitly below;
+    # `.env` is still used for `${...}` substitution as always, just no longer forwarded wholesale.
     environment:
       # Explicit so a stale PORT left over from the old .env.example (8080,
       # the legacy server's port) can't silently change what next start
-      # binds to — environment: here wins over whatever env_file loaded.
+      # binds to.
       PORT: 3000
       # ncb_app_runtime, not ncb_medical_app (the migration/ownership role, a Postgres superuser) —
       # see docker/postgres-init's own role-creation script for why the running app never
@@ -119,6 +126,15 @@ services:
       # a real deployment that wires in its own scanner sets VIRUS_SCAN_ENABLED=true once
       # lib/virus-scan.ts's scanBuffer() actually calls it.
       # VIRUS_SCAN_ENABLED: "true"
+      # Everything below is genuinely optional app config, not a secret this container needs kept
+      # away from anything else — each has a safe built-in default when left empty (see the
+      # app/auth code each one feeds), so a plain `${VAR}` reference (blank if unset in .env, not a
+      # hard failure) is intentional here, unlike the `:?required` secrets above.
+      APP_MASTER_KEY: ${APP_MASTER_KEY}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      COOKIE_SECURE: ${COOKIE_SECURE}
+      SESSION_TIMEOUT_MINUTES: ${SESSION_TIMEOUT_MINUTES}
     volumes:
       # npm workspace commands (npm run start -w @ncb/web) run with cwd set
       # to the workspace directory, so master-key.ts's process.cwd()-relative

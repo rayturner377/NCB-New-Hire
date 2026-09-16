@@ -184,22 +184,22 @@ describe('cases repository', () => {
     expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { casePayload: expect.any(Buffer) } });
   });
 
-  it('updatePayload() with an expectedVersion does a conditional update and re-fetches the row on success', async () => {
+  it('updatePayload() with an expectedVersion does a conditional, version-incrementing update and re-fetches the row on success', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const findFirstOrThrow = vi.fn().mockResolvedValue({ id: 'case_1', version: 3 });
+    const findFirstOrThrow = vi.fn().mockResolvedValue({ id: 'case_1', version: 4 });
     const db = { medicalCase: { updateMany, findFirstOrThrow } } as unknown as PrismaClient;
 
     const result = await createCasesRepository(db).updatePayload('case_1', { notes: 'updated' }, masterKey, undefined, 3);
 
+    // The conditional match is against the caller's own expectedVersion, but the write itself
+    // increments the real column — a version check that never changes what it checks against isn't
+    // real optimistic concurrency (confirmed via external security review: two concurrent editors'
+    // saves could both match the same never-advancing version and silently stomp each other).
     expect(updateMany).toHaveBeenCalledWith({
       where: { id: 'case_1', version: 3 },
-      data: { casePayload: expect.any(Buffer) }
+      data: { casePayload: expect.any(Buffer), version: { increment: 1 } }
     });
-    // The row itself is never version-bumped by a plain payload save — see updatePayload's own doc
-    // comment on why (a draft save isn't a workflow transition, and bumping it here would make an
-    // editor's own next autosave immediately conflict with itself).
-    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.not.objectContaining({ version: expect.anything() }) }));
-    expect(result).toEqual({ id: 'case_1', version: 3 });
+    expect(result).toEqual({ id: 'case_1', version: 4 });
   });
 
   it('updatePayload() throws CaseVersionConflictError when the version no longer matches', async () => {

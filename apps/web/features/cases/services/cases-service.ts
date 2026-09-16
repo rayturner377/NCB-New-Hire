@@ -179,11 +179,15 @@ export async function submitPatientCase(
  * absent key (deleted, not merely blank) leaves whatever was already stored
  * untouched.
  *
- * `expectedVersion` — see savePatientCaseProgress's own doc comment on the
- * same parameter; here it's the case's version as read by the caller
- * (save-submission-draft.ts's own fresh getCaseById at the top of that
- * action), not a value round-tripped from the client, so a doctor's own
- * rapid repeated autosaves never spuriously conflict with themselves.
+ * `expectedVersion` MUST be the version the caller's OWN editor actually last saw (the value their
+ * form was rendered with, or the value handed back from THEIR OWN previous save) — not one freshly
+ * re-read by the server in the same request. Confirmed via external security review that using a
+ * freshly-fetched version here made the check a no-op: updatePayload now genuinely increments
+ * `version` on every write, so re-reading it moments before checking against itself would always
+ * trivially match, defeating the whole point. Returns the new version so the caller (save-
+ * submission-draft.ts) can hand it back to the client, which is what lets a doctor's own repeated
+ * autosaves keep advancing their own locally-tracked version instead of forever resubmitting a
+ * stale one and spuriously conflicting with themselves.
  */
 export async function saveDoctorAssessmentDraft(
   caseId: string,
@@ -191,16 +195,17 @@ export async function saveDoctorAssessmentDraft(
   existingPayload: CasePayload | null | undefined,
   actorId: string,
   expectedVersion: number
-): Promise<void> {
+): Promise<number> {
   const masterKey = loadMasterKey();
   const mergedDraft = { ...existingPayload?.doctorAssessmentDraft, ...draft };
-  await casesRepository.updatePayload(
+  const updated = await casesRepository.updatePayload(
     caseId,
     { ...existingPayload, doctorAssessmentDraft: mergedDraft } satisfies CasePayload,
     masterKey,
     { lastEditedById: actorId, lastEditedAt: new Date() },
     expectedVersion
   );
+  return updated.version;
 }
 
 /** Clears a case's doctor-assessment draft once the real submission has been recorded, so a case later sent back to the doctor stage doesn't resurface stale draft data (see createSubmissionAction). */

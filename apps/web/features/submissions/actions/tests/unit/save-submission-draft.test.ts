@@ -26,7 +26,11 @@ function formData(fields: Record<string, string>): FormData {
   return data;
 }
 
-const assignedCase = { id: 'case_1', status: 'sent_to_doctor', assignedClinicianId: 'usr_doc', version: 3, payload: {} };
+// The case's own freshly-fetched version is deliberately different from what the form below
+// submits as caseVersion — proving the action uses the CLIENT's own value, not the server's fresh
+// read (the exact bug this fix closes: re-fetching would always trivially match itself).
+const assignedCase = { id: 'case_1', status: 'sent_to_doctor', assignedClinicianId: 'usr_doc', version: 9, payload: {} };
+const withVersion = { caseId: 'case_1', caseVersion: '3' };
 
 describe('saveSubmissionDraftAction', () => {
   beforeEach(() => {
@@ -35,6 +39,7 @@ describe('saveSubmissionDraftAction', () => {
     saveDoctorAssessmentDraftMock.mockReset();
     revalidatePathMock.mockClear();
     getCaseByIdMock.mockResolvedValue(assignedCase);
+    saveDoctorAssessmentDraftMock.mockResolvedValue(4);
   });
 
   it('rejects without an active session', async () => {
@@ -58,7 +63,16 @@ describe('saveSubmissionDraftAction', () => {
   it('rejects a missing caseId', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
 
-    const result = await saveSubmissionDraftAction(null, formData({}));
+    const result = await saveSubmissionDraftAction(null, formData({ caseVersion: '3' }));
+
+    expect(result.ok).toBe(false);
+    expect(getCaseByIdMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing/malformed caseVersion', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
+
+    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
 
     expect(result.ok).toBe(false);
     expect(getCaseByIdMock).not.toHaveBeenCalled();
@@ -68,7 +82,7 @@ describe('saveSubmissionDraftAction', () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
     getCaseByIdMock.mockResolvedValue(null);
 
-    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
+    const result = await saveSubmissionDraftAction(null, formData(withVersion));
 
     expect(result.ok).toBe(false);
   });
@@ -76,7 +90,7 @@ describe('saveSubmissionDraftAction', () => {
   it('rejects a doctor not assigned to the case', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_other_doc', role: 'clinician' } });
 
-    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
+    const result = await saveSubmissionDraftAction(null, formData(withVersion));
 
     expect(result.ok).toBe(false);
     expect(saveDoctorAssessmentDraftMock).not.toHaveBeenCalled();
@@ -86,23 +100,23 @@ describe('saveSubmissionDraftAction', () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
     getCaseByIdMock.mockResolvedValue({ ...assignedCase, status: 'reviewed' });
 
-    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
+    const result = await saveSubmissionDraftAction(null, formData(withVersion));
 
     expect(result.ok).toBe(false);
   });
 
-  it('saves the draft, stripping caseId/caseVersion, stamps the actor, and revalidates the case page', async () => {
+  it('saves the draft at the version the form itself submitted (not the freshly-fetched case version), stripping caseId/caseVersion, stamps the actor, revalidates, and returns the new version', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
 
-    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1', caseVersion: '3', 'exam.height': '170' }));
+    const result = await saveSubmissionDraftAction(null, formData({ ...withVersion, 'exam.height': '170' }));
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, newVersion: 4 });
     expect(saveDoctorAssessmentDraftMock).toHaveBeenCalledWith(
       'case_1',
       expect.not.objectContaining({ caseId: expect.anything(), caseVersion: expect.anything() }),
       assignedCase.payload,
       'usr_doc',
-      assignedCase.version
+      3
     );
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
   });
@@ -110,23 +124,17 @@ describe('saveSubmissionDraftAction', () => {
   it('lets a delegate save a draft on the case assigned to the doctor they support', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_delegate', role: 'delegate', delegateForClinicianId: 'usr_doc' } });
 
-    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1', 'exam.height': '170' }));
+    const result = await saveSubmissionDraftAction(null, formData({ ...withVersion, 'exam.height': '170' }));
 
-    expect(result).toEqual({ ok: true });
-    expect(saveDoctorAssessmentDraftMock).toHaveBeenCalledWith(
-      'case_1',
-      expect.anything(),
-      assignedCase.payload,
-      'usr_delegate',
-      assignedCase.version
-    );
+    expect(result).toEqual({ ok: true, newVersion: 4 });
+    expect(saveDoctorAssessmentDraftMock).toHaveBeenCalledWith('case_1', expect.anything(), assignedCase.payload, 'usr_delegate', 3);
   });
 
   it('reports a friendly error, not a thrown exception, when the case changed since it was loaded', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
     saveDoctorAssessmentDraftMock.mockRejectedValue(new CaseVersionConflictError());
 
-    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
+    const result = await saveSubmissionDraftAction(null, formData(withVersion));
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/changed since you loaded it/i);
@@ -135,7 +143,7 @@ describe('saveSubmissionDraftAction', () => {
   it('rejects a delegate whose linked doctor is not the one this case is assigned to', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_delegate', role: 'delegate', delegateForClinicianId: 'usr_other_doc' } });
 
-    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
+    const result = await saveSubmissionDraftAction(null, formData(withVersion));
 
     expect(result.ok).toBe(false);
     expect(saveDoctorAssessmentDraftMock).not.toHaveBeenCalled();
@@ -146,7 +154,7 @@ describe('saveSubmissionDraftAction', () => {
 
     await saveSubmissionDraftAction(
       null,
-      formData({ caseId: 'case_1', 'exam.height': '170', 'determination.status': 'fit', 'attestation.signedBy': 'Dr. Example' })
+      formData({ ...withVersion, 'exam.height': '170', 'determination.status': 'fit', 'attestation.signedBy': 'Dr. Example' })
     );
 
     const savedDraft = saveDoctorAssessmentDraftMock.mock.calls[0]![1];
@@ -158,7 +166,7 @@ describe('saveSubmissionDraftAction', () => {
   it("does not strip determination/attestation from the doctor's own draft", async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
 
-    await saveSubmissionDraftAction(null, formData({ caseId: 'case_1', 'determination.status': 'fit' }));
+    await saveSubmissionDraftAction(null, formData({ ...withVersion, 'determination.status': 'fit' }));
 
     const savedDraft = saveDoctorAssessmentDraftMock.mock.calls[0]![1];
     expect(savedDraft).toHaveProperty('determination');

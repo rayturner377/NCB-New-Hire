@@ -139,22 +139,24 @@ export function createCasesRepository(db: PrismaClient) {
 
     /**
      * Overwrites the encrypted payload — used for the patient intake form's save-progress/submit
-     * and the doctor assessment draft's autosave, neither of which ever touches `status` directly
-     * (that's `transition`'s job) or bumps `version` itself (a draft save isn't a workflow event the
-     * way a real transition is, and bumping it here would make every editor's own next autosave
-     * immediately "conflict" with itself unless the client also tracked the new version after every
-     * save — see access-codes-service.ts's analogous atomic-claim comment for why avoiding that kind
-     * of client-side version bookkeeping was the deliberate choice here too).
+     * and the doctor assessment draft's autosave. Never touches `status` directly (that's
+     * `transition`'s job), but DOES increment `version` on every write that supplies an
+     * `expectedVersion` — confirmed via external security review that the previous version of this
+     * method checked a version but never actually advanced it, so the conditional `updateMany`
+     * below could match and succeed for TWO concurrent editors in a row, back to back, since neither
+     * write ever changed the value the other was checking against. A version check that never
+     * changes the thing it checks isn't optimistic concurrency, it's a no-op.
      *
-     * `expectedVersion`, when given, still checks — without incrementing — that the case hasn't
-     * moved on (a real transition, reassignment, etc.) since whoever's calling this last read it,
-     * via the same conditional-`updateMany`-and-check-the-count shape used elsewhere in this
-     * codebase for real optimistic concurrency (see accessCodesRepository.claimCodeAndSetPassword).
-     * Throws CaseVersionConflictError on a mismatch rather than silently overwriting — confirmed via
-     * real code reading (not assumed) that the previous version of this method had no such check at
-     * all, so two concurrent editors' saves would just silently stomp each other with no error to
-     * either of them. Omit `expectedVersion` for a caller with no meaningful version context of its
-     * own to check against (e.g. clearDoctorAssessmentDraft's internal post-submission cleanup).
+     * This only actually protects against a lost update if the caller's `expectedVersion` is the
+     * version their OWN editor genuinely last saw — not one freshly re-read by the server in the
+     * same request, which would trivially always match itself. See saveDoctorAssessmentDraft's own
+     * doc comment for how the caller keeps that value current across repeated autosaves without
+     * self-conflicting.
+     *
+     * Throws CaseVersionConflictError on a mismatch rather than silently overwriting. Omit
+     * `expectedVersion` entirely for a caller with no meaningful version context of its own to check
+     * against (e.g. clearDoctorAssessmentDraft's internal post-submission cleanup) — this is the
+     * only case that still skips the check/increment altogether.
      *
      * `plainColumns` is an escape hatch for the handful of un-encrypted columns a payload save
      * sometimes needs to touch alongside it in the same statement — currently just
@@ -177,7 +179,7 @@ export function createCasesRepository(db: PrismaClient) {
 
       const { count } = await db.medicalCase.updateMany({
         where: { id, version: expectedVersion },
-        data: { casePayload, ...plainColumns }
+        data: { casePayload, ...plainColumns, version: { increment: 1 } }
       });
       if (count === 0) {
         throw new CaseVersionConflictError();
