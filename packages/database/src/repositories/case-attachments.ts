@@ -1,6 +1,8 @@
 import type { CaseAttachment, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
 
+export type CaseAttachmentScanStatus = 'pending' | 'clean' | 'rejected' | 'failed';
+
 export interface CreateCaseAttachmentInput {
   id: string;
   caseId: string;
@@ -15,9 +17,11 @@ export interface CreateCaseAttachmentInput {
 /**
  * Backs the case workspace's Documents tab — a generic file-per-case store
  * (`case_attachments`, present in the schema since 0001_init but never wired
- * to any repository/UI until now). `scanStatus` exists on the table for a
- * future antivirus-scan integration; this repository doesn't touch it beyond
- * the column default ('pending'), so nothing here claims a file is safe.
+ * to any repository/UI until now). `scanStatus` starts at the column default
+ * ('pending') on create() and is only ever moved on by updateScanStatus(),
+ * called from lib/virus-scan.ts's scan integration — see
+ * case-attachments-service.ts's own doc comment on why nothing here claims a
+ * file is safe just by having passed the structural PDF check.
  */
 export function createCaseAttachmentsRepository(db: PrismaClient) {
   return {
@@ -48,6 +52,10 @@ export function createCaseAttachmentsRepository(db: PrismaClient) {
     /** Soft delete only — the underlying file on disk is left alone (see lib/attachment-storage.ts), matching how a medical case itself is never hard-deleted either. */
     softDelete(id: string): Promise<CaseAttachment> {
       return db.caseAttachment.update({ where: { id }, data: { deletedAt: new Date() } });
+    },
+
+    updateScanStatus(id: string, scanStatus: CaseAttachmentScanStatus): Promise<CaseAttachment> {
+      return db.caseAttachment.update({ where: { id }, data: { scanStatus } });
     }
   };
 }

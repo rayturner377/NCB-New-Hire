@@ -1,6 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '../../../generated/client/index.js';
-import { computeEventHash, createAuditRepository } from '../../audit.js';
+
+const redisGetMock = vi.fn();
+const redisSetMock = vi.fn();
+
+vi.mock('@ncb/redis', () => ({
+  redis: {
+    get: (...args: unknown[]) => redisGetMock(...args),
+    set: (...args: unknown[]) => redisSetMock(...args)
+  }
+}));
+
+const { computeEventHash, createAuditRepository } = await import('../../audit.js');
 
 describe('computeEventHash', () => {
   it('is deterministic for the same fields', () => {
@@ -37,35 +48,43 @@ describe('computeEventHash', () => {
 });
 
 describe('audit repository', () => {
-  it('append() chains off the most recent event_hash', async () => {
-    const db = {
-      $transaction: vi.fn((callback: (tx: unknown) => Promise<unknown>) => callback(tx)),
-      auditEvent: {}
-    } as unknown as PrismaClient;
+  beforeEach(() => {
+    redisGetMock.mockReset();
+    redisSetMock.mockReset();
+    redisGetMock.mockResolvedValue(null);
+    redisSetMock.mockResolvedValue('OK');
+  });
 
+  it('append() chains off the most recent event_hash and writes an independent Redis checkpoint', async () => {
     const tx = {
       $executeRaw: vi.fn().mockResolvedValue(undefined),
       auditEvent: {
         findMany: vi.fn().mockResolvedValue([{ eventHash: 'previous-hash' }]),
-        create: vi.fn().mockImplementation(({ data }: { data: { prevHash: string | null } }) =>
-          Promise.resolve(data)
+        create: vi.fn().mockImplementation(({ data }: { data: { prevHash: string | null; eventHash: string } }) =>
+          Promise.resolve({ id: 5n, ...data })
         )
       }
     };
-    (db as unknown as { $transaction: unknown }).$transaction = vi.fn((callback: (tx: unknown) => unknown) =>
-      callback(tx)
-    );
+    const db = {
+      $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(tx)),
+      auditEvent: {}
+    } as unknown as PrismaClient;
 
     const repository = createAuditRepository(db);
     const created = (await repository.append({ eventType: 'login_success' })) as unknown as {
+      id: bigint;
       prevHash: string | null;
+      eventHash: string;
     };
 
     expect(created.prevHash).toBe('previous-hash');
     expect(tx.$executeRaw).toHaveBeenCalled();
+    // The checkpoint is a plain JSON string of {id, eventHash} — id serialized since BigInt isn't
+    // JSON-serializable directly (see writeCheckpoint's own reasoning in audit.ts).
+    expect(redisSetMock).toHaveBeenCalledWith('audit:chain-checkpoint', JSON.stringify({ id: '5', eventHash: created.eventHash }));
   });
 
-  it('verifyChain() detects a tampered row', async () => {
+  it('verifyChain() detects a tampered row (independent of the checkpoint)', async () => {
     const first = {
       id: 1n,
       occurredAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -109,7 +128,7 @@ describe('audit repository', () => {
     expect(result.brokenAtId).toBe(2n);
   });
 
-  it('verifyChain() accepts an untampered chain', async () => {
+  it('verifyChain() accepts an untampered chain that matches the checkpoint', async () => {
     const first = {
       id: 1n,
       occurredAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -124,6 +143,7 @@ describe('audit repository', () => {
       eventHash: ''
     };
     first.eventHash = computeEventHash({ ...first });
+    redisGetMock.mockResolvedValue(JSON.stringify({ id: '1', eventHash: first.eventHash }));
 
     const db = {
       auditEvent: {
@@ -135,6 +155,49 @@ describe('audit repository', () => {
     const result = await repository.verifyChain();
 
     expect(result).toEqual({ valid: true, brokenAtId: null });
+  });
+
+  it('verifyChain() accepts an empty chain only when no checkpoint has ever been recorded', async () => {
+    const db = { auditEvent: { findMany: vi.fn().mockResolvedValue([]) } } as unknown as PrismaClient;
+
+    const result = await createAuditRepository(db).verifyChain();
+
+    expect(result).toEqual({ valid: true, brokenAtId: null });
+  });
+
+  it('verifyChain() rejects a completely wiped table when a checkpoint says events used to exist — closes the "empty chain looks valid" gap', async () => {
+    redisGetMock.mockResolvedValue(JSON.stringify({ id: '7', eventHash: 'some-real-hash' }));
+    const db = { auditEvent: { findMany: vi.fn().mockResolvedValue([]) } } as unknown as PrismaClient;
+
+    const result = await createAuditRepository(db).verifyChain();
+
+    expect(result).toEqual({ valid: false, brokenAtId: 7n });
+  });
+
+  it('verifyChain() rejects a chain with its newest events deleted, even though the remaining rows are perfectly self-consistent', async () => {
+    const first = {
+      id: 1n,
+      occurredAt: new Date('2026-01-01T00:00:00.000Z'),
+      actorUserId: null,
+      eventType: 'login_success',
+      entityType: null,
+      entityId: null,
+      requestId: null,
+      sourceIpHash: null,
+      details: {},
+      prevHash: null,
+      eventHash: ''
+    };
+    first.eventHash = computeEventHash({ ...first });
+    // The checkpoint remembers a row 2 that no longer exists — exactly what deleting the tail after
+    // the checkpoint was written looks like from Redis's independent point of view.
+    redisGetMock.mockResolvedValue(JSON.stringify({ id: '2', eventHash: 'hash-of-the-deleted-row' }));
+
+    const db = { auditEvent: { findMany: vi.fn().mockResolvedValue([first]) } } as unknown as PrismaClient;
+
+    const result = await createAuditRepository(db).verifyChain();
+
+    expect(result).toEqual({ valid: false, brokenAtId: 2n });
   });
 
   it('query() builds a where clause from eventTypes/entityType/from/to and paginates via skip/take', async () => {

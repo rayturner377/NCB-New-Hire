@@ -62,4 +62,13 @@ describe('case attachments repository', () => {
 
     expect(update).toHaveBeenCalledWith({ where: { id: 'att_1' }, data: { deletedAt: expect.any(Date) } });
   });
+
+  it('updateScanStatus() sets the given status', async () => {
+    const update = vi.fn().mockResolvedValue({ id: 'att_1', scanStatus: 'clean' });
+    const db = { caseAttachment: { update } } as unknown as PrismaClient;
+
+    await createCaseAttachmentsRepository(db).updateScanStatus('att_1', 'clean');
+
+    expect(update).toHaveBeenCalledWith({ where: { id: 'att_1' }, data: { scanStatus: 'clean' } });
+  });
 });

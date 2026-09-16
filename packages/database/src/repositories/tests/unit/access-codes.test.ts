@@ -69,4 +69,64 @@ describe('access codes repository', () => {
       data: { usedAt: expect.any(Date) }
     });
   });
+
+  describe('claimCodeAndSetPassword()', () => {
+    /** Same fakeDb-with-a-real-$transaction shape as cases.test.ts's own submitAndTransition tests. */
+    function fakeDb(overrides: { claimCount?: number; existingAccount?: { id: string } | null } = {}) {
+      const accountUpdate = vi.fn().mockResolvedValue({});
+      const accountCreate = vi.fn().mockResolvedValue({});
+      const appUserUpdate = vi.fn().mockResolvedValue({});
+      const tx = {
+        accessCode: { updateMany: vi.fn().mockResolvedValue({ count: overrides.claimCount ?? 1 }) },
+        account: {
+          findFirst: vi.fn().mockResolvedValue(overrides.existingAccount === undefined ? null : overrides.existingAccount),
+          update: accountUpdate,
+          create: accountCreate
+        },
+        appUser: { update: appUserUpdate }
+      };
+      const db = { $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(tx)) } as unknown as PrismaClient;
+      return { db, tx, accountUpdate, accountCreate, appUserUpdate };
+    }
+
+    const input = { codeId: 'code_1', userId: 'usr_1', passwordHash: 'hashed-password' };
+
+    it('returns false without touching the account when the code is no longer claimable (lost the race)', async () => {
+      const { db, accountUpdate, accountCreate, appUserUpdate } = fakeDb({ claimCount: 0 });
+
+      const result = await createAccessCodesRepository(db).claimCodeAndSetPassword(input);
+
+      expect(result).toBe(false);
+      expect(accountUpdate).not.toHaveBeenCalled();
+      expect(accountCreate).not.toHaveBeenCalled();
+      expect(appUserUpdate).not.toHaveBeenCalled();
+    });
+
+    it('claims the code, updates an existing credential account, and clears mustChangePassword', async () => {
+      const { db, tx, accountUpdate, accountCreate, appUserUpdate } = fakeDb({ existingAccount: { id: 'account_1' } });
+
+      const result = await createAccessCodesRepository(db).claimCodeAndSetPassword(input);
+
+      expect(result).toBe(true);
+      expect((tx.accessCode.updateMany as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith({
+        where: { id: 'code_1', usedAt: null, expiresAt: { gt: expect.any(Date) } },
+        data: { usedAt: expect.any(Date) }
+      });
+      expect(accountUpdate).toHaveBeenCalledWith({ where: { id: 'account_1' }, data: { password: 'hashed-password' } });
+      expect(accountCreate).not.toHaveBeenCalled();
+      expect(appUserUpdate).toHaveBeenCalledWith({ where: { id: 'usr_1' }, data: { mustChangePassword: false } });
+    });
+
+    it('creates a credential account when the user has none yet', async () => {
+      const { db, accountCreate, accountUpdate } = fakeDb({ existingAccount: null });
+
+      const result = await createAccessCodesRepository(db).claimCodeAndSetPassword(input);
+
+      expect(result).toBe(true);
+      expect(accountUpdate).not.toHaveBeenCalled();
+      expect(accountCreate).toHaveBeenCalledWith({
+        data: { id: expect.any(String), accountId: 'usr_1', providerId: 'credential', userId: 'usr_1', password: 'hashed-password' }
+      });
+    });
+  });
 });

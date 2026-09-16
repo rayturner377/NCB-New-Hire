@@ -6,6 +6,8 @@ import { createAuditRepository } from '../../audit.js';
  * Requires DATABASE_URL to point at a real Postgres instance (see
  * docker-compose.yml + .env.example) with `npm run migrate:deploy -w @ncb/database`
  * already applied — ideally the ncb_medical_test database, not dev data.
+ * Also requires REDIS_URL to point at a real Redis instance now that append()/verifyChain() write
+ * and check an independent chain checkpoint there (see audit.ts's own doc comment on why).
  * Run with: npm run test:integration -w @ncb/database
  */
 describe('audit repository (integration)', () => {

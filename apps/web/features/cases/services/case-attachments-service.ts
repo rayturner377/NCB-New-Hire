@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { caseAttachmentsRepository, type CaseAttachment } from '@ncb/database';
 import { deleteAttachmentFile, readAttachmentFile, saveAttachmentFile } from '../../../lib/attachment-storage';
+import { scanBuffer } from '../../../lib/virus-scan';
 
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(['application/pdf']);
@@ -19,6 +20,12 @@ const PDF_TRAILER_SEARCH_WINDOW = 2048;
  * marker within the trailer) rather than just the header alone, since a
  * header-only check would still accept a truncated or entirely different
  * file with four bytes of PDF magic prepended to it.
+ *
+ * This is a structural check only — it says nothing about whether the PDF is malicious (an embedded
+ * exploit, a malicious JavaScript action, etc.). That's lib/virus-scan.ts's job, run asynchronously
+ * after upload (see uploadCaseAttachment's own doc comment) — confirmed via external security
+ * review that this function's name was previously the ONLY gate a file passed through before being
+ * downloadable, with no actual antivirus scanning anywhere in the path.
  */
 function looksLikePdf(data: Buffer): boolean {
   if (!data.subarray(0, PDF_HEADER.length).equals(PDF_HEADER)) return false;
@@ -43,6 +50,14 @@ export class InvalidAttachmentError extends Error {}
  * lib/pdf/medical-assessment-pdf.ts), so uploads are restricted to PDF only
  * rather than the generic "any file type" a broader attachments feature
  * might eventually want.
+ *
+ * Returns as soon as the row is created — the row's `scanStatus` starts at 'pending' (the column
+ * default) — and kicks the actual virus scan off detached (`void scanAttachmentInBackground(...)`,
+ * same "don't block the caller on slow external I/O" shape as notification-service.ts's own
+ * dispatchNotification), rather than making the uploader wait on a (possibly deployment-specific,
+ * possibly not even configured — see lib/virus-scan.ts) scanner before the upload can even complete.
+ * See the attachment route's own gating for what 'pending' means for who can view it in the
+ * meantime — including that it means nothing extra at all when no scanner is configured.
  */
 export async function uploadCaseAttachment(input: UploadCaseAttachmentInput): Promise<CaseAttachment> {
   if (!ALLOWED_CONTENT_TYPES.has(input.contentType)) {
@@ -64,7 +79,7 @@ export async function uploadCaseAttachment(input: UploadCaseAttachmentInput): Pr
 
   await saveAttachmentFile(storageKey, input.data);
 
-  return caseAttachmentsRepository.create({
+  const attachment = await caseAttachmentsRepository.create({
     id,
     caseId: input.caseId,
     uploadedBy: input.uploadedBy,
@@ -74,6 +89,36 @@ export async function uploadCaseAttachment(input: UploadCaseAttachmentInput): Pr
     byteSize: input.data.byteLength,
     sha256
   });
+
+  // Scans the exact bytes already in memory from this request, rather than reading the file back
+  // (and decrypting it — see attachment-storage.ts) a second time moments later.
+  void scanAttachmentInBackground(id, input.data);
+
+  return attachment;
+}
+
+/**
+ * The other half of uploadCaseAttachment's async scan — never awaited by its caller, never throws
+ * out to one either. `unavailable` (no scanner configured at all — see lib/virus-scan.ts's
+ * isScanningEnabled — or one that's configured but unreachable/erroring for this attempt)
+ * deliberately leaves scanStatus at 'pending' rather than either extreme: not 'clean' (that would be
+ * exactly the false assurance this whole fix exists to remove) and not 'rejected' (a transient
+ * scanner outage, or scanning simply being off, shouldn't quarantine a legitimate file forever) —
+ * the attachment route's own gating decides what 'pending' actually means for who can view it
+ * meanwhile, and only restricts anyone when scanning is actually turned on.
+ */
+async function scanAttachmentInBackground(attachmentId: string, data: Buffer): Promise<void> {
+  try {
+    const result = await scanBuffer(data);
+    if (result.verdict === 'clean') {
+      await caseAttachmentsRepository.updateScanStatus(attachmentId, 'clean');
+    } else if (result.verdict === 'infected') {
+      await caseAttachmentsRepository.updateScanStatus(attachmentId, 'rejected');
+    }
+    // 'unavailable' — leave scanStatus at 'pending', see this function's own doc comment.
+  } catch (error) {
+    console.error(`Failed to record scan result for attachment ${attachmentId}:`, error);
+  }
 }
 
 export function listCaseAttachments(caseId: string): Promise<CaseAttachment[]> {

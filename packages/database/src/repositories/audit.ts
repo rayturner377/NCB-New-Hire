@@ -1,13 +1,41 @@
 import { createHash } from 'node:crypto';
 import { hashForAudit } from '@ncb/shared';
+import { redis } from '@ncb/redis';
 import type { AuditEvent, PrismaClient } from '../generated/client/index.js';
-import { prisma } from '../client.js';
+import { auditPrisma } from '../client.js';
 
 // Arbitrary fixed key for the Postgres session-level advisory lock that
 // serializes audit-chain writes (same locking primitive database/index.js
 // already used for migrations), so two concurrent appends can't compute the
 // same prevHash.
 const ADVISORY_LOCK_KEY = 872_346_501;
+
+/**
+ * A second, independent record of "how far the chain had gotten," outside the same table the chain
+ * itself lives in — confirmed the hard way (external security review, not an assumption) that
+ * verifyChain()'s pure internal-consistency walk has a real blind spot: deleting the newest rows (or
+ * the whole table) leaves whatever remains perfectly self-consistent, so it reports `valid: true`
+ * even though real events are gone. Redis is a genuinely separate store/process from Postgres, so
+ * someone with only Postgres access (even full superuser — see the DB-role split alongside this)
+ * can't retroactively rewrite what was checkpointed here. Every append() overwrites this key with the
+ * row it just created; verifyChain() below compares it against current Postgres state and treats any
+ * mismatch as conclusive proof of tampering, not just a hint.
+ */
+const CHECKPOINT_KEY = 'audit:chain-checkpoint';
+
+interface AuditCheckpoint {
+  id: string;
+  eventHash: string;
+}
+
+async function readCheckpoint(): Promise<AuditCheckpoint | null> {
+  const raw = await redis.get(CHECKPOINT_KEY);
+  return raw ? (JSON.parse(raw) as AuditCheckpoint) : null;
+}
+
+async function writeCheckpoint(checkpoint: AuditCheckpoint): Promise<void> {
+  await redis.set(CHECKPOINT_KEY, JSON.stringify(checkpoint));
+}
 
 export interface AuditEventInput {
   actorUserId?: string;
@@ -69,7 +97,7 @@ export interface AuditQueryFilters {
 export function createAuditRepository(db: PrismaClient) {
   return {
     async append(input: AuditEventInput): Promise<AuditEvent> {
-      return db.$transaction(async (tx) => {
+      const created = await db.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADVISORY_LOCK_KEY})`;
 
         const [latest] = await tx.auditEvent.findMany({
@@ -115,6 +143,16 @@ export function createAuditRepository(db: PrismaClient) {
           }
         });
       });
+
+      // Outside the Postgres transaction, deliberately — this is the point of a genuinely
+      // independent checkpoint. The advisory lock held above already serializes appends against
+      // each other, so writes here happen in the same order the rows themselves were created; a
+      // crash between the transaction committing and this line just means the checkpoint lags
+      // behind by one event until the next successful append catches it up, which only narrows
+      // (never defeats) what verifyChain() can detect.
+      await writeCheckpoint({ id: created.id.toString(), eventHash: created.eventHash });
+
+      return created;
     },
 
     list(limit = 250): Promise<AuditEvent[]> {
@@ -150,13 +188,20 @@ export function createAuditRepository(db: PrismaClient) {
     },
 
     /**
-     * Walks the whole chain in insertion order recomputing each event_hash and
-     * comparing it (and prev_hash linkage) against what's stored. Use this
-     * before trusting the audit log's tamper-evidence in production.
+     * Walks the whole chain in insertion order recomputing each event_hash and comparing it (and
+     * prev_hash linkage) against what's stored, THEN checks the result against the independent
+     * Redis checkpoint (see its own doc comment above). That second check is what actually closes
+     * the gap a pure internal-consistency walk has on its own: deleting the newest rows, or wiping
+     * the table entirely, leaves whatever's left perfectly self-consistent — confirmed via external
+     * security review that the previous version of this method reported `valid: true` for both.
+     * Use this before trusting the audit log's tamper-evidence in production.
      */
     async verifyChain(): Promise<ChainVerification> {
       const rows = await db.auditEvent.findMany({ orderBy: { id: 'asc' } });
+      const checkpoint = await readCheckpoint();
+
       let prevHash: string | null = null;
+      let checkpointRowFound = false;
       for (const row of rows) {
         const expected = computeEventHash({
           prevHash,
@@ -172,11 +217,25 @@ export function createAuditRepository(db: PrismaClient) {
         if (row.prevHash !== prevHash || row.eventHash !== expected) {
           return { valid: false, brokenAtId: row.id };
         }
+        if (checkpoint && row.id.toString() === checkpoint.id) {
+          checkpointRowFound = true;
+        }
         prevHash = row.eventHash;
       }
+
+      // The checkpoint names the row the last successful append actually created. If it's not
+      // among what we just walked — whether the table is now completely empty or merely missing
+      // that one row — every row at or after it was deleted, no matter how clean the remaining
+      // chain looks. (If Redis itself has lost the checkpoint — e.g. flushed — this can only fall
+      // back to the pure internal-consistency check above; the checkpoint's protection is only as
+      // strong as the isolation between the two stores.)
+      if (checkpoint && !checkpointRowFound) {
+        return { valid: false, brokenAtId: BigInt(checkpoint.id) };
+      }
+
       return { valid: true, brokenAtId: null };
     }
   };
 }
 
-export const auditRepository = createAuditRepository(prisma);
+export const auditRepository = createAuditRepository(auditPrisma);

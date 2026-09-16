@@ -6,6 +6,7 @@ import { getCaseAttachmentFile } from '../../../../../../features/cases/services
 import { getCaseById } from '../../../../../../features/cases/services/cases-service';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../../../../lib/permissions';
 import { requireFullSession } from '../../../../../../lib/session';
+import { isScanningEnabled } from '../../../../../../lib/virus-scan';
 
 /**
  * Streams a case attachment (a doctor's stamped assessment copy, today the
@@ -62,18 +63,26 @@ export async function GET(
     return new NextResponse('Not found', { status: 404 });
   }
 
-  // No virus-scanning engine is wired up yet, so every attachment sits at the default 'pending'
-  // scanStatus forever today — blocking on anything short of 'clean' would make every attachment
-  // undownloadable right now, a regression with no actual scanning behind it. 'rejected'/'failed'
-  // can't occur yet either, but gating on them now means the day a scanner is integrated (see
-  // case_attachments.scan_status's own doc comment), a flagged file is instantly blocked for
-  // everyone except the uploader/an admin, who may need to investigate it.
-  if (
-    (result.attachment.scanStatus === 'rejected' || result.attachment.scanStatus === 'failed') &&
-    result.attachment.uploadedBy !== session.user.id &&
-    session.user.role !== 'admin'
-  ) {
-    return new NextResponse('Not found', { status: 404 });
+  // Malware scanning is optional (see lib/virus-scan.ts's own doc comment) — when no scanner is
+  // configured at all, 'pending' just means "never scanned", not "a verdict is imminent", so normal
+  // case-access rules apply exactly as they did before this feature existed; gating on it here too
+  // would permanently lock every attachment to its uploader forever the moment scanning is left off,
+  // which is precisely the "optional feature makes things worse when unused" failure this app must
+  // not have. Only once a real scan is actually running does 'pending' mean "wait for it, a few
+  // seconds, uploader-only in the meantime" — and only then do 'rejected'/'failed' (a real
+  // infection, or the scanner itself erroring) mean anything either, relaxed to uploader-or-admin
+  // since an admin may need to investigate a flagged file.
+  if (isScanningEnabled()) {
+    if (result.attachment.scanStatus === 'pending' && result.attachment.uploadedBy !== session.user.id) {
+      return new NextResponse('Not found', { status: 404 });
+    }
+    if (
+      (result.attachment.scanStatus === 'rejected' || result.attachment.scanStatus === 'failed') &&
+      result.attachment.uploadedBy !== session.user.id &&
+      session.user.role !== 'admin'
+    ) {
+      return new NextResponse('Not found', { status: 404 });
+    }
   }
 
   // Downloading a medical document is exactly the kind of access an investigator would need

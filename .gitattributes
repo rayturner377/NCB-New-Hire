@@ -1,0 +1,6 @@
+# Postgres's own docker-entrypoint-initdb.d runs this inside a Linux container regardless of what
+# OS/git-autocrlf setting whoever checks this out has — CRLF line endings would break its shebang
+# ("/bin/bash^M: no such file or directory") the moment someone on Windows with core.autocrlf=true
+# clones this repo. Force LF for every shell script, not just this one, since the same risk applies
+# to any future addition under docker/ or scripts/.
+*.sh text eol=lf
