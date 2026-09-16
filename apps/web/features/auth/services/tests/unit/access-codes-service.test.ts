@@ -3,22 +3,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const createMock = vi.fn();
 const findLatestActiveMock = vi.fn();
 const incrementAttemptsMock = vi.fn();
-const markUsedMock = vi.fn();
 const invalidateMock = vi.fn();
+const invalidateAllActiveMock = vi.fn();
+const claimCodeAndSetPasswordMock = vi.fn();
 const findByEmailMock = vi.fn();
+const hashPasswordMock = vi.fn();
 
 vi.mock('@ncb/database', () => ({
   accessCodesRepository: {
     create: (...args: unknown[]) => createMock(...args),
     findLatestActive: (...args: unknown[]) => findLatestActiveMock(...args),
     incrementAttempts: (...args: unknown[]) => incrementAttemptsMock(...args),
-    markUsed: (...args: unknown[]) => markUsedMock(...args),
-    invalidate: (...args: unknown[]) => invalidateMock(...args)
+    invalidate: (...args: unknown[]) => invalidateMock(...args),
+    invalidateAllActive: (...args: unknown[]) => invalidateAllActiveMock(...args),
+    claimCodeAndSetPassword: (...args: unknown[]) => claimCodeAndSetPasswordMock(...args)
   },
   usersRepository: {
     findByEmail: (...args: unknown[]) => findByEmailMock(...args)
   }
 }));
+
+vi.mock('@ncb/auth/utils', () => ({ hashPassword: (...args: unknown[]) => hashPasswordMock(...args) }));
 
 vi.mock('@ncb/shared', () => ({
   generateAccessCode: () => '482913',
@@ -31,6 +36,7 @@ const { issueAccessCode, redeemAccessCode, verifyAccessCode, hasLiveAccessCode }
 describe('issueAccessCode', () => {
   beforeEach(() => {
     createMock.mockReset();
+    invalidateAllActiveMock.mockReset();
     vi.useRealTimers();
   });
 
@@ -46,6 +52,17 @@ describe('issueAccessCode', () => {
         expiresAt: expect.any(Date)
       })
     );
+  });
+
+  it('invalidates any code already live for this user/purpose before issuing a new one', async () => {
+    await issueAccessCode('usr_1', 'password_reset');
+
+    expect(invalidateAllActiveMock).toHaveBeenCalledWith('usr_1', 'password_reset');
+    // Order matters: superseding the old code has to land before the new one's own create — a race
+    // the other way could invalidate the code that was just issued.
+    const invalidateOrder = invalidateAllActiveMock.mock.invocationCallOrder[0]!;
+    const createOrder = createMock.mock.invocationCallOrder[0]!;
+    expect(invalidateOrder).toBeLessThan(createOrder);
   });
 
   it('defaults account_activation to a 24-hour window', async () => {
@@ -84,14 +101,16 @@ describe('redeemAccessCode and verifyAccessCode', () => {
     findByEmailMock.mockReset();
     findLatestActiveMock.mockReset();
     incrementAttemptsMock.mockReset();
-    markUsedMock.mockReset();
     invalidateMock.mockReset();
+    claimCodeAndSetPasswordMock.mockReset();
+    hashPasswordMock.mockReset();
+    hashPasswordMock.mockResolvedValue('hashed-password');
   });
 
   it('fails generically when no such user exists', async () => {
     findByEmailMock.mockResolvedValue(null);
 
-    const result = await redeemAccessCode('nobody@example.com', '482913');
+    const result = await redeemAccessCode('nobody@example.com', '482913', 'NewPassword123!');
 
     expect(result.ok).toBe(false);
     expect(findLatestActiveMock).not.toHaveBeenCalled();
@@ -101,7 +120,7 @@ describe('redeemAccessCode and verifyAccessCode', () => {
     findByEmailMock.mockResolvedValue({ id: 'usr_1' });
     findLatestActiveMock.mockResolvedValue(null);
 
-    const result = await redeemAccessCode('user@example.com', '482913');
+    const result = await redeemAccessCode('user@example.com', '482913', 'NewPassword123!');
 
     expect(result.ok).toBe(false);
   });
@@ -110,22 +129,23 @@ describe('redeemAccessCode and verifyAccessCode', () => {
     findByEmailMock.mockResolvedValue({ id: 'usr_1' });
     findLatestActiveMock.mockResolvedValue({ id: 'code_1', codeHash: 'hash(482913)', attemptCount: 5 });
 
-    const result = await redeemAccessCode('user@example.com', '482913');
+    const result = await redeemAccessCode('user@example.com', '482913', 'NewPassword123!');
 
     expect(result.ok).toBe(false);
     expect(invalidateMock).toHaveBeenCalledWith('code_1');
+    expect(claimCodeAndSetPasswordMock).not.toHaveBeenCalled();
   });
 
-  it('rejects a wrong code, increments attempts, and does not mark it used', async () => {
+  it('rejects a wrong code, increments attempts, and never attempts the claim', async () => {
     findByEmailMock.mockResolvedValue({ id: 'usr_1' });
     findLatestActiveMock.mockResolvedValue({ id: 'code_1', codeHash: 'hash(482913)', attemptCount: 0 });
     incrementAttemptsMock.mockResolvedValue({ id: 'code_1', attemptCount: 1 });
 
-    const result = await redeemAccessCode('user@example.com', '000000');
+    const result = await redeemAccessCode('user@example.com', '000000', 'NewPassword123!');
 
     expect(result.ok).toBe(false);
     expect(incrementAttemptsMock).toHaveBeenCalledWith('code_1');
-    expect(markUsedMock).not.toHaveBeenCalled();
+    expect(claimCodeAndSetPasswordMock).not.toHaveBeenCalled();
     expect(invalidateMock).not.toHaveBeenCalled();
   });
 
@@ -134,29 +154,41 @@ describe('redeemAccessCode and verifyAccessCode', () => {
     findLatestActiveMock.mockResolvedValue({ id: 'code_1', codeHash: 'hash(482913)', attemptCount: 4 });
     incrementAttemptsMock.mockResolvedValue({ id: 'code_1', attemptCount: 5 });
 
-    await redeemAccessCode('user@example.com', '000000');
+    await redeemAccessCode('user@example.com', '000000', 'NewPassword123!');
 
     expect(invalidateMock).toHaveBeenCalledWith('code_1');
   });
 
-  it('redeemAccessCode succeeds on the correct code, marks it used, and reports which purpose it was', async () => {
+  it('redeemAccessCode succeeds on the correct code, atomically claims it, and reports which purpose it was', async () => {
     findByEmailMock.mockResolvedValue({ id: 'usr_1' });
     findLatestActiveMock.mockResolvedValue({ id: 'code_1', codeHash: 'hash(482913)', attemptCount: 0, purpose: 'password_reset' });
+    claimCodeAndSetPasswordMock.mockResolvedValue(true);
 
-    const result = await redeemAccessCode('user@example.com', '482913');
+    const result = await redeemAccessCode('user@example.com', '482913', 'NewPassword123!');
 
     expect(result).toEqual({ ok: true, userId: 'usr_1', purpose: 'password_reset' });
-    expect(markUsedMock).toHaveBeenCalledWith('code_1');
+    expect(hashPasswordMock).toHaveBeenCalledWith('NewPassword123!');
+    expect(claimCodeAndSetPasswordMock).toHaveBeenCalledWith({ codeId: 'code_1', userId: 'usr_1', passwordHash: 'hashed-password' });
   });
 
-  it('verifyAccessCode succeeds on the correct code but leaves it live for the later redeem', async () => {
+  it('fails generically when the atomic claim loses the race (someone else redeemed/expired it first)', async () => {
+    findByEmailMock.mockResolvedValue({ id: 'usr_1' });
+    findLatestActiveMock.mockResolvedValue({ id: 'code_1', codeHash: 'hash(482913)', attemptCount: 0, purpose: 'password_reset' });
+    claimCodeAndSetPasswordMock.mockResolvedValue(false);
+
+    const result = await redeemAccessCode('user@example.com', '482913', 'NewPassword123!');
+
+    expect(result.ok).toBe(false);
+  });
+
+  it('verifyAccessCode succeeds on the correct code but never claims it, leaving it live for the later redeem', async () => {
     findByEmailMock.mockResolvedValue({ id: 'usr_1' });
     findLatestActiveMock.mockResolvedValue({ id: 'code_1', codeHash: 'hash(482913)', attemptCount: 0, purpose: 'password_reset' });
 
     const result = await verifyAccessCode('user@example.com', '482913');
 
-    expect(result).toEqual({ ok: true, userId: 'usr_1', purpose: 'password_reset' });
-    expect(markUsedMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true, userId: 'usr_1', codeId: 'code_1', purpose: 'password_reset' });
+    expect(claimCodeAndSetPasswordMock).not.toHaveBeenCalled();
   });
 
   it('verifyAccessCode still tracks a wrong attempt (brute-force protection applies before consumption too)', async () => {

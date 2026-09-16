@@ -16,6 +16,7 @@ export interface MessageRow {
 }
 
 export interface MessageDetail extends MessageRow {
+  templateKey: string | null;
   cc: string | null;
   bcc: string | null;
   bodyHtml: string;
@@ -70,6 +71,7 @@ export async function getMessageDetail(id: string): Promise<MessageDetail | null
   return {
     id: message.id,
     to: message.toEmail,
+    templateKey: message.templateKey,
     cc: message.ccEmails,
     bcc: message.bccEmails,
     subject: message.subject,

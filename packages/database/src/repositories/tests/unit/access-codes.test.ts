@@ -57,4 +57,16 @@ describe('access codes repository', () => {
     expect(update).toHaveBeenNthCalledWith(1, { where: { id: 'code_1' }, data: { usedAt: expect.any(Date) } });
     expect(update).toHaveBeenNthCalledWith(2, { where: { id: 'code_1' }, data: { usedAt: expect.any(Date) } });
   });
+
+  it('invalidateAllActive() stamps usedAt on every currently unused, unexpired code for the user/purpose', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const db = { accessCode: { updateMany } } as unknown as PrismaClient;
+
+    await createAccessCodesRepository(db).invalidateAllActive('usr_1', 'password_reset');
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { userId: 'usr_1', purpose: 'password_reset', usedAt: null, expiresAt: { gt: expect.any(Date) } },
+      data: { usedAt: expect.any(Date) }
+    });
+  });
 });

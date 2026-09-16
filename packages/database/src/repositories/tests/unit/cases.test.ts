@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { MedicalCase, PrismaClient } from '../../../generated/client/index.js';
-import { createCasesRepository } from '../../cases.js';
+import { CaseVersionConflictError, createCasesRepository } from '../../cases.js';
 
 describe('cases repository', () => {
   const masterKey = randomBytes(32);
@@ -175,13 +175,40 @@ describe('cases repository', () => {
     });
   });
 
-  it('updatePayload() re-encrypts and overwrites only the payload column', async () => {
+  it('updatePayload() re-encrypts and overwrites only the payload column when no expectedVersion is given', async () => {
     const update = vi.fn().mockResolvedValue({ id: 'case_1' });
     const db = { medicalCase: { update } } as unknown as PrismaClient;
 
     await createCasesRepository(db).updatePayload('case_1', { notes: 'updated' }, masterKey);
 
     expect(update).toHaveBeenCalledWith({ where: { id: 'case_1' }, data: { casePayload: expect.any(Buffer) } });
+  });
+
+  it('updatePayload() with an expectedVersion does a conditional update and re-fetches the row on success', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findFirstOrThrow = vi.fn().mockResolvedValue({ id: 'case_1', version: 3 });
+    const db = { medicalCase: { updateMany, findFirstOrThrow } } as unknown as PrismaClient;
+
+    const result = await createCasesRepository(db).updatePayload('case_1', { notes: 'updated' }, masterKey, undefined, 3);
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'case_1', version: 3 },
+      data: { casePayload: expect.any(Buffer) }
+    });
+    // The row itself is never version-bumped by a plain payload save — see updatePayload's own doc
+    // comment on why (a draft save isn't a workflow transition, and bumping it here would make an
+    // editor's own next autosave immediately conflict with itself).
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.not.objectContaining({ version: expect.anything() }) }));
+    expect(result).toEqual({ id: 'case_1', version: 3 });
+  });
+
+  it('updatePayload() throws CaseVersionConflictError when the version no longer matches', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const db = { medicalCase: { updateMany } } as unknown as PrismaClient;
+
+    await expect(createCasesRepository(db).updatePayload('case_1', { notes: 'updated' }, masterKey, undefined, 3)).rejects.toThrow(
+      CaseVersionConflictError
+    );
   });
 
   describe('submitAndTransition()', () => {

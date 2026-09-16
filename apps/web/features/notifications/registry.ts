@@ -23,6 +23,18 @@ export interface NotificationTemplateDefinition {
   isStructural?: boolean;
   /** Only meaningful for email_footer — the `#rrggbb` a freshly-created row falls back to until an admin picks their own (see template-editor-page.tsx's background-color control). */
   defaultBackgroundColor?: string;
+  /**
+   * Names (from `variables` above) whose actual value is a live authentication secret — a
+   * password-reset/activation code, a device-verification OTP. sendNotification redacts these
+   * values out of what actually gets persisted to email_messages (the Message Centre's entire data
+   * source, readable by admin/reviewer/auditor) before writing the row; the real SMTP send still
+   * gets the real value. See notification-service.ts's own doc comment on why this exists — a
+   * working authentication secret has no legitimate reason to sit in a database column multiple
+   * internal roles can read back at any time. Also disables "Resend" for a template with any of
+   * these (see message-detail-container.tsx) — resending a redacted value would just send a
+   * placeholder, and issuing a fresh code through the real flow is the correct alternative anyway.
+   */
+  secretVariableNames?: string[];
 }
 
 /** Available on every template, in addition to its own list below — kept out of each definition's own `variables` array so it isn't repeated seven times. */
@@ -117,7 +129,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
       { name: 'recipientName', description: "The account holder's name" },
       { name: 'resetCode', description: 'The 6-digit, single-use reset code' },
       { name: 'resetUrl', description: 'The page where the code is redeemed' }
-    ]
+    ],
+    secretVariableNames: ['resetCode']
   },
   {
     key: 'account_created',
@@ -131,7 +144,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
       { name: 'email', description: 'Their sign-in email address' },
       { name: 'activationCode', description: 'The 6-digit, single-use activation code' },
       { name: 'resetUrl', description: 'The page where the code is redeemed' }
-    ]
+    ],
+    secretVariableNames: ['activationCode']
   },
   {
     key: 'device_verification_code',
@@ -143,7 +157,8 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
     variables: [
       { name: 'recipientName', description: "The account holder's name" },
       { name: 'otp', description: 'The one-time verification code' }
-    ]
+    ],
+    secretVariableNames: ['otp']
   },
   {
     key: 'new_device_signed_in',

@@ -1,7 +1,7 @@
 'use server';
 
-import { auditRepository, usersRepository } from '@ncb/database';
-import { setUserPassword, revokeAllSessionsForUser } from '@ncb/auth/utils';
+import { auditRepository } from '@ncb/database';
+import { revokeAllSessionsForUser } from '@ncb/auth/utils';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { getClientIp } from '../../../lib/client-ip';
 import { validatePasswordAgainstPolicy } from '../../settings/password-policy';
@@ -54,7 +54,7 @@ export async function redeemAccessCodeAction(
     return { ok: false, error: policyError, fieldErrors: { password: policyError } };
   }
 
-  const result = await redeemAccessCode(email, code);
+  const result = await redeemAccessCode(email, code, password);
   if (!result.ok || !result.userId) {
     await recordFailedAccessCodeAttempt(attemptKey);
     return { ok: false, error: result.error ?? 'That code is invalid or has expired.' };
@@ -62,8 +62,10 @@ export async function redeemAccessCodeAction(
 
   await clearAccessCodeAttempts(attemptKey);
 
-  await setUserPassword(result.userId, password);
-  await usersRepository.update(result.userId, { mustChangePassword: false });
+  // The code claim + password change + mustChangePassword clear already committed atomically
+  // inside redeemAccessCode itself (see access-codes-service.ts / claimCodeAndSetPassword) — this
+  // is the one remaining step, a different store (Redis, not Postgres) that can't be part of that
+  // same transaction, and only makes sense to run once the password change has actually committed.
   await revokeAllSessionsForUser(result.userId);
 
   await auditRepository.append({

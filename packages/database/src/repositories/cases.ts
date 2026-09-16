@@ -22,6 +22,14 @@ export interface CaseWithPatient<T = unknown> extends CaseWithPayload<T> {
   patient: { id: string; fullName: string; employeeId: string | null };
 }
 
+/** Thrown by updatePayload when an `expectedVersion` is given and no longer matches — see its own doc comment. Callers can catch this specifically (`instanceof`) rather than string-matching a message. */
+export class CaseVersionConflictError extends Error {
+  constructor() {
+    super('This case was changed since you loaded it — refresh and try again.');
+    this.name = 'CaseVersionConflictError';
+  }
+}
+
 function decryptCase<T = unknown>(row: MedicalCase, masterKey: Buffer): CaseWithPayload<T> {
   if (!row.casePayload) return { ...row, payload: null };
   const record = JSON.parse(Buffer.from(row.casePayload).toString('utf8')) as EncryptedRecord;
@@ -131,21 +139,50 @@ export function createCasesRepository(db: PrismaClient) {
 
     /**
      * Overwrites the encrypted payload — used for the patient intake form's save-progress/submit
-     * and the doctor assessment draft's autosave, neither of which ever touches status/version
-     * directly (that's `transition`'s job). `plainColumns` is an escape hatch for the handful of
-     * un-encrypted columns a payload save sometimes needs to touch alongside it in the same
-     * statement — currently just lastEditedById/lastEditedAt (see saveDoctorAssessmentDraft), not
-     * meant to grow into a general-purpose update method.
+     * and the doctor assessment draft's autosave, neither of which ever touches `status` directly
+     * (that's `transition`'s job) or bumps `version` itself (a draft save isn't a workflow event the
+     * way a real transition is, and bumping it here would make every editor's own next autosave
+     * immediately "conflict" with itself unless the client also tracked the new version after every
+     * save — see access-codes-service.ts's analogous atomic-claim comment for why avoiding that kind
+     * of client-side version bookkeeping was the deliberate choice here too).
+     *
+     * `expectedVersion`, when given, still checks — without incrementing — that the case hasn't
+     * moved on (a real transition, reassignment, etc.) since whoever's calling this last read it,
+     * via the same conditional-`updateMany`-and-check-the-count shape used elsewhere in this
+     * codebase for real optimistic concurrency (see accessCodesRepository.claimCodeAndSetPassword).
+     * Throws CaseVersionConflictError on a mismatch rather than silently overwriting — confirmed via
+     * real code reading (not assumed) that the previous version of this method had no such check at
+     * all, so two concurrent editors' saves would just silently stomp each other with no error to
+     * either of them. Omit `expectedVersion` for a caller with no meaningful version context of its
+     * own to check against (e.g. clearDoctorAssessmentDraft's internal post-submission cleanup).
+     *
+     * `plainColumns` is an escape hatch for the handful of un-encrypted columns a payload save
+     * sometimes needs to touch alongside it in the same statement — currently just
+     * lastEditedById/lastEditedAt (see saveDoctorAssessmentDraft), not meant to grow into a
+     * general-purpose update method.
      */
     async updatePayload(
       id: string,
       payload: unknown,
       masterKey: Buffer,
-      plainColumns?: { lastEditedById?: string | null; lastEditedAt?: Date | null }
+      plainColumns?: { lastEditedById?: string | null; lastEditedAt?: Date | null },
+      expectedVersion?: number
     ): Promise<MedicalCase> {
       const record = encryptJson(masterKey, payload ?? {});
       const casePayload = Buffer.from(JSON.stringify(record), 'utf8');
-      return db.medicalCase.update({ where: { id }, data: { casePayload, ...plainColumns } });
+
+      if (expectedVersion === undefined) {
+        return db.medicalCase.update({ where: { id }, data: { casePayload, ...plainColumns } });
+      }
+
+      const { count } = await db.medicalCase.updateMany({
+        where: { id, version: expectedVersion },
+        data: { casePayload, ...plainColumns }
+      });
+      if (count === 0) {
+        throw new CaseVersionConflictError();
+      }
+      return db.medicalCase.findFirstOrThrow({ where: { id } });
     },
 
     async create(input: NewCaseInput, masterKey: Buffer): Promise<MedicalCase> {

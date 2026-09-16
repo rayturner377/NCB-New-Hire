@@ -24,12 +24,22 @@ vi.mock('@ncb/database', () => ({
 }));
 vi.mock('../../../settings/services/settings-service', () => ({ getSettings: (...args: unknown[]) => getSettingsMock(...args) }));
 vi.mock('../../registry', () => ({ findNotificationTemplateDefinition: (...args: unknown[]) => findDefinitionMock(...args) }));
+/** Real (not identity) substitution — needed so a test can actually observe a variable's value ending up in the rendered output, e.g. the redaction tests below. */
+function realSubstitute(template: string, variables: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, name) => variables[name] ?? match);
+}
 vi.mock('../../template-rendering', () => ({
-  substituteVariables: (template: string) => template,
-  substituteBodyVariables: (template: string) => template
+  substituteVariables: (template: string, variables: Record<string, string>) => realSubstitute(template, variables),
+  substituteBodyVariables: (template: string, variables: Record<string, string>) => realSubstitute(template, variables)
 }));
-vi.mock('../../emails/notification-email', () => ({ NotificationEmail: () => null }));
-vi.mock('@react-email/render', () => ({ render: async (_el: unknown, options?: { plainText?: boolean }) => (options?.plainText ? 'plain text body' : '<p>html body</p>') }));
+// Real components/render are mocked out entirely, but the mock still has to carry `bodyHtml`
+// through to `render`'s output — otherwise no test could ever observe a substituted variable
+// actually reaching the rendered email (see the redaction tests below).
+vi.mock('../../emails/notification-email', () => ({ NotificationEmail: (props: { bodyHtml: string }) => props }));
+vi.mock('@react-email/render', () => ({
+  render: async (el: { bodyHtml?: string } | null, options?: { plainText?: boolean }) =>
+    options?.plainText ? 'plain text body' : `<p>${el?.bodyHtml ?? 'html body'}</p>`
+}));
 vi.mock('../../../../lib/mail', () => ({ sendMail: (...args: unknown[]) => sendMailMock(...args) }));
 vi.mock('../../../../lib/image-data-url', () => ({ isSvgDataUrl: (...args: [string]) => isSvgDataUrlMock(...args) }));
 vi.mock('../../../../lib/inline-images', () => ({ inlineDataUrlImages: (...args: [string]) => inlineDataUrlImagesMock(...args) }));
@@ -151,6 +161,25 @@ describe('sendNotification', () => {
     expect(emailCreateMock).toHaveBeenCalledWith(expect.objectContaining({ id, status: 'failed', errorMessage: 'Connection refused' }));
   });
 
+  it('redacts a secret-bearing variable from the persisted row but sends the real value over SMTP', async () => {
+    findDefinitionMock.mockImplementation((key: string) =>
+      key === 'device_verification_code'
+        ? { key, label: 'OTP', defaultSubject: 'Your code', defaultBody: 'Your code is {{otp}}', secretVariableNames: ['otp'] }
+        : undefined
+    );
+    sendMailMock.mockResolvedValue(undefined);
+
+    await sendNotification({ templateKey: 'device_verification_code', to: 'doctor@ncb.local', variables: { otp: '482913' } });
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(sendMailMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ html: expect.stringContaining('482913') }));
+    expect(emailCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ bodyHtml: expect.not.stringContaining('482913') })
+    );
+    expect(emailCreateMock).toHaveBeenCalledWith(expect.objectContaining({ bodyHtml: expect.stringContaining('[redacted]') }));
+  });
+
   it('never lets a failure while recording the failed row escape as an unhandled rejection', async () => {
     sendMailMock.mockRejectedValue(new Error('Connection refused'));
     emailCreateMock.mockRejectedValue(new Error('DB connection lost'));
@@ -229,10 +258,27 @@ describe('resendEmailMessage', () => {
     sendMailMock.mockReset();
     inlineDataUrlImagesMock.mockClear();
     auditAppendMock.mockReset();
+    findDefinitionMock.mockReset();
 
     getSettingsMock.mockResolvedValue({
       mail: { enabled: true, fromEmail: 'noreply@ncb.local', host: 'smtp.local', port: 587, username: '', password: '', secure: false }
     });
+  });
+
+  it('refuses to resend a message whose template carries an authentication secret', async () => {
+    emailFindByIdMock.mockResolvedValue({
+      id: 'msg_1',
+      templateKey: 'device_verification_code',
+      toEmail: 'a@b.com',
+      ccEmails: null,
+      bccEmails: null,
+      subject: 'Your code',
+      bodyHtml: '<p>Your code is [redacted]</p>'
+    });
+    findDefinitionMock.mockReturnValue({ key: 'device_verification_code', label: 'OTP', secretVariableNames: ['otp'] });
+
+    await expect(resendEmailMessage('msg_1')).rejects.toThrow(/can.?t be resent/);
+    expect(sendMailMock).not.toHaveBeenCalled();
   });
 
   it('throws when the message does not exist', async () => {

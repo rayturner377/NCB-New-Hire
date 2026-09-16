@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { CaseVersionConflictError } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { PERMISSIONS, requirePermission, ForbiddenError } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
@@ -47,7 +48,14 @@ export async function setCaseHiddenAction(
     return { ok: false, error: 'Case not found.' };
   }
 
-  await setCaseHidden(caseId, hidden, session.user.id, medicalCase.payload);
+  try {
+    await setCaseHidden(caseId, hidden, session.user.id, medicalCase.payload, medicalCase.version);
+  } catch (error) {
+    if (error instanceof CaseVersionConflictError) {
+      return { ok: false, error: error.message };
+    }
+    throw error;
+  }
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath('/cases');

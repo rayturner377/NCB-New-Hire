@@ -1,7 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import type { AccessCode, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
 
 export type AccessCodePurpose = 'account_activation' | 'password_reset';
+
+export interface ClaimCodeAndSetPasswordInput {
+  codeId: string;
+  userId: string;
+  /** Already hashed — the CPU-bound scrypt work has no need to happen inside this transaction, and doing it before means the transaction (and whatever row locks it holds) stays as short as possible. */
+  passwordHash: string;
+}
 
 export interface CreateAccessCodeInput {
   id: string;
@@ -34,6 +42,23 @@ export function createAccessCodesRepository(db: PrismaClient) {
       return db.accessCode.update({ where: { id }, data: { attemptCount: { increment: 1 } } });
     },
 
+    /**
+     * Invalidates every currently-live (unused, unexpired) code for this user/purpose — called
+     * right before issuing a new one (see access-codes-service.ts's issueAccessCode). Without this,
+     * an older code stays fully redeemable in parallel with a newer one, and — since
+     * findLatestActive only ever excludes a USED/expired code, not a merely-superseded one — becomes
+     * "the latest active code" again the moment the newer one is consumed, silently un-superseding
+     * itself. `updateMany` rather than looking one up first: there's no reason to serialize on a
+     * read when the intent ("kill every live code for this purpose") doesn't depend on how many
+     * there currently are.
+     */
+    invalidateAllActive(userId: string, purpose: AccessCodePurpose): Promise<{ count: number }> {
+      return db.accessCode.updateMany({
+        where: { userId, purpose, usedAt: null, expiresAt: { gt: new Date() } },
+        data: { usedAt: new Date() }
+      });
+    },
+
     markUsed(id: string): Promise<AccessCode> {
       return db.accessCode.update({ where: { id }, data: { usedAt: new Date() } });
     },
@@ -41,6 +66,46 @@ export function createAccessCodesRepository(db: PrismaClient) {
     /** Locks a code out immediately (e.g. after too many wrong attempts) without waiting for its natural expiry — a used-but-not-successfully-redeemed marker. */
     invalidate(id: string): Promise<AccessCode> {
       return db.accessCode.update({ where: { id }, data: { usedAt: new Date() } });
+    },
+
+    /**
+     * The real redemption — claiming the code and applying the password change it authorizes, in
+     * one transaction. Two things this closes that separate calls couldn't:
+     *
+     * 1. Two concurrent redemptions of the same code can no longer both succeed. The claim itself is
+     *    a conditional `updateMany` (`WHERE id = ? AND usedAt IS NULL AND expiresAt > now()`), and
+     *    Postgres's own row locking inside the transaction serializes concurrent attempts against it
+     *    — only one can ever see `count === 1`; every other racing caller sees `count === 0` and this
+     *    returns `false` without touching the account at all. Checking the code's validity via a
+     *    prior read (access-codes-service.ts's own checkAccessCode) is still what decides whether to
+     *    call this at all, but the CLAIM itself — the only step that actually matters for
+     *    correctness — never trusts that earlier read alone.
+     * 2. The password/account write and the mustChangePassword clear commit together with the claim
+     *    or not at all — no more "code marked used but password never actually changed" if the
+     *    process dies mid-sequence. Session revocation (features/auth/actions/redeem-access-code.ts)
+     *    still happens as a separate step after this commits, since it's a different store (Redis,
+     *    not Postgres) a single Prisma transaction can't span.
+     */
+    async claimCodeAndSetPassword(input: ClaimCodeAndSetPasswordInput): Promise<boolean> {
+      return db.$transaction(async (tx) => {
+        const claim = await tx.accessCode.updateMany({
+          where: { id: input.codeId, usedAt: null, expiresAt: { gt: new Date() } },
+          data: { usedAt: new Date() }
+        });
+        if (claim.count === 0) return false;
+
+        const existingAccount = await tx.account.findFirst({ where: { userId: input.userId, providerId: 'credential' } });
+        if (existingAccount) {
+          await tx.account.update({ where: { id: existingAccount.id }, data: { password: input.passwordHash } });
+        } else {
+          await tx.account.create({
+            data: { id: randomUUID(), accountId: input.userId, providerId: 'credential', userId: input.userId, password: input.passwordHash }
+          });
+        }
+        await tx.appUser.update({ where: { id: input.userId }, data: { mustChangePassword: false } });
+
+        return true;
+      });
     }
   };
 }

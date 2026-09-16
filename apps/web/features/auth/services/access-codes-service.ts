@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { accessCodesRepository, usersRepository, type AccessCodePurpose } from '@ncb/database';
+import { hashPassword } from '@ncb/auth/utils';
 import { generateAccessCode, hashAccessCode, verifyAccessCodeHash } from '@ncb/shared';
 
 /**
@@ -24,8 +25,14 @@ const MAX_ATTEMPTS = 5;
  * returning the raw code to email — never persisted or logged anywhere else.
  * `ttlMs` overrides the purpose's own default — see activation-code-ttl.ts's
  * admin-facing presets for account_activation.
+ *
+ * Invalidates any code this same purpose already has live first — without this, an earlier
+ * unexpired code stays fully redeemable alongside the new one, and (since findLatestActive only
+ * ever skips a used/expired code, not a merely-superseded one) becomes "the latest active code"
+ * again the instant the new one is consumed, silently un-superseding itself.
  */
 export async function issueAccessCode(userId: string, purpose: AccessCodePurpose, ttlMs = DEFAULT_TTL_MS[purpose]): Promise<string> {
+  await accessCodesRepository.invalidateAllActive(userId, purpose);
   const code = generateAccessCode();
   await accessCodesRepository.create({
     id: randomUUID(),
@@ -40,6 +47,8 @@ export async function issueAccessCode(userId: string, purpose: AccessCodePurpose
 export interface CheckAccessCodeResult {
   ok: boolean;
   userId?: string;
+  /** Internal — lets redeemAccessCode below target the exact row it just checked with an atomic claim, instead of re-querying "latest active" a second time (which would reopen the same race this exists to close). Not meaningful to a caller outside this file. */
+  codeId?: string;
   purpose?: AccessCodePurpose;
   error?: string;
 }
@@ -49,16 +58,15 @@ const GENERIC_CODE_ERROR = 'That code is invalid or has expired. Request a new o
 /**
  * Shared by verifyAccessCode and redeemAccessCode below — looks up the
  * user's latest live code and checks it against the supplied one, tracking
- * wrong attempts either way. `consume` controls only whether a *correct*
- * code gets marked used: verifyAccessCode (the unified sign-in page's
- * "does this code match" step, called before the new-password fields ever
- * appear) leaves it live so the same code can still be redeemed for real
- * afterwards; redeemAccessCode (the actual password-setting step) consumes
- * it. Every failure path returns the same generic error (no email/wrong-code
- * distinction) to avoid confirming which part was wrong, same posture as
- * login.ts.
+ * wrong attempts either way. Never marks a *correct* code used itself
+ * (verifyAccessCode never should; redeemAccessCode does that atomically,
+ * together with the password change it authorizes — see
+ * claimCodeAndSetPassword's own doc comment on why a plain "mark used here,
+ * change the password over there" sequence isn't safe). Every failure path
+ * returns the same generic error (no email/wrong-code distinction) to avoid
+ * confirming which part was wrong, same posture as login.ts.
  */
-async function checkAccessCode(email: string, code: string, consume: boolean): Promise<CheckAccessCodeResult> {
+async function checkAccessCode(email: string, code: string): Promise<CheckAccessCodeResult> {
   const user = await usersRepository.findByEmail(email.toLowerCase());
   if (!user) {
     return { ok: false, error: GENERIC_CODE_ERROR };
@@ -82,10 +90,7 @@ async function checkAccessCode(email: string, code: string, consume: boolean): P
     return { ok: false, error: GENERIC_CODE_ERROR };
   }
 
-  if (consume) {
-    await accessCodesRepository.markUsed(accessCode.id);
-  }
-  return { ok: true, userId: user.id, purpose: accessCode.purpose as AccessCodePurpose };
+  return { ok: true, userId: user.id, codeId: accessCode.id, purpose: accessCode.purpose as AccessCodePurpose };
 }
 
 /**
@@ -116,19 +121,47 @@ export async function hasLiveAccessCode(email: string): Promise<boolean> {
  * actually sets the password afterwards.
  */
 export function verifyAccessCode(email: string, code: string): Promise<CheckAccessCodeResult> {
-  return checkAccessCode(email, code, false);
+  return checkAccessCode(email, code);
 }
 
-export type RedeemAccessCodeResult = CheckAccessCodeResult;
+export interface RedeemAccessCodeResult {
+  ok: boolean;
+  userId?: string;
+  purpose?: AccessCodePurpose;
+  error?: string;
+}
 
 /**
- * Looks up the user by email and verifies the code against their latest live
- * code — deliberately purpose-agnostic (an account-activation and a
- * password-reset code are redeemed through the exact same form) so the
- * caller doesn't need to know in advance which kind was issued; the result's
- * own `purpose` tells it which one matched. Marks the code used on success,
- * unlike verifyAccessCode above.
+ * The real, final redemption — verifies the code, then atomically claims it and applies the
+ * password change it authorizes in a single database transaction (see
+ * accessCodesRepository.claimCodeAndSetPassword's own doc comment). Two failure modes this closes
+ * that a separate "check, then mark used, then set the password" sequence couldn't:
+ *
+ * - Two concurrent submissions of the same correct code can no longer both succeed — only the first
+ *   to win the atomic claim actually changes the password; the loser gets the same generic error as
+ *   an outright wrong code, not a misleading "success" that silently didn't take effect.
+ * - A crash between "code marked used" and "password actually changed" can no longer leave the
+ *   account in a half-changed state — both commit together or neither does.
+ *
+ * Session revocation is still the caller's own job afterward (features/auth/actions/
+ * redeem-access-code.ts) — Redis, not Postgres, so it can't be part of the same transaction, and
+ * only makes sense to run once the password change has actually committed.
  */
-export function redeemAccessCode(email: string, code: string): Promise<RedeemAccessCodeResult> {
-  return checkAccessCode(email, code, true);
+export async function redeemAccessCode(email: string, code: string, newPassword: string): Promise<RedeemAccessCodeResult> {
+  const checked = await checkAccessCode(email, code);
+  if (!checked.ok || !checked.userId || !checked.codeId) {
+    return { ok: false, error: checked.error };
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  const claimed = await accessCodesRepository.claimCodeAndSetPassword({
+    codeId: checked.codeId,
+    userId: checked.userId,
+    passwordHash
+  });
+  if (!claimed) {
+    return { ok: false, error: GENERIC_CODE_ERROR };
+  }
+
+  return { ok: true, userId: checked.userId, purpose: checked.purpose };
 }

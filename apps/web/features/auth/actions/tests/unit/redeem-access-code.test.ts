@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auditAppend = vi.fn();
-const updateMock = vi.fn();
-const setUserPasswordMock = vi.fn();
 const revokeAllSessionsForUserMock = vi.fn();
 const getSettingsMock = vi.fn();
 const redeemAccessCodeMock = vi.fn();
@@ -12,11 +10,9 @@ const clearAccessCodeAttemptsMock = vi.fn();
 const validatePasswordAgainstPolicyMock = vi.fn();
 
 vi.mock('@ncb/database', () => ({
-  auditRepository: { append: (...args: unknown[]) => auditAppend(...args) },
-  usersRepository: { update: (...args: unknown[]) => updateMock(...args) }
+  auditRepository: { append: (...args: unknown[]) => auditAppend(...args) }
 }));
 vi.mock('@ncb/auth/utils', () => ({
-  setUserPassword: (...args: unknown[]) => setUserPasswordMock(...args),
   revokeAllSessionsForUser: (...args: unknown[]) => revokeAllSessionsForUserMock(...args)
 }));
 vi.mock('../../../../../lib/assert-same-origin', () => ({ assertSameOrigin: async () => undefined }));
@@ -48,8 +44,6 @@ const validFields = { email: 'jane@example.com', code: '482913', password: valid
 describe('redeemAccessCodeAction', () => {
   beforeEach(() => {
     auditAppend.mockReset();
-    updateMock.mockReset();
-    setUserPasswordMock.mockReset();
     revokeAllSessionsForUserMock.mockReset();
     getSettingsMock.mockReset();
     getSettingsMock.mockResolvedValue({ userPolicy: { minPasswordLength: 12, requireUppercase: false, requireNumber: false, requireSymbol: false } });
@@ -103,17 +97,23 @@ describe('redeemAccessCodeAction', () => {
 
     expect(result.ok).toBe(false);
     expect(recordFailedAccessCodeAttemptMock).toHaveBeenCalled();
-    expect(setUserPasswordMock).not.toHaveBeenCalled();
+    expect(revokeAllSessionsForUserMock).not.toHaveBeenCalled();
   });
 
-  it('on success, sets the password, clears mustChangePassword, revokes sessions, and audits account_activated', async () => {
+  it('passes the new password straight through to redeemAccessCode, which owns the atomic claim + password change', async () => {
+    redeemAccessCodeMock.mockResolvedValue({ ok: true, userId: 'usr_1', purpose: 'account_activation' });
+
+    await redeemAccessCodeAction(null, formData(validFields));
+
+    expect(redeemAccessCodeMock).toHaveBeenCalledWith('jane@example.com', '482913', validPassword);
+  });
+
+  it('on success, revokes every session and audits account_activated', async () => {
     redeemAccessCodeMock.mockResolvedValue({ ok: true, userId: 'usr_1', purpose: 'account_activation' });
 
     const result = await redeemAccessCodeAction(null, formData(validFields));
 
     expect(result.ok).toBe(true);
-    expect(setUserPasswordMock).toHaveBeenCalledWith('usr_1', validPassword);
-    expect(updateMock).toHaveBeenCalledWith('usr_1', { mustChangePassword: false });
     expect(revokeAllSessionsForUserMock).toHaveBeenCalledWith('usr_1');
     expect(clearAccessCodeAttemptsMock).toHaveBeenCalled();
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'account_activated', entityId: 'usr_1' }));

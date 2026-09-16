@@ -139,6 +139,11 @@ export async function sendNotification(input: SendNotificationInput): Promise<st
   const ccEmails = [rendered.ccEmails, input.extraCc].filter(Boolean).join(',') || undefined;
   const bccEmails = rendered.bccEmails;
 
+  // The real, un-redacted values for whatever this template declares as secret (see registry.ts's
+  // own doc comment on secretVariableNames) — dispatchNotification uses these to scrub the copy it
+  // persists to email_messages, after the real SMTP send below already went out with the real value.
+  const secretValues = (definition.secretVariableNames ?? []).map((name) => input.variables[name]).filter((value): value is string => Boolean(value));
+
   const id = randomUUID();
   void dispatchNotification({
     id,
@@ -149,6 +154,7 @@ export async function sendNotification(input: SendNotificationInput): Promise<st
     subject: rendered.subject,
     html: rendered.html,
     text: rendered.text,
+    secretValues,
     entityType: input.entityType,
     entityId: input.entityId,
     mailSettings: settings.mail
@@ -166,13 +172,28 @@ interface DispatchNotificationInput {
   subject: string;
   html: string;
   text: string;
+  /** See sendNotification's own comment — real values to scrub out of what gets persisted below. */
+  secretValues: string[];
   entityType?: string;
   entityId?: string;
   mailSettings: Awaited<ReturnType<typeof getSettings>>['mail'];
 }
 
+/**
+ * Never persist a live authentication secret — see registry.ts's `secretVariableNames` doc comment.
+ * A plain string replace (not touching the template/markup around it) is enough: these values are
+ * short, random, single-use codes, never something that could coincidentally collide with
+ * legitimate surrounding content.
+ */
+function redactSecrets(text: string, secretValues: string[]): string {
+  return secretValues.reduce((result, value) => result.split(value).join('[redacted]'), text);
+}
+
 /** The actual send + logging, run detached from the caller — see sendNotification's own doc comment for why. */
 async function dispatchNotification(input: DispatchNotificationInput): Promise<void> {
+  const storedSubject = redactSecrets(input.subject, input.secretValues);
+  const storedHtml = redactSecrets(input.html, input.secretValues);
+
   try {
     // Swapped to cid: references only for the actual SMTP send — most real inboxes strip inline
     // base64 images outright (see inline-images.ts), but the row below still stores the original
@@ -193,8 +214,8 @@ async function dispatchNotification(input: DispatchNotificationInput): Promise<v
       toEmail: input.to,
       ccEmails: input.ccEmails,
       bccEmails: input.bccEmails,
-      subject: input.subject,
-      bodyHtml: input.html,
+      subject: storedSubject,
+      bodyHtml: storedHtml,
       status: 'sent',
       entityType: input.entityType,
       entityId: input.entityId
@@ -212,8 +233,8 @@ async function dispatchNotification(input: DispatchNotificationInput): Promise<v
         toEmail: input.to,
         ccEmails: input.ccEmails,
         bccEmails: input.bccEmails,
-        subject: input.subject,
-        bodyHtml: input.html,
+        subject: storedSubject,
+        bodyHtml: storedHtml,
         status: 'failed',
         errorMessage: error instanceof Error ? error.message : String(error),
         entityType: input.entityType,
@@ -236,6 +257,17 @@ export async function resendEmailMessage(id: string, actorId?: string): Promise<
   const message = await emailMessagesRepository.findById(id);
   if (!message) {
     throw new Error('Message not found.');
+  }
+
+  // The stored body already has its secret redacted (see dispatchNotification/redactSecrets above)
+  // — resending it would just send someone a placeholder, and a real replacement code should come
+  // from the actual flow (request a new reset/activation code, sign in again) rather than a stale
+  // one replayed from the Message Centre. Enforced here, not just hidden in the UI (see
+  // message-detail-container.tsx's own canResend check), since this is the one place every resend
+  // path actually goes through.
+  const definition = message.templateKey ? findNotificationTemplateDefinition(message.templateKey) : undefined;
+  if (definition?.secretVariableNames?.length) {
+    throw new Error('This message contained a security code and can’t be resent — ask the recipient to request a new one instead.');
   }
 
   // Recorded regardless of the resend's own delivery outcome (tracked separately on the

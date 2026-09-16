@@ -91,21 +91,33 @@ export async function getCaseWithPatientById(id: string) {
 }
 
 /**
- * Save-progress — the patient intake form's autosave/"Save". No status/version
+ * Save-progress — the patient intake form's autosave/"Save". No status
  * change, so it can be called any number of times while the case sits at
  * `sent_to_patient`. `updatePayload` replaces the whole encrypted payload
  * rather than merging, so `existingPayload` (the case's payload as already
  * fetched by the caller, e.g. save-patient-case.ts) carries forward anything
  * else already on it — `positionAppliedFor`, set at case creation, would
  * otherwise be silently wiped the first time the patient saves.
+ *
+ * `expectedVersion` — the caller's own freshly-read version (see
+ * updatePayload's own doc comment on why this is a real, if narrower, guard
+ * than a client-round-tripped one) — rejects this save if the case moved on
+ * since that read, rather than silently overwriting.
  */
 export async function savePatientCaseProgress(
   caseId: string,
   patientCaseData: PatientCaseData,
-  existingPayload?: CasePayload | null
+  existingPayload: CasePayload | null | undefined,
+  expectedVersion: number
 ): Promise<void> {
   const masterKey = loadMasterKey();
-  await casesRepository.updatePayload(caseId, { ...existingPayload, patientCaseData } satisfies CasePayload, masterKey);
+  await casesRepository.updatePayload(
+    caseId,
+    { ...existingPayload, patientCaseData } satisfies CasePayload,
+    masterKey,
+    undefined,
+    expectedVersion
+  );
 }
 
 /**
@@ -147,26 +159,47 @@ export async function submitPatientCase(
 
 /**
  * The doctor assessment form's autosave — mirrors savePatientCaseProgress's
- * shape (no status/version change, no validation, replace-the-whole-payload
- * carrying the rest of it forward) but for the doctor's side instead of the
- * patient's. Also stamps who last touched the draft and when — a lightweight
- * byline (see MedicalCase.lastEditedById/lastEditedAt), not an audit-log
- * entry; autosave is silent for everyone, doctor included, and stays that
- * way. Set on every save regardless of actor, so the byline reflects the
- * doctor's own edits too, not just a delegate's.
+ * shape (no status change, no validation, carry the rest of the payload
+ * forward) but for the doctor's side instead of the patient's. Also stamps
+ * who last touched the draft and when — a lightweight byline (see
+ * MedicalCase.lastEditedById/lastEditedAt), not an audit-log entry; autosave
+ * is silent for everyone, doctor included, and stays that way. Set on every
+ * save regardless of actor, so the byline reflects the doctor's own edits
+ * too, not just a delegate's.
+ *
+ * `doctorAssessmentDraft` itself is shallow-merged, not replaced wholesale —
+ * confirmed via real code reading that a full replace here was a real,
+ * always-reproducible bug: save-submission-draft.ts's own defense-in-depth
+ * strips `determination`/`attestation` out of a delegate's own posted draft
+ * (a delegate must never set those, even if the client somehow sent them),
+ * but a delegate saving AFTER the doctor had already filled those fields in
+ * would silently erase them from the stored record, since a full replace of
+ * doctorAssessmentDraft has no way to know they were ever there. A shallow
+ * merge only touches keys actually present in the incoming `draft`, so an
+ * absent key (deleted, not merely blank) leaves whatever was already stored
+ * untouched.
+ *
+ * `expectedVersion` — see savePatientCaseProgress's own doc comment on the
+ * same parameter; here it's the case's version as read by the caller
+ * (save-submission-draft.ts's own fresh getCaseById at the top of that
+ * action), not a value round-tripped from the client, so a doctor's own
+ * rapid repeated autosaves never spuriously conflict with themselves.
  */
 export async function saveDoctorAssessmentDraft(
   caseId: string,
   draft: Record<string, unknown>,
   existingPayload: CasePayload | null | undefined,
-  actorId: string
+  actorId: string,
+  expectedVersion: number
 ): Promise<void> {
   const masterKey = loadMasterKey();
+  const mergedDraft = { ...existingPayload?.doctorAssessmentDraft, ...draft };
   await casesRepository.updatePayload(
     caseId,
-    { ...existingPayload, doctorAssessmentDraft: draft } satisfies CasePayload,
+    { ...existingPayload, doctorAssessmentDraft: mergedDraft } satisfies CasePayload,
     masterKey,
-    { lastEditedById: actorId, lastEditedAt: new Date() }
+    { lastEditedById: actorId, lastEditedAt: new Date() },
+    expectedVersion
   );
 }
 
@@ -403,10 +436,11 @@ export async function setCaseHidden(
   caseId: string,
   hidden: boolean,
   actorId: string,
-  existingPayload?: CasePayload | null
+  existingPayload: CasePayload | null | undefined,
+  expectedVersion: number
 ): Promise<void> {
   const masterKey = loadMasterKey();
-  await casesRepository.updatePayload(caseId, { ...existingPayload, hidden } satisfies CasePayload, masterKey);
+  await casesRepository.updatePayload(caseId, { ...existingPayload, hidden } satisfies CasePayload, masterKey, undefined, expectedVersion);
   await auditRepository.append({
     eventType: hidden ? 'case_hidden' : 'case_unhidden',
     actorUserId: actorId,

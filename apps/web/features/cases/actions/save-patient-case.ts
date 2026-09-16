@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { CaseVersionConflictError } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { parseAndValidateImageDataUrl } from '../../../lib/image-data-url';
 import { requireFullSession } from '../../../lib/session';
@@ -60,7 +61,14 @@ export async function savePatientCaseAction(
   const patientCaseData = parsePatientCaseData(formData);
 
   if (intent !== 'submit') {
-    await savePatientCaseProgress(caseId, patientCaseData, medicalCase.payload);
+    try {
+      await savePatientCaseProgress(caseId, patientCaseData, medicalCase.payload, medicalCase.version);
+    } catch (error) {
+      if (error instanceof CaseVersionConflictError) {
+        return { ok: false, error: error.message };
+      }
+      throw error;
+    }
     revalidatePath(`/cases/${caseId}`);
     return { ok: true, message: 'Draft saved.' };
   }

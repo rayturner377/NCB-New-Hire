@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CaseVersionConflictError } from '@ncb/database';
 import { FAMILY_DISORDER_CATALOG, MEDICAL_DISEASE_CATALOG } from '../../../patient-case-data';
 
 const getSessionMock = vi.fn();
@@ -118,8 +119,17 @@ describe('savePatientCaseAction', () => {
     const result = await savePatientCaseAction(null, formData({ caseId: 'case_1', intent: 'draft' }));
 
     expect(result).toEqual({ ok: true, message: 'Draft saved.' });
-    expect(savePatientCaseProgressMock).toHaveBeenCalled();
+    expect(savePatientCaseProgressMock).toHaveBeenCalledWith('case_1', expect.any(Object), pendingCase.payload, pendingCase.version);
     expect(submitPatientCaseMock).not.toHaveBeenCalled();
+  });
+
+  it('reports a friendly error, not a thrown exception, when the draft save loses a version race', async () => {
+    savePatientCaseProgressMock.mockRejectedValue(new CaseVersionConflictError());
+
+    const result = await savePatientCaseAction(null, formData({ caseId: 'case_1', intent: 'draft' }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/changed since you loaded it/i);
   });
 
   it('rejects submission without full consent', async () => {

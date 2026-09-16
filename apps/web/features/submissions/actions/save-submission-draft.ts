@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { CaseVersionConflictError } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { parseNestedFormData } from '../../../lib/form-data-to-object';
 import { ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../lib/permissions';
@@ -67,7 +68,14 @@ export async function saveSubmissionDraftAction(
     delete draft.attestation;
   }
 
-  await saveDoctorAssessmentDraft(caseId, draft, medicalCase.payload, session.user.id);
+  try {
+    await saveDoctorAssessmentDraft(caseId, draft, medicalCase.payload, session.user.id, medicalCase.version);
+  } catch (error) {
+    if (error instanceof CaseVersionConflictError) {
+      return { ok: false, error: error.message };
+    }
+    throw error;
+  }
   revalidatePath(`/cases/${caseId}`);
   return { ok: true };
 }

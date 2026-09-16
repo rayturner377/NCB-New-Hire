@@ -308,30 +308,58 @@ describe('cases service', () => {
     expect(auditListForEntity).toHaveBeenCalledWith('case', 'case_1');
   });
 
-  it('setCaseHidden writes the flag into the payload alongside whatever else was there, and audits it', async () => {
-    await setCaseHidden('case_1', true, 'usr_reviewer_demo', { caseType: 'pre_employment' });
+  it('setCaseHidden writes the flag into the payload alongside whatever else was there, checks the caller-supplied version, and audits it', async () => {
+    await setCaseHidden('case_1', true, 'usr_reviewer_demo', { caseType: 'pre_employment' }, 4);
 
-    expect(updatePayload).toHaveBeenCalledWith('case_1', { caseType: 'pre_employment', hidden: true }, masterKey);
+    expect(updatePayload).toHaveBeenCalledWith('case_1', { caseType: 'pre_employment', hidden: true }, masterKey, undefined, 4);
     expect(auditAppend).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'case_hidden', actorUserId: 'usr_reviewer_demo', entityType: 'case', entityId: 'case_1' })
     );
   });
 
   it('setCaseHidden(false) unhides and audits case_unhidden', async () => {
-    await setCaseHidden('case_1', false, 'usr_reviewer_demo', { hidden: true });
+    await setCaseHidden('case_1', false, 'usr_reviewer_demo', { hidden: true }, 4);
 
-    expect(updatePayload).toHaveBeenCalledWith('case_1', { hidden: false }, masterKey);
+    expect(updatePayload).toHaveBeenCalledWith('case_1', { hidden: false }, masterKey, undefined, 4);
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'case_unhidden' }));
   });
 
   it('saveDoctorAssessmentDraft persists the draft and stamps who last edited it, alongside whatever else was in the payload', async () => {
-    await saveDoctorAssessmentDraft('case_1', { assessment: { note: 'wip' } }, { caseType: 'pre_employment' }, 'usr_delegate_demo');
+    await saveDoctorAssessmentDraft('case_1', { assessment: { note: 'wip' } }, { caseType: 'pre_employment' }, 'usr_delegate_demo', 4);
 
     expect(updatePayload).toHaveBeenCalledWith(
       'case_1',
       { caseType: 'pre_employment', doctorAssessmentDraft: { assessment: { note: 'wip' } } },
       masterKey,
-      { lastEditedById: 'usr_delegate_demo', lastEditedAt: expect.any(Date) }
+      { lastEditedById: 'usr_delegate_demo', lastEditedAt: expect.any(Date) },
+      4
+    );
+  });
+
+  it('saveDoctorAssessmentDraft preserves attestation/determination a delegate is not allowed to send, instead of erasing them', async () => {
+    const existingPayload = {
+      caseType: 'pre_employment',
+      doctorAssessmentDraft: { assessment: { note: 'doctor wrote this' }, determination: 'fit', attestation: { signed: true } }
+    };
+    // Mirrors save-submission-draft.ts's own defense-in-depth: a delegate's posted draft never has
+    // determination/attestation at all (stripped before this is even called).
+    const delegateDraft = { assessment: { note: 'delegate edit' } };
+
+    await saveDoctorAssessmentDraft('case_1', delegateDraft, existingPayload, 'usr_delegate_demo', 4);
+
+    expect(updatePayload).toHaveBeenCalledWith(
+      'case_1',
+      {
+        caseType: 'pre_employment',
+        doctorAssessmentDraft: {
+          assessment: { note: 'delegate edit' },
+          determination: 'fit',
+          attestation: { signed: true }
+        }
+      },
+      masterKey,
+      { lastEditedById: 'usr_delegate_demo', lastEditedAt: expect.any(Date) },
+      4
     );
   });
 

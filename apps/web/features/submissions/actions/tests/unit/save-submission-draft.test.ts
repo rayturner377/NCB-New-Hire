@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CaseVersionConflictError } from '@ncb/database';
 
 const getSessionMock = vi.fn();
 const getCaseByIdMock = vi.fn();
@@ -25,7 +26,7 @@ function formData(fields: Record<string, string>): FormData {
   return data;
 }
 
-const assignedCase = { id: 'case_1', status: 'sent_to_doctor', assignedClinicianId: 'usr_doc', payload: {} };
+const assignedCase = { id: 'case_1', status: 'sent_to_doctor', assignedClinicianId: 'usr_doc', version: 3, payload: {} };
 
 describe('saveSubmissionDraftAction', () => {
   beforeEach(() => {
@@ -100,7 +101,8 @@ describe('saveSubmissionDraftAction', () => {
       'case_1',
       expect.not.objectContaining({ caseId: expect.anything(), caseVersion: expect.anything() }),
       assignedCase.payload,
-      'usr_doc'
+      'usr_doc',
+      assignedCase.version
     );
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
   });
@@ -111,7 +113,23 @@ describe('saveSubmissionDraftAction', () => {
     const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1', 'exam.height': '170' }));
 
     expect(result).toEqual({ ok: true });
-    expect(saveDoctorAssessmentDraftMock).toHaveBeenCalledWith('case_1', expect.anything(), assignedCase.payload, 'usr_delegate');
+    expect(saveDoctorAssessmentDraftMock).toHaveBeenCalledWith(
+      'case_1',
+      expect.anything(),
+      assignedCase.payload,
+      'usr_delegate',
+      assignedCase.version
+    );
+  });
+
+  it('reports a friendly error, not a thrown exception, when the case changed since it was loaded', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doc', role: 'clinician' } });
+    saveDoctorAssessmentDraftMock.mockRejectedValue(new CaseVersionConflictError());
+
+    const result = await saveSubmissionDraftAction(null, formData({ caseId: 'case_1' }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/changed since you loaded it/i);
   });
 
   it('rejects a delegate whose linked doctor is not the one this case is assigned to', async () => {

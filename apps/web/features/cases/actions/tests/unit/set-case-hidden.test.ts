@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { CaseVersionConflictError } from '@ncb/database';
 
 const getSessionMock = vi.fn();
 const getCaseByIdMock = vi.fn();
@@ -27,7 +28,7 @@ describe('setCaseHiddenAction', () => {
     getCaseByIdMock.mockReset();
     setCaseHiddenMock.mockReset();
     revalidatePathMock.mockClear();
-    getCaseByIdMock.mockResolvedValue({ id: 'case_1', payload: { caseType: 'pre_employment' } });
+    getCaseByIdMock.mockResolvedValue({ id: 'case_1', version: 4, payload: { caseType: 'pre_employment' } });
   });
 
   it('rejects without an active session', async () => {
@@ -60,7 +61,7 @@ describe('setCaseHiddenAction', () => {
     const result = await setCaseHiddenAction(null, formData({ caseId: 'case_1', hidden: 'true' }));
 
     expect(result.ok).toBe(true);
-    expect(setCaseHiddenMock).toHaveBeenCalledWith('case_1', true, 'usr_reviewer_demo', { caseType: 'pre_employment' });
+    expect(setCaseHiddenMock).toHaveBeenCalledWith('case_1', true, 'usr_reviewer_demo', { caseType: 'pre_employment' }, 4);
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases');
   });
@@ -70,6 +71,16 @@ describe('setCaseHiddenAction', () => {
 
     await setCaseHiddenAction(null, formData({ caseId: 'case_1', hidden: 'false' }));
 
-    expect(setCaseHiddenMock).toHaveBeenCalledWith('case_1', false, 'usr_reviewer_demo', { caseType: 'pre_employment' });
+    expect(setCaseHiddenMock).toHaveBeenCalledWith('case_1', false, 'usr_reviewer_demo', { caseType: 'pre_employment' }, 4);
+  });
+
+  it('reports a friendly error, not a thrown exception, when the case changed since it was loaded', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
+    setCaseHiddenMock.mockRejectedValue(new CaseVersionConflictError());
+
+    const result = await setCaseHiddenAction(null, formData({ caseId: 'case_1', hidden: 'true' }));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/changed since you loaded it/i);
   });
 });
