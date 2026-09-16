@@ -57,7 +57,8 @@ export class InvalidAttachmentError extends Error {}
  * dispatchNotification), rather than making the uploader wait on a (possibly deployment-specific,
  * possibly not even configured — see lib/virus-scan.ts) scanner before the upload can even complete.
  * See the attachment route's own gating for what 'pending' means for who can view it in the
- * meantime — including that it means nothing extra at all when no scanner is configured.
+ * meantime — deliberately unconditional: with no scanner configured, `scanStatus` never leaves
+ * 'pending', and by design that means the file stays visible to its uploader only until one is.
  */
 export async function uploadCaseAttachment(input: UploadCaseAttachmentInput): Promise<CaseAttachment> {
   if (!ALLOWED_CONTENT_TYPES.has(input.contentType)) {
@@ -104,8 +105,9 @@ export async function uploadCaseAttachment(input: UploadCaseAttachmentInput): Pr
  * deliberately leaves scanStatus at 'pending' rather than either extreme: not 'clean' (that would be
  * exactly the false assurance this whole fix exists to remove) and not 'rejected' (a transient
  * scanner outage, or scanning simply being off, shouldn't quarantine a legitimate file forever) —
- * the attachment route's own gating decides what 'pending' actually means for who can view it
- * meanwhile, and only restricts anyone when scanning is actually turned on.
+ * the attachment route's own gating restricts a 'pending' file to its uploader unconditionally,
+ * whether or not a scanner is even configured (a deliberate fail-closed choice — see that route's
+ * own comment).
  */
 async function scanAttachmentInBackground(attachmentId: string, data: Buffer): Promise<void> {
   try {

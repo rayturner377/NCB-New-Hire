@@ -12,6 +12,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ncb_medical
       AUDIT_DB_PASSWORD: ${AUDIT_DB_PASSWORD:?set AUDIT_DB_PASSWORD in .env}
+      APP_RUNTIME_DB_PASSWORD: ${APP_RUNTIME_DB_PASSWORD:?set APP_RUNTIME_DB_PASSWORD in .env}
     volumes:
       - ncb-medical-postgres-data:/var/lib/postgresql/data
       # Runs once, only against a freshly-created (empty) data directory — see
@@ -72,6 +73,9 @@ services:
   # One-shot: applies Prisma migrations before the app starts. Kept separate
   # from `web` so a migration failure is visible on its own, matching how
   # .github/workflows/ci.yml's integration-tests job separates the two.
+  # Deliberately still authenticates as ncb_medical_app (the owning/superuser role that created
+  # every table) — migrations need real DDL rights, which no other role has or should have. `web`
+  # below uses a genuinely different, non-superuser credential for its own live runtime connection.
   migrate:
     build:
       context: .
@@ -98,7 +102,12 @@ services:
       # the legacy server's port) can't silently change what next start
       # binds to — environment: here wins over whatever env_file loaded.
       PORT: 3000
-      DATABASE_URL: postgresql://ncb_medical_app:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/ncb_medical?schema=public
+      # ncb_app_runtime, not ncb_medical_app (the migration/ownership role, a Postgres superuser) —
+      # see docker/postgres-init's own role-creation script for why the running app never
+      # authenticates as the superuser that owns every table. This role has ordinary CRUD on every
+      # business table and explicitly none at all on audit_events (see migration
+      # 0026_app_runtime_role) — that table is only ever reached via AUDIT_DATABASE_URL below.
+      DATABASE_URL: postgresql://ncb_app_runtime:${APP_RUNTIME_DB_PASSWORD:?set APP_RUNTIME_DB_PASSWORD in .env}@postgres:5432/ncb_medical?schema=public
       # A separate, least-privileged role for audit_events specifically — see
       # packages/database/src/client.ts's own createAuditPrismaClient() and
       # docker/postgres-init's role-creation script for why this isn't just DATABASE_URL again.

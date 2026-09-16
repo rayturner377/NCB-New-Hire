@@ -5,14 +5,10 @@ const getCaseByIdMock = vi.fn();
 const getCaseAttachmentFileMock = vi.fn();
 const listCandidatesForUserMock = vi.fn();
 const auditAppendMock = vi.fn();
-const isScanningEnabledMock = vi.fn();
 
 vi.mock('../../../../../../lib/session', () => ({
   getSession: (...args: unknown[]) => getSessionMock(...args),
   requireFullSession: (...args: unknown[]) => getSessionMock(...args)
-}));
-vi.mock('../../../../../../lib/virus-scan', () => ({
-  isScanningEnabled: (...args: unknown[]) => isScanningEnabledMock(...args)
 }));
 vi.mock('../../../../../../features/cases/services/cases-service', () => ({
   getCaseById: (...args: unknown[]) => getCaseByIdMock(...args)
@@ -53,12 +49,8 @@ describe('GET /cases/[id]/attachments/[attachmentId]', () => {
     getCaseAttachmentFileMock.mockReset();
     listCandidatesForUserMock.mockReset();
     auditAppendMock.mockReset();
-    isScanningEnabledMock.mockReset();
     getCaseByIdMock.mockResolvedValue(sampleCase);
     getCaseAttachmentFileMock.mockResolvedValue(sampleAttachment);
-    // Scanning-related tests below opt into this explicitly; everything else exercises the
-    // (equally real) "scanning isn't configured at all" default.
-    isScanningEnabledMock.mockReturnValue(true);
   });
 
   it('rejects without an active session', async () => {
@@ -216,10 +208,9 @@ describe('GET /cases/[id]/attachments/[attachmentId]', () => {
   });
 
   it(
-    'lets anyone with normal case access view a pending attachment when scanning is not configured at all — ' +
-      'an optional, unused feature must not lock every attachment to its uploader forever',
+    'rejects a pending attachment for anyone but its uploader even with no scanner configured at all — ' +
+      'the gate is deliberately unconditional, not relaxed just because scanning is off',
     async () => {
-      isScanningEnabledMock.mockReturnValue(false);
       getSessionMock.mockResolvedValue({ user: { id: 'usr_other_reviewer', role: 'reviewer' } });
       getCaseAttachmentFileMock.mockResolvedValue({
         ...sampleAttachment,
@@ -228,20 +219,7 @@ describe('GET /cases/[id]/attachments/[attachmentId]', () => {
 
       const response = await GET(new Request('http://x'), makeParams('case_1', 'att_1'));
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(404);
     }
   );
-
-  it('does not apply the rejected/failed gate either when scanning is not configured', async () => {
-    isScanningEnabledMock.mockReturnValue(false);
-    getSessionMock.mockResolvedValue({ user: { id: 'usr_other_reviewer', role: 'reviewer' } });
-    getCaseAttachmentFileMock.mockResolvedValue({
-      ...sampleAttachment,
-      attachment: { ...sampleAttachment.attachment, scanStatus: 'rejected', uploadedBy: 'usr_someone_else' }
-    });
-
-    const response = await GET(new Request('http://x'), makeParams('case_1', 'att_1'));
-
-    expect(response.status).toBe(200);
-  });
 });
