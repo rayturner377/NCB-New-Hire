@@ -1,3 +1,5 @@
+import { isCancelledCase as sharedIsCancelledCase } from '@ncb/shared';
+
 /** Ported from server.js CASE_ROUTES/CASE_STATUSES (~L291-306). */
 export type CaseRoute = 'patient' | 'doctor';
 
@@ -16,11 +18,12 @@ export type CaseStatus =
 /**
  * A case the doctor/candidate backed out of, rather than one that ran its course — never payable
  * (see billing-status.ts's derivedPaymentStatus) and excluded from billing reports entirely, not
- * even as a $0 "not payable" row. Was duplicated as an identically-valued CANCELED_STATUSES set in
- * both billing-report-service.ts and reviewer-dashboard-service.ts.
+ * even as a $0 "not payable" row. Re-exports @ncb/shared's canonical definition (rather than
+ * re-declaring the status list here) so packages/database's repositories, which can't depend on
+ * apps/web, classify cases the exact same way as the application layer does.
  */
 export function isCancelledCase(status: string): boolean {
-  return status === 'canceled_by_doctor' || status === 'withdrawn';
+  return sharedIsCancelledCase(status);
 }
 
 /**
@@ -30,5 +33,5 @@ export function isCancelledCase(status: string): boolean {
  * countCasesForClinician and patient-dashboard.tsx.
  */
 export function isCaseClosed(status: string): boolean {
-  return status === 'reviewed' || status === 'archived' || status === 'canceled_by_doctor' || status === 'withdrawn';
+  return status === 'reviewed' || status === 'archived' || isCancelledCase(status);
 }

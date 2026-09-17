@@ -2,9 +2,7 @@ import { decryptJson, encryptJson, type EncryptedRecord } from '@ncb/shared';
 import type { MedicalCase, Prisma, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
 import type { PaginatedResult } from '../pagination.js';
-
-/** Matches billing-status.ts's isCancelledCase — kept in sync there, not re-derived, since that's the one place this business rule is defined. */
-const CANCELLED_STATUSES = ['canceled_by_doctor', 'withdrawn'];
+import { buildCaseBillingWhere } from './case-billing-where.js';
 
 export interface CaseSearchFilters {
   /** Matched against the joined patient's fullName — case-insensitive, substring. */
@@ -33,20 +31,9 @@ export function buildCaseSearchWhere(filters: CaseSearchFilters): Prisma.Medical
   if (filters.status) {
     and.push({ status: filters.status });
   }
-  if (filters.billing === 'not_payable') {
-    and.push({ OR: [{ status: { in: CANCELLED_STATUSES } }, { paymentStatus: 'not_payable' }] });
-  } else if (filters.billing === 'paid') {
-    and.push({ status: { notIn: CANCELLED_STATUSES } }, { paymentStatus: 'paid' });
-  } else if (filters.billing === 'unpaid') {
-    and.push(
-      { status: { notIn: CANCELLED_STATUSES } },
-      { OR: [{ paymentStatus: null }, { paymentStatus: { notIn: ['paid', 'not_payable'] } }] }
-    );
-  } else if (filters.billing) {
-    // Not one of the three real BillingStatus values — derivedPaymentStatus could never have
-    // equaled this either, so (matching the old in-memory filter's behavior exactly) no row can
-    // match rather than silently ignoring the filter.
-    and.push({ id: '__no_case_has_this_id__' });
+  const billingWhere = buildCaseBillingWhere(filters.billing);
+  if (billingWhere) {
+    and.push(billingWhere);
   }
   if (filters.from) {
     and.push({ createdAt: { gte: new Date(`${filters.from}T00:00:00.000Z`) } });

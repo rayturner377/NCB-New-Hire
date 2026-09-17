@@ -250,7 +250,9 @@ describe('cases repository', () => {
     it('status and billing compose as independent AND clauses rather than overwriting each other', () => {
       const where = buildCaseSearchWhere({ status: 'sent_to_doctor', billing: 'unpaid' });
       expect(where.AND).toContainEqual({ status: 'sent_to_doctor' });
-      expect(where.AND).toContainEqual({ status: { notIn: CANCELLED } });
+      expect(where.AND).toContainEqual(
+        expect.objectContaining({ status: { notIn: CANCELLED } })
+      );
     });
 
     it('billing "not_payable" matches cancelled statuses OR an explicit not_payable paymentStatus', () => {
@@ -261,7 +263,7 @@ describe('cases repository', () => {
 
     it('billing "paid" excludes cancelled statuses and requires paymentStatus paid', () => {
       expect(buildCaseSearchWhere({ billing: 'paid' })).toEqual({
-        AND: [{ deletedAt: null }, { status: { notIn: CANCELLED } }, { paymentStatus: 'paid' }]
+        AND: [{ deletedAt: null }, { status: { notIn: CANCELLED }, paymentStatus: 'paid' }]
       });
     });
 
@@ -269,8 +271,10 @@ describe('cases repository', () => {
       expect(buildCaseSearchWhere({ billing: 'unpaid' })).toEqual({
         AND: [
           { deletedAt: null },
-          { status: { notIn: CANCELLED } },
-          { OR: [{ paymentStatus: null }, { paymentStatus: { notIn: ['paid', 'not_payable'] } }] }
+          {
+            status: { notIn: CANCELLED },
+            OR: [{ paymentStatus: null }, { paymentStatus: { notIn: ['paid', 'not_payable'] } }]
+          }
         ]
       });
     });
@@ -278,7 +282,7 @@ describe('cases repository', () => {
     it('an unrecognized billing value matches nothing, the same as the old in-memory filter always failing to match', () => {
       // @ts-expect-error deliberately an invalid value, to confirm the fallback for a garbage query param
       const where = buildCaseSearchWhere({ billing: 'garbage' });
-      expect(where.AND).toContainEqual({ id: '__no_case_has_this_id__' });
+      expect(where.AND).toContainEqual({ id: '__no_case_matches_this_billing_value__' });
     });
 
     it('applies from/to as an inclusive createdAt range', () => {

@@ -2,6 +2,7 @@ import { decryptJson, encryptJson, type EncryptedRecord } from '@ncb/shared';
 import type { PatientProfile, Prisma, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
 import type { PaginatedResult } from '../pagination.js';
+import { buildCaseBillingWhere } from './case-billing-where.js';
 
 export interface CandidateInput {
   id: string;
@@ -19,9 +20,6 @@ export interface CandidateInput {
   /** Full candidate object; encrypted into profile_payload. */
   payload: unknown;
 }
-
-/** Matches billing-status.ts's isCancelledCase — kept in sync there, not re-derived (candidates.ts can't import from apps/web), same as cases.ts's own copy of this list. */
-const CANCELLED_CASE_STATUSES = ['canceled_by_doctor', 'withdrawn'];
 
 export interface CandidateSearchFilters {
   /** Matched against fullName, employeeId, or email — case-insensitive, substring. */
@@ -64,21 +62,9 @@ export function buildCandidateSearchWhere(filters: CandidateSearchFilters): Pris
   if (filters.caseStage) {
     and.push({ cases: { some: { status: filters.caseStage } } });
   }
-  if (filters.caseBilling === 'not_payable') {
-    and.push({ cases: { some: { OR: [{ status: { in: CANCELLED_CASE_STATUSES } }, { paymentStatus: 'not_payable' }] } } });
-  } else if (filters.caseBilling === 'paid') {
-    and.push({ cases: { some: { status: { notIn: CANCELLED_CASE_STATUSES }, paymentStatus: 'paid' } } });
-  } else if (filters.caseBilling === 'unpaid') {
-    and.push({
-      cases: {
-        some: {
-          status: { notIn: CANCELLED_CASE_STATUSES },
-          OR: [{ paymentStatus: null }, { paymentStatus: { notIn: ['paid', 'not_payable'] } }]
-        }
-      }
-    });
-  } else if (filters.caseBilling) {
-    and.push({ id: '__no_candidate_has_this_id__' });
+  const billingWhere = buildCaseBillingWhere(filters.caseBilling);
+  if (billingWhere) {
+    and.push({ cases: { some: billingWhere } });
   }
   return { AND: and };
 }

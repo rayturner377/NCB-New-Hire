@@ -143,7 +143,7 @@ describe('candidates repository', () => {
     it('an unrecognized caseBilling value matches no candidate', () => {
       // @ts-expect-error deliberately invalid, to confirm the fallback for a garbage query param
       const where = buildCandidateSearchWhere({ caseBilling: 'garbage' });
-      expect(where.AND).toContainEqual({ id: '__no_candidate_has_this_id__' });
+      expect(where.AND).toContainEqual({ cases: { some: { id: '__no_case_matches_this_billing_value__' } } });
     });
   });
 
