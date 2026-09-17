@@ -52,6 +52,20 @@ migrations on every app start. `.github/workflows/ci.yml`'s `integration-tests`
 job runs it against a real Postgres service container before running
 integration tests.
 
+## Verifying the audit chain
+
+```bash
+npm run db:verify-audit-chain
+```
+
+Walks the whole `audit_events` chain, recomputing and checking every row's `event_hash`, then
+cross-checks the result against the independent Redis checkpoint (see "Security requirements"
+below for why the checkpoint matters — a hash-chain check alone can't detect a fully wiped table).
+Exits non-zero if the chain is broken. Prints a distinct warning (not a failure) if no checkpoint
+exists yet — a fresh install, a deployment predating this check, or a lost Redis key — since that
+result is only internally consistent, not independently verified. Worth running as a periodic
+operational check, not just once at launch.
+
 ## Generating the Prisma client
 
 `npm run db:generate` (or just `npm run build`, which runs it as part of
