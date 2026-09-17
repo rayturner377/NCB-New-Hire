@@ -1,41 +1,33 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import { Input } from '../../../components/ui/input';
+import { useDebouncedFilterNavigation } from '../../../lib/hooks/use-debounced-filter-navigation';
 
 export interface MessagesSearchProps {
   query: string;
   folder: string;
 }
 
-const DEBOUNCE_MS = 400;
+function buildHref(folder: string, query: string): string {
+  const params = new URLSearchParams();
+  if (folder !== 'all') params.set('folder', folder);
+  if (query) params.set('query', query);
+  const search = params.toString();
+  return search ? `/messages?${search}` : '/messages';
+}
 
 /** Same debounced-auto-navigate pattern as organization-billing-filters.tsx's candidate search — types locally, re-navigates to the same folder with `?query=` a beat after typing stops. */
 export function MessagesSearch({ query: initialQuery, folder }: MessagesSearchProps) {
-  const router = useRouter();
+  const { navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setQuery(initialQuery), [initialQuery]);
-  useEffect(
-    () => () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    },
-    []
-  );
 
   function handleChange(value: string) {
     setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const params = new URLSearchParams();
-      if (folder !== 'all') params.set('folder', folder);
-      if (value) params.set('query', value);
-      const search = params.toString();
-      router.push(search ? `/messages?${search}` : '/messages');
-    }, DEBOUNCE_MS);
+    navigateDebounced(buildHref(folder, value));
   }
 
   return (

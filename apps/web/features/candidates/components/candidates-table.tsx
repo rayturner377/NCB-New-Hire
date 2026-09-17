@@ -1,8 +1,7 @@
 'use client';
 
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, Eye, KeyRound, UserX } from 'lucide-react';
 import { Pagination } from '../../../components/dashboard/pagination';
 import { Button } from '../../../components/ui/button';
@@ -12,6 +11,7 @@ import { StatusBadge } from '../../../components/ui/status-badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table';
 import { BILLING_STATUS_OPTIONS } from '../../cases/billing-status';
 import { caseStatusSchema } from '../../cases/schemas/case';
+import { useDebouncedFilterNavigation } from '../../../lib/hooks/use-debounced-filter-navigation';
 import { cn } from '../../../lib/utils';
 import { statusLabel } from '../../../lib/status-labels';
 import { withdrawCandidateAction } from '../actions/withdraw-candidate';
@@ -53,8 +53,6 @@ export interface CandidatesTableProps {
   buildHref: (params: CandidatesFilterValues & { page: number }) => string;
 }
 
-const DEBOUNCE_MS = 400;
-
 const ALL_POSITIONS = '__all__';
 const ALL_STAGES = '__all__';
 const ALL_BILLING = '__all__';
@@ -95,27 +93,19 @@ export function CandidatesTable({
   totalPages,
   buildHref
 }: CandidatesTableProps) {
-  const router = useRouter();
+  const { navigate, navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setQuery(initialQuery), [initialQuery]);
-  useEffect(
-    () => () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    },
-    []
-  );
 
-  function navigate(next: Partial<CandidatesFilterValues>) {
-    router.push(buildHref({ query, position, stage, billing, page: 1, ...next }));
+  function navigateTo(next: Partial<CandidatesFilterValues>) {
+    navigate(buildHref({ query, position, stage, billing, page: 1, ...next }));
   }
 
   function updateQuery(value: string) {
     setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => navigate({ query: value }), DEBOUNCE_MS);
+    navigateDebounced(buildHref({ query: value, position, stage, billing, page: 1 }));
   }
 
   function toggleExpanded(id: string) {
@@ -131,7 +121,7 @@ export function CandidatesTable({
           placeholder="Search by candidate name…"
           className="sm:max-w-sm"
         />
-        <Select value={position || ALL_POSITIONS} onValueChange={(value) => navigate({ position: value === ALL_POSITIONS ? '' : value })}>
+        <Select value={position || ALL_POSITIONS} onValueChange={(value) => navigateTo({ position: value === ALL_POSITIONS ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[10rem]">
             <SelectValue placeholder="All positions" />
           </SelectTrigger>
@@ -145,7 +135,7 @@ export function CandidatesTable({
           </SelectContent>
         </Select>
 
-        <Select value={stage || ALL_STAGES} onValueChange={(value) => navigate({ stage: value === ALL_STAGES ? '' : value })}>
+        <Select value={stage || ALL_STAGES} onValueChange={(value) => navigateTo({ stage: value === ALL_STAGES ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[11rem]">
             <SelectValue placeholder="All medical stages" />
           </SelectTrigger>
@@ -159,7 +149,7 @@ export function CandidatesTable({
           </SelectContent>
         </Select>
 
-        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigate({ billing: value === ALL_BILLING ? '' : value })}>
+        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigateTo({ billing: value === ALL_BILLING ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[11rem]">
             <SelectValue placeholder="All billing statuses" />
           </SelectTrigger>

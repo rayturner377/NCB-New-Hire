@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DateRangeInputs } from '../../../components/dashboard/date-range-inputs';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
+import { useDebouncedFilterNavigation } from '../../../lib/hooks/use-debounced-filter-navigation';
 import { statusLabel } from '../../../lib/status-labels';
 import { BILLING_STATUS_OPTIONS } from '../../cases/billing-status';
 import { financialYearBounds } from '../financial-year';
@@ -27,7 +27,6 @@ export interface OrganizationBillingFiltersProps {
 const ALL_DOCTORS = '__all__';
 const ALL_BILLING = '__all__';
 const ALL_TIME = 'all';
-const DEBOUNCE_MS = 400;
 
 interface FilterValues {
   query: string;
@@ -64,16 +63,12 @@ export function OrganizationBillingFilters({
   to,
   hasActiveFilters
 }: OrganizationBillingFiltersProps) {
-  const router = useRouter();
+  const { navigate, navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setQuery(initialQuery), [initialQuery]);
-  useEffect(() => () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-  }, []);
 
-  function navigate(next: Partial<FilterValues>) {
+  function buildHref(next: Partial<FilterValues>): string {
     const merged: FilterValues = { query, billing, clinicianId: initialClinicianId, fy: '', from, to, ...next };
     const params = new URLSearchParams();
     if (merged.clinicianId) params.set('clinicianId', merged.clinicianId);
@@ -83,22 +78,25 @@ export function OrganizationBillingFilters({
     if (merged.from) params.set('from', merged.from);
     if (merged.to) params.set('to', merged.to);
     const search = params.toString();
-    router.push(search ? `/billing?${search}` : '/billing');
+    return search ? `/billing?${search}` : '/billing';
+  }
+
+  function navigateTo(next: Partial<FilterValues>) {
+    navigate(buildHref(next));
   }
 
   function handleFySelect(value: string) {
     if (value === ALL_TIME) {
-      navigate({ fy: ALL_TIME, from: '', to: '' });
+      navigateTo({ fy: ALL_TIME, from: '', to: '' });
       return;
     }
     const bounds = financialYearBounds(value);
-    navigate({ from: bounds?.from ?? '', to: bounds?.to ?? '' });
+    navigateTo({ from: bounds?.from ?? '', to: bounds?.to ?? '' });
   }
 
   function handleQueryChange(value: string) {
     setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => navigate({ query: value }), DEBOUNCE_MS);
+    navigateDebounced(buildHref({ query: value }));
   }
 
   return (
@@ -118,11 +116,11 @@ export function OrganizationBillingFilters({
           </SelectContent>
         </Select>
 
-        <DateRangeInputs from={from} to={to} onFromChange={(value) => navigate({ from: value })} onToChange={(value) => navigate({ to: value })} />
+        <DateRangeInputs from={from} to={to} onFromChange={(value) => navigateTo({ from: value })} onToChange={(value) => navigateTo({ to: value })} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Select value={initialClinicianId || ALL_DOCTORS} onValueChange={(value) => navigate({ clinicianId: value === ALL_DOCTORS ? '' : value })}>
+        <Select value={initialClinicianId || ALL_DOCTORS} onValueChange={(value) => navigateTo({ clinicianId: value === ALL_DOCTORS ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[12rem]">
             <SelectValue placeholder="All doctors" />
           </SelectTrigger>
@@ -145,7 +143,7 @@ export function OrganizationBillingFilters({
           />
         ) : null}
 
-        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigate({ billing: value === ALL_BILLING ? '' : value })}>
+        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigateTo({ billing: value === ALL_BILLING ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[10rem]">
             <SelectValue placeholder="All billing statuses" />
           </SelectTrigger>

@@ -2,7 +2,6 @@
 
 import { Fragment, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, LayoutDashboard, Pencil, Trash2 } from 'lucide-react';
 import { Pagination } from '../../../components/dashboard/pagination';
 import { Button } from '../../../components/ui/button';
@@ -11,6 +10,7 @@ import { StatusBadge } from '../../../components/ui/status-badge';
 import { Switch } from '../../../components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../../components/ui/tooltip';
+import { useDebouncedFilterNavigation } from '../../../lib/hooks/use-debounced-filter-navigation';
 import { cn } from '../../../lib/utils';
 import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
 import { deleteUserAction } from '../actions/delete-user';
@@ -33,7 +33,6 @@ export interface UsersTableProps {
   buildHref: (params: { query: string; page: number }) => string;
 }
 
-const DEBOUNCE_MS = 400;
 const HEAD_CLASS = 'h-auto px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground';
 const CELL_CLASS = 'px-3 py-2.5';
 
@@ -72,25 +71,17 @@ function ActiveSwitch({ userId, active }: { userId: string; active: boolean }) {
  * click-to-expand handler.
  */
 export function UsersTable({ users, currentUserId, caseCounts, canManage, query: initialQuery, page, totalPages, buildHref }: UsersTableProps) {
-  const router = useRouter();
+  const { navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keeps the input in sync with the URL on back/forward navigation, without fighting the debounce
   // below — same pattern as cases-filters.tsx's own handling of this.
   useEffect(() => setQuery(initialQuery), [initialQuery]);
-  useEffect(
-    () => () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    },
-    []
-  );
 
   function updateQuery(value: string) {
     setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => router.push(buildHref({ query: value, page: 1 })), DEBOUNCE_MS);
+    navigateDebounced(buildHref({ query: value, page: 1 }));
   }
 
   function toggleExpanded(id: string) {

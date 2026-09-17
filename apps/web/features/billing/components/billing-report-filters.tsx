@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DateRangeInputs } from '../../../components/dashboard/date-range-inputs';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
+import { useDebouncedFilterNavigation } from '../../../lib/hooks/use-debounced-filter-navigation';
 import { statusLabel } from '../../../lib/status-labels';
 import { BILLING_STATUS_OPTIONS } from '../../cases/billing-status';
 
@@ -19,40 +19,37 @@ export interface BillingReportFiltersProps {
 }
 
 const ALL_BILLING = '__all__';
-const DEBOUNCE_MS = 400;
+
+function buildHref(values: { query: string; billing: string; from: string; to: string }): string {
+  const params = new URLSearchParams();
+  if (values.query) params.set('query', values.query);
+  if (values.billing) params.set('billing', values.billing);
+  if (values.from) params.set('from', values.from);
+  if (values.to) params.set('to', values.to);
+  const search = params.toString();
+  return search ? `/billing?${search}` : '/billing';
+}
 
 /** Auto-applies on change, same pattern as features/cases/components/cases-filters.tsx — the status dropdown is a shadcn Select (not a bare `<select>`) for the same styling every other dropdown in the app now uses. */
 export function BillingReportFilters({ query: initialQuery, billing, from, to, hasActiveFilters }: BillingReportFiltersProps) {
-  const router = useRouter();
+  const { navigate, navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => setQuery(initialQuery), [initialQuery]);
-  useEffect(() => () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-  }, []);
 
-  function navigate(next: Partial<{ query: string; billing: string; from: string; to: string }>) {
-    const merged = { query, billing, from, to, ...next };
-    const params = new URLSearchParams();
-    if (merged.query) params.set('query', merged.query);
-    if (merged.billing) params.set('billing', merged.billing);
-    if (merged.from) params.set('from', merged.from);
-    if (merged.to) params.set('to', merged.to);
-    const search = params.toString();
-    router.push(search ? `/billing?${search}` : '/billing');
+  function navigateTo(next: Partial<{ query: string; billing: string; from: string; to: string }>) {
+    navigate(buildHref({ query, billing, from, to, ...next }));
   }
 
   function handleQueryChange(value: string) {
     setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => navigate({ query: value }), DEBOUNCE_MS);
+    navigateDebounced(buildHref({ query: value, billing, from, to }));
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end gap-2">
-        <DateRangeInputs from={from} to={to} onFromChange={(value) => navigate({ from: value })} onToChange={(value) => navigate({ to: value })} />
+        <DateRangeInputs from={from} to={to} onFromChange={(value) => navigateTo({ from: value })} onToChange={(value) => navigateTo({ to: value })} />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -63,7 +60,7 @@ export function BillingReportFilters({ query: initialQuery, billing, from, to, h
           className="h-9 sm:max-w-xs"
         />
 
-        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigate({ billing: value === ALL_BILLING ? '' : value })}>
+        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigateTo({ billing: value === ALL_BILLING ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[10rem]">
             <SelectValue placeholder="All billing statuses" />
           </SelectTrigger>

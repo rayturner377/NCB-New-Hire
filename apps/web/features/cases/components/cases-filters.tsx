@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DateRangeInputs } from '../../../components/dashboard/date-range-inputs';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
+import { useDebouncedFilterNavigation } from '../../../lib/hooks/use-debounced-filter-navigation';
 import { statusLabel } from '../../../lib/status-labels';
 import { BILLING_STATUS_OPTIONS } from '../billing-status';
 import { caseStatusSchema } from '../schemas/case';
@@ -22,7 +22,6 @@ export interface CasesFiltersProps {
 
 const ALL_STATUSES = '__all__';
 const ALL_BILLING = '__all__';
-const DEBOUNCE_MS = 400;
 
 interface FilterValues {
   query: string;
@@ -48,39 +47,34 @@ function buildHref({ query, status, billing, from, to }: FilterValues): string {
 
 /**
  * Auto-applies on every change — no Apply button. Dropdowns/dates navigate
- * immediately; the name search debounces (see DEBOUNCE_MS) so it doesn't
- * re-fetch on every keystroke, only once typing actually pauses. Each
- * navigation is a plain `router.push` to a new `?query=&status=...` URL,
- * which cases-container.tsx (a Server Component) re-reads via
- * `searchParams` — the filtering/pagination itself still happens
- * server-side, this component only decides *when* to ask for it.
+ * immediately via useDebouncedFilterNavigation's `navigate`; the name search
+ * debounces via its `navigateDebounced` so it doesn't re-fetch on every
+ * keystroke, only once typing actually pauses. Each navigation is a plain
+ * `router.push` to a new `?query=&status=...` URL, which cases-container.tsx
+ * (a Server Component) re-reads via `searchParams` — the filtering/pagination
+ * itself still happens server-side, this component only decides *when* to
+ * ask for it.
  */
 export function CasesFilters({ query: initialQuery, status, billing, from, to, hasActiveFilters }: CasesFiltersProps) {
-  const router = useRouter();
+  const { navigate, navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keeps the input in sync with the URL on back/forward navigation, without fighting the debounce below (navigate() below only ever pushes the same value already in state, so this never clobbers active typing).
+  // Keeps the input in sync with the URL on back/forward navigation, without fighting the debounce below (navigateTo() below only ever pushes the same value already in state, so this never clobbers active typing).
   useEffect(() => setQuery(initialQuery), [initialQuery]);
 
-  useEffect(() => () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-  }, []);
-
-  function navigate(next: Partial<FilterValues>) {
-    router.push(buildHref({ query, status, billing, from, to, ...next }));
+  function navigateTo(next: Partial<FilterValues>) {
+    navigate(buildHref({ query, status, billing, from, to, ...next }));
   }
 
   function handleQueryChange(value: string) {
     setQuery(value);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => navigate({ query: value }), DEBOUNCE_MS);
+    navigateDebounced(buildHref({ query: value, status, billing, from, to }));
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex justify-end gap-2">
-        <DateRangeInputs from={from} to={to} onFromChange={(value) => navigate({ from: value })} onToChange={(value) => navigate({ to: value })} />
+        <DateRangeInputs from={from} to={to} onFromChange={(value) => navigateTo({ from: value })} onToChange={(value) => navigateTo({ to: value })} />
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -91,7 +85,7 @@ export function CasesFilters({ query: initialQuery, status, billing, from, to, h
           className="h-9 sm:max-w-xs"
         />
 
-        <Select value={status || ALL_STATUSES} onValueChange={(value) => navigate({ status: value === ALL_STATUSES ? '' : value })}>
+        <Select value={status || ALL_STATUSES} onValueChange={(value) => navigateTo({ status: value === ALL_STATUSES ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[10rem]">
             <SelectValue placeholder="All statuses" />
           </SelectTrigger>
@@ -105,7 +99,7 @@ export function CasesFilters({ query: initialQuery, status, billing, from, to, h
           </SelectContent>
         </Select>
 
-        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigate({ billing: value === ALL_BILLING ? '' : value })}>
+        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigateTo({ billing: value === ALL_BILLING ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[10rem]">
             <SelectValue placeholder="All billing statuses" />
           </SelectTrigger>
