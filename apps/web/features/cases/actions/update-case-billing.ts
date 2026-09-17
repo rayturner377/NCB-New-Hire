@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
-import { BILLING_STATUS_OPTIONS } from '../billing-status';
+import { isBillingStatus } from '../billing-status';
 import { getCaseById, hasDoctorSubmitted, setCaseBilling } from '../services/cases-service';
 
 /**
@@ -38,7 +38,7 @@ export async function updateCaseBillingAction(formData: FormData): Promise<void>
   if (!medicalCase || !hasDoctorSubmitted(medicalCase.status) || medicalCase.status === 'doctor_submitted') return;
 
   const paymentStatus = String(formData.get('paymentStatus') || '');
-  if (!BILLING_STATUS_OPTIONS.includes(paymentStatus as (typeof BILLING_STATUS_OPTIONS)[number])) return;
+  if (!isBillingStatus(paymentStatus)) return;
 
   const payableAmountRaw = String(formData.get('payableAmount') || '').trim();
   const payableAmount = payableAmountRaw === '' ? null : Number(payableAmountRaw);
