@@ -82,6 +82,36 @@ function sumByBillingStatus(cases: BilledCase[], status: BillingStatus): number 
     .reduce((sum, item) => sum + Number(item.payableAmount), 0);
 }
 
+/** The paid/outstanding/processed totals both reports show as stat cards — always computed over the full (unfiltered-by-billing-status) case list passed in, so both totals stay visible while drilling into one of them. */
+function summarizeBilling(cases: BilledCase[]): { paidTotal: number; outstandingTotal: number; casesProcessed: number } {
+  return {
+    paidTotal: sumByBillingStatus(cases, 'paid'),
+    outstandingTotal: sumByBillingStatus(cases, 'unpaid'),
+    casesProcessed: cases.length
+  };
+}
+
+/** The org-wide report's per-doctor summary table — one row per doctor with at least one case in `cases`, sorted with the most money still owed first. */
+function groupBillingByClinician(cases: BilledCase[], doctorsById: Map<string, string>): DoctorBillingSummaryRow[] {
+  const byDoctorMap = new Map<string, DoctorBillingSummaryRow>();
+  for (const item of cases) {
+    const clinicianId = item.assignedClinicianId!;
+    const existing = byDoctorMap.get(clinicianId) ?? {
+      clinicianId,
+      clinicianName: doctorsById.get(clinicianId) ?? 'Unknown doctor',
+      paidTotal: 0,
+      outstandingTotal: 0,
+      casesProcessed: 0
+    };
+    const status = derivedPaymentStatus(item.status, item.paymentStatus);
+    if (status === 'paid') existing.paidTotal += Number(item.payableAmount);
+    if (status === 'unpaid') existing.outstandingTotal += Number(item.payableAmount);
+    existing.casesProcessed += 1;
+    byDoctorMap.set(clinicianId, existing);
+  }
+  return [...byDoctorMap.values()].sort((a, b) => b.outstandingTotal - a.outstandingTotal);
+}
+
 function toRow(item: BilledCase): BillingReportRow {
   return {
     id: item.id,
@@ -111,12 +141,7 @@ export async function getDoctorBillingReport(clinicianId: string, filters: Billi
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .map(toRow);
 
-  return {
-    paidTotal: sumByBillingStatus(inRange, 'paid'),
-    outstandingTotal: sumByBillingStatus(inRange, 'unpaid'),
-    casesProcessed: inRange.length,
-    rows
-  };
+  return { ...summarizeBilling(inRange), rows };
 }
 
 export interface OrganizationBillingFilters extends BillingReportFilters {
@@ -173,38 +198,21 @@ export async function getOrganizationBillingReport(filters: OrganizationBillingF
     (item) => !filters.clinicianId || item.assignedClinicianId === filters.clinicianId
   );
 
-  const paidTotal = sumByBillingStatus(inRange, 'paid');
-  const outstandingTotal = sumByBillingStatus(inRange, 'unpaid');
+  const summary = summarizeBilling(inRange);
 
   // Narrows whichever "row list" the caller ends up seeing — the drill-down's own case rows below,
-  // or (when no doctor is picked) the per-doctor summary table further down. paidTotal/
-  // outstandingTotal above deliberately stay unfiltered, same as the drill-down already did.
+  // or (when no doctor is picked) the per-doctor summary table further down. summary above
+  // deliberately stays unfiltered, same as the drill-down already did.
   const filteredForList = inRange.filter(
     (item) => !filters.billing || derivedPaymentStatus(item.status, item.paymentStatus) === filters.billing
   );
 
   if (filters.clinicianId) {
     const rows = filteredForList.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).map(toRow);
-    return { paidTotal, outstandingTotal, casesProcessed: inRange.length, doctors, availableFinancialYears, rows };
+    return { ...summary, doctors, availableFinancialYears, rows };
   }
 
-  const byDoctorMap = new Map<string, DoctorBillingSummaryRow>();
-  for (const item of filteredForList) {
-    const clinicianId = item.assignedClinicianId!;
-    const existing = byDoctorMap.get(clinicianId) ?? {
-      clinicianId,
-      clinicianName: doctorsById.get(clinicianId) ?? 'Unknown doctor',
-      paidTotal: 0,
-      outstandingTotal: 0,
-      casesProcessed: 0
-    };
-    const status = derivedPaymentStatus(item.status, item.paymentStatus);
-    if (status === 'paid') existing.paidTotal += Number(item.payableAmount);
-    if (status === 'unpaid') existing.outstandingTotal += Number(item.payableAmount);
-    existing.casesProcessed += 1;
-    byDoctorMap.set(clinicianId, existing);
-  }
-  const byDoctor = [...byDoctorMap.values()].sort((a, b) => b.outstandingTotal - a.outstandingTotal);
+  const byDoctor = groupBillingByClinician(filteredForList, doctorsById);
 
-  return { paidTotal, outstandingTotal, casesProcessed: inRange.length, doctors, availableFinancialYears, byDoctor };
+  return { ...summary, doctors, availableFinancialYears, byDoctor };
 }
