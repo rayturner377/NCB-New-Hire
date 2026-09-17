@@ -12,27 +12,27 @@ described, which no longer exists anywhere in this codebase.
 - The full `/audit` log and the Message Centre paginate server-side (`getAuditLog`,
   `listMessages` — page/pageSize params straight through to a Prisma `skip`/`take` query), rather
   than fetching everything and slicing in the browser.
+- The three main list pages — `/cases` (All cases tab), `/candidates`, and the role list pages
+  (`/doctors`, `/reviewers`, `/admins`, `/auditors`, `/delegates`) — all filter, search, and
+  paginate in SQL (`casesRepository.searchWithPatient`, `candidatesRepository.search`,
+  `usersRepository.search`), decrypting only the page actually returned rather than every row in
+  the table. Candidates' `status`/`position` fields are mirrored as plain columns
+  (`patient_profiles`, migration `0027_candidate_status_position_columns`) specifically so this
+  list didn't have to choose between real pagination and filtering on encrypted fields; each
+  page's stat cards (`getUserRoleStats`, `getCandidateStats`) and per-row case counts come from
+  dedicated `count()`/`_count` queries rather than fetching full row sets to measure them.
 - Database connection pooling is Prisma's own default (one pool per `PrismaClient` instance,
   reused via the singleton in `packages/database/src/client.ts` rather than recreated per request).
 
-## Known gap: whole-table decrypt-and-scan lists
+## Known gap: single-detail decrypt, and unbounded aggregate reads elsewhere
 
-Case, candidate, and user listings (`listCasesWithPatient`, `listCandidates`, `listUsers` in
-`packages/database/src/repositories`) fetch every row for the resource and — for cases and
-candidates — decrypt every row's encrypted payload, with filtering/search applied afterward in the
-container/UI layer rather than in the SQL query itself. This is the same tradeoff the rest of the
-schema's encryption-at-rest design accepts (see `ARCHITECTURE.md`'s Data Storage section): a
-payload column has to be decrypted to be searched, and Postgres can't index inside an
-`AES-256-GCM` blob.
+Opening one case, candidate, or user (not a list — a single record) still decrypts just that one
+row, which is the right tradeoff (a payload column has to be decrypted to be read at all, and
+Postgres can't index inside an `AES-256-GCM` blob).
 
-This is fine at the org's actual data volumes today, but doesn't scale indefinitely. If listing
-performance becomes a real problem:
-
-1. Add server-side pagination (`limit`/`offset` or keyset) to `listCasesWithPatient`,
-   `listCandidates`, and `listUsers`, matching the pattern `getAuditLog`/`listMessages` already use.
-2. For search-by-name specifically, either move the searchable fields (name, employee ID) to their
-   own indexed, unencrypted columns — several already are (see `PatientProfile`'s `email`/
-   `employeeId` indexes) — or decrypt only a bounded page at a time instead of the whole table.
-3. Re-measure before adding either: the SQL migration already removed the previous system's
-   biggest cost (no more per-request encrypted-file directory scans), and further optimization work
-   should be driven by an actual observed slow query, not a hypothetical one.
+A few call sites still read the *whole* table for a reason other than a paginated list: the
+reviewer/admin dashboard's aggregate counts, the org-wide billing report, and the audit log's
+case-name lookups all call `listCasesWithPatient()`/`listCandidates()` in full. This is an
+accepted tradeoff for now — these are single aggregate reads per page load, not per-row decrypt
+multiplied by page size — but the same pattern used for the list pages above (push the filter into
+SQL, decrypt only what's needed) would apply if any of them become a real bottleneck.
