@@ -6,7 +6,11 @@ product
 
 ## Users
 
-Human Resources officers, administrators, medical doctors, clinicians, and patients use this system to manage pre-employment medical onboarding. Most users are in task-focused workflows: creating patients and medicals, completing assigned forms, reviewing doctor assessments, managing offices and users, and reporting on status, billing, and workload.
+Human Resources officers, administrators, auditors, medical doctors, doctors' delegates (an
+assistant who can act on one doctor's own caseload, minus final sign-off), and patients use this
+system to manage pre-employment medical onboarding. Most users are in task-focused workflows:
+creating patients and medicals, completing assigned forms, reviewing doctor assessments, managing
+offices and users, and reporting on status, billing, and workload.
 
 ## Product Purpose
 

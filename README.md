@@ -89,18 +89,23 @@ docker compose logs -f web
 
 ## What is included
 
-- Role-based access: admin, HR reviewer, auditor (view-only), clinician/doctor, patient/candidate.
+- Role-based access: admin, HR reviewer, auditor (view-only), clinician/doctor, doctor's delegate
+  (assistant scoped to one doctor's own caseload), patient/candidate.
 - Per-user permission overrides on top of role defaults, editable from Settings → Permissions.
 - Case lifecycle management: intake, assignment to a doctor, submission, review, billing/payment confirmation.
 - Candidate and medical-office management.
 - Notification templates (rich-text editor) with configurable SMTP, sent on case events.
 - Message centre with resend support.
 - SLA tracking and configurable SLA definitions per case event.
-- Audit log of account and case actions.
+- Audit log of account and case actions, independently checkpointed in Redis so a database-only
+  compromise can't retroactively rewrite history undetected.
 - AES-256-GCM encryption at rest for sensitive fields, keyed by `APP_MASTER_KEY`.
 - Authentication via Better Auth (native email/password), sessions and login/action
   rate limiting backed by Redis, with a configurable inactivity timeout
   (`SESSION_TIMEOUT_MINUTES`).
+- One active session per account, enforced on every sign-in — an unrecognized device must pass a
+  6-digit emailed code first (remembered for 30 days), and signing in anywhere always signs out
+  every other session for that account.
 
 ## Environment variables
 

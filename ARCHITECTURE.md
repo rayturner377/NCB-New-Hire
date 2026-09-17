@@ -16,6 +16,7 @@ through paid/unpaid status.
 | Reviewer (HR) | NCB HR team member | Manage cases, candidates, doctors, medical offices, users (short of admin accounts), notifications, review queue |
 | Auditor | Read-only oversight tier | Same visibility as Reviewer, none of the write permissions |
 | Clinician / Doctor | Medical office user | Complete assigned assessments, manage assigned-candidate roster |
+| Delegate | Assistant acting on behalf of exactly one doctor | Same case access as that one doctor's own cases, never the doctor's own determination/attestation/signature or final submission |
 | Patient | Candidate completing intake | Complete intake/consent for their own case only |
 
 Role defaults are defined in `apps/web/lib/permissions.ts` and `apps/web/lib/permission-groups.ts`.
@@ -104,10 +105,28 @@ on it).
 - Role-based access control with per-user permission overrides, resolved once
   per session and embedded in it (avoids a DB round-trip per request).
 - HttpOnly, SameSite session cookies; `COOKIE_SECURE` for HTTPS deployments.
+- One active session per account: signing in from a new device revokes every other session for
+  that account immediately, with an email notice sent after the fact (the code already proved it
+  was really them). An unrecognized device must first enter a 6-digit code emailed to the account
+  holder before a session is created at all; a device that passed this check once is remembered
+  for 30 days. Implemented via Better Auth's `two-factor` OTP plugin
+  (`packages/auth/src/index.ts`, `apps/web/features/auth/actions/login.ts` and
+  `verify-device-code.ts`) — every account has this enabled by default (`AppUser.twoFactorEnabled`),
+  not an opt-in.
 - AES-256-GCM encryption at rest for candidate/case/submission payloads.
 - No medical details in email notifications.
-- Append-only audit log, kept separate from the encrypted medical data it references.
+- Append-only audit log, kept separate from the encrypted medical data it references, cross-checked
+  against an independent Redis checkpoint on every append so a database-only compromise can't
+  retroactively rewrite history undetected (see `DATABASE.md`'s Security requirements).
+- Three separate Postgres roles by function — migrations/ownership, the deployed app's own runtime
+  queries, and audit-log writes — so a compromise of the live app's own credential can't touch
+  audit history at all, not merely by policy (see `DATABASE.md`'s Configuration section).
 - Auditor role provides read-only oversight without needing write access to anything.
+- Case-level authorization is checked per case, not just per role: a clinician's or delegate's
+  broad "can see cases" permission is additionally scoped to cases actually assigned to them
+  (`matchesClinicianAssignment`, `apps/web/features/cases/case-authorization.ts`), and a patient's
+  to their own linked candidate record (`patientOwnsCase`) — both enforced server-side on every
+  case-detail view, submission action, and attachment access, not just in the UI.
 
 ## 8. Deployment
 

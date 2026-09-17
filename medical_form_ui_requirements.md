@@ -1,5 +1,31 @@
 # Medical Form UI/UX Requirements
 
+## Implementation status
+
+Verified against the current codebase. The core requirement — tabbed layout, profile/case
+separation, role-scoped visibility — is built and matches this document closely:
+
+- Patient tabs (§4): implemented 1:1 as Personal Info / Consent / Family History / Medical History
+  (`apps/web/features/cases/components/patient-case-form/`).
+- Doctor assessment tabs — listed in §11 as a *future* extension when this was written — are now
+  built: Assessment / Physical Examination / Determination & Attestation
+  (`apps/web/features/submissions/components/doctor-case-form/`), each independently role-gated
+  (a delegate never sees Determination & Attestation, per §7's "should not" list).
+- Position-applied-for bias concern (§7, doctor "should not" list): the position field is hidden
+  from doctor/delegate viewers, not just de-emphasized (`hidePositionFromViewer` in
+  `apps/web/features/cases/case-workspace-capabilities.ts`).
+- Signature (§4.2): both typed-name and on-screen signature pad are supported; consent/signature
+  are server-validated before submission is accepted, not just client-side (§9).
+- Draft save (§5): supported, with autosave (`apps/web/lib/hooks/use-autosave.ts`) rather than a
+  manual-only "Save Draft" button.
+- Audit/traceability (§10): case-level audit events are recorded for submission, review, and
+  status transitions; per-keystroke or per-field-edit granularity is not tracked (only save/submit
+  events), which is coarser than a literal reading of §10 but consistent with the rest of the
+  system's audit model.
+
+The rest of this document is the original requirements text, kept as the reference for the design
+intent above.
+
 ## Purpose
 This document defines the user requirements (UR) for the **Medical Form** in the medical onboarding / medical case management system.
 

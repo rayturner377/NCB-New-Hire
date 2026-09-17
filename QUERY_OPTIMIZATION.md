@@ -1,37 +1,38 @@
 # Query and Loading Optimization
 
-## Implemented
+Current state of the Postgres/Prisma system (`packages/database`), verified against the actual
+repositories and schema — not the old pre-rewrite file-based system this document originally
+described, which no longer exists anywhere in this codebase.
 
-- List endpoints enforce `limit`, `offset`, and `q`.
-- Maximum API page size is 500 records.
-- HR/admin case lists read the lightweight case-report index rather than decrypting every case.
-- Full medical case payloads are loaded by ID only when a case workspace is opened.
-- Patient, case, user, and medical-office management searches query the server.
-- Database schemas include indexes for workflow status, billing status, patient history, office queues, clinician queues, submissions, attachments, and audit events.
-- Database pools enforce connection and statement timeouts.
+## In place today
 
-## Remaining encrypted-file scans
+- Targeted indexes for every hot query path: workflow status, billing/payment status, patient
+  case history, office queues, clinician queues, submission versions, attachment listings, and
+  audit-event lookups (`packages/database/prisma/schema.prisma`'s `@@index` declarations).
+- The full `/audit` log and the Message Centre paginate server-side (`getAuditLog`,
+  `listMessages` — page/pageSize params straight through to a Prisma `skip`/`take` query), rather
+  than fetching everything and slicing in the browser.
+- Database connection pooling is Prisma's own default (one pool per `PrismaClient` instance,
+  reused via the singleton in `packages/database/src/client.ts` rather than recreated per request).
 
-The compatibility file repositories still scan encrypted records for:
+## Known gap: whole-table decrypt-and-scan lists
 
-- Doctor and patient authorization-filtered case lists.
-- Candidate lists before server-side pagination is applied.
-- Submission lists before server-side pagination is applied.
-- Monthly report aggregation.
-- Demo-data reconciliation during startup.
-- User deletion cleanup and historical preservation checks.
+Case, candidate, and user listings (`listCasesWithPatient`, `listCandidates`, `listUsers` in
+`packages/database/src/repositories`) fetch every row for the resource and — for cases and
+candidates — decrypt every row's encrypted payload, with filtering/search applied afterward in the
+container/UI layer rather than in the SQL query itself. This is the same tradeoff the rest of the
+schema's encryption-at-rest design accepts (see `ARCHITECTURE.md`'s Data Storage section): a
+payload column has to be decrypted to be searched, and Postgres can't index inside an
+`AES-256-GCM` blob.
 
-These scans are bounded at the browser/API response layer, but file storage cannot provide true indexed query execution. Removing them requires the controlled repository cutover from encrypted files to the SQL tables.
+This is fine at the org's actual data volumes today, but doesn't scale indefinitely. If listing
+performance becomes a real problem:
 
-## Recommended cutover order
-
-1. Users and medical offices.
-2. Patient profiles.
-3. Medical-case summaries and workflow state.
-4. Encrypted case payloads and submissions.
-5. Attachment metadata.
-6. Audit events and settings.
-7. Backfill verification, record counts, checksums, and rollback testing.
-8. Switch reads to SQL, then writes, before retiring file storage.
-
-Use dual-write and reconciliation during migration. Do not delete the encrypted file records until backup restoration and SQL record verification have passed.
+1. Add server-side pagination (`limit`/`offset` or keyset) to `listCasesWithPatient`,
+   `listCandidates`, and `listUsers`, matching the pattern `getAuditLog`/`listMessages` already use.
+2. For search-by-name specifically, either move the searchable fields (name, employee ID) to their
+   own indexed, unencrypted columns — several already are (see `PatientProfile`'s `email`/
+   `employeeId` indexes) — or decrypt only a bounded page at a time instead of the whole table.
+3. Re-measure before adding either: the SQL migration already removed the previous system's
+   biggest cost (no more per-request encrypted-file directory scans), and further optimization work
+   should be driven by an actual observed slow query, not a hypothetical one.
