@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { MedicalCase, PrismaClient } from '../../../generated/client/index.js';
-import { CaseVersionConflictError, createCasesRepository } from '../../cases.js';
+import { buildCaseSearchWhere, CaseVersionConflictError, createCasesRepository } from '../../cases.js';
 
 describe('cases repository', () => {
   const masterKey = randomBytes(32);
@@ -209,6 +209,94 @@ describe('cases repository', () => {
     await expect(createCasesRepository(db).updatePayload('case_1', { notes: 'updated' }, masterKey, undefined, 3)).rejects.toThrow(
       CaseVersionConflictError
     );
+  });
+
+  describe('buildCaseSearchWhere()', () => {
+    const CANCELLED = ['canceled_by_doctor', 'withdrawn'];
+
+    it('always excludes soft-deleted cases, even with no filters', () => {
+      expect(buildCaseSearchWhere({})).toEqual({ AND: [{ deletedAt: null }] });
+    });
+
+    it('matches the query against the joined patient name, case-insensitively', () => {
+      expect(buildCaseSearchWhere({ query: 'Jane' })).toEqual({
+        AND: [{ deletedAt: null }, { patient: { fullName: { contains: 'Jane', mode: 'insensitive' } } }]
+      });
+    });
+
+    it('status and billing compose as independent AND clauses rather than overwriting each other', () => {
+      const where = buildCaseSearchWhere({ status: 'sent_to_doctor', billing: 'unpaid' });
+      expect(where.AND).toContainEqual({ status: 'sent_to_doctor' });
+      expect(where.AND).toContainEqual({ status: { notIn: CANCELLED } });
+    });
+
+    it('billing "not_payable" matches cancelled statuses OR an explicit not_payable paymentStatus', () => {
+      expect(buildCaseSearchWhere({ billing: 'not_payable' })).toEqual({
+        AND: [{ deletedAt: null }, { OR: [{ status: { in: CANCELLED } }, { paymentStatus: 'not_payable' }] }]
+      });
+    });
+
+    it('billing "paid" excludes cancelled statuses and requires paymentStatus paid', () => {
+      expect(buildCaseSearchWhere({ billing: 'paid' })).toEqual({
+        AND: [{ deletedAt: null }, { status: { notIn: CANCELLED } }, { paymentStatus: 'paid' }]
+      });
+    });
+
+    it('billing "unpaid" excludes cancelled statuses and treats a null/garbage paymentStatus as unpaid too — matching derivedPaymentStatus\'s own default', () => {
+      expect(buildCaseSearchWhere({ billing: 'unpaid' })).toEqual({
+        AND: [
+          { deletedAt: null },
+          { status: { notIn: CANCELLED } },
+          { OR: [{ paymentStatus: null }, { paymentStatus: { notIn: ['paid', 'not_payable'] } }] }
+        ]
+      });
+    });
+
+    it('an unrecognized billing value matches nothing, the same as the old in-memory filter always failing to match', () => {
+      // @ts-expect-error deliberately an invalid value, to confirm the fallback for a garbage query param
+      const where = buildCaseSearchWhere({ billing: 'garbage' });
+      expect(where.AND).toContainEqual({ id: '__no_case_has_this_id__' });
+    });
+
+    it('applies from/to as an inclusive createdAt range', () => {
+      expect(buildCaseSearchWhere({ from: '2026-01-01', to: '2026-01-31' })).toEqual({
+        AND: [
+          { deletedAt: null },
+          { createdAt: { gte: new Date('2026-01-01T00:00:00.000Z') } },
+          { createdAt: { lte: new Date('2026-01-31T23:59:59.999Z') } }
+        ]
+      });
+    });
+  });
+
+  describe('searchWithPatient()', () => {
+    it('paginates via skip/take and runs a matching count in parallel', async () => {
+      const findMany = vi.fn().mockResolvedValue([rowWithPatient]);
+      const count = vi.fn().mockResolvedValue(37);
+      const db = { medicalCase: { findMany, count } } as unknown as PrismaClient;
+
+      const result = await createCasesRepository(db).searchWithPatient({ status: 'sent_to_doctor' }, 3, 10, masterKey);
+
+      const expectedWhere = buildCaseSearchWhere({ status: 'sent_to_doctor' });
+      expect(findMany).toHaveBeenCalledWith({
+        where: expectedWhere,
+        include: { patient: patientSelect },
+        orderBy: { updatedAt: 'desc' },
+        skip: 20,
+        take: 10
+      });
+      expect(count).toHaveBeenCalledWith({ where: expectedWhere });
+      expect(result).toEqual({ rows: [{ ...rowWithPatient, payload: null }], total: 37 });
+    });
+
+    it('decrypts only the returned page, not every case', async () => {
+      const findMany = vi.fn().mockResolvedValue([]);
+      const db = { medicalCase: { findMany, count: vi.fn().mockResolvedValue(0) } } as unknown as PrismaClient;
+
+      const result = await createCasesRepository(db).searchWithPatient({}, 1, 10, masterKey);
+
+      expect(result).toEqual({ rows: [], total: 0 });
+    });
   });
 
   describe('submitAndTransition()', () => {

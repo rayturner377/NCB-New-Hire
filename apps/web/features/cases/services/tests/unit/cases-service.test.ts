@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const create = vi.fn();
 const listAll = vi.fn();
 const listAllWithPatient = vi.fn();
+const searchWithPatient = vi.fn();
 const findById = vi.fn();
 const findByIdWithPatient = vi.fn();
 const transition = vi.fn();
@@ -25,6 +26,7 @@ vi.mock('@ncb/database', () => ({
     create: (...args: unknown[]) => create(...args),
     listAll: (...args: unknown[]) => listAll(...args),
     listAllWithPatient: (...args: unknown[]) => listAllWithPatient(...args),
+    searchWithPatient: (...args: unknown[]) => searchWithPatient(...args),
     findById: (...args: unknown[]) => findById(...args),
     findByIdWithPatient: (...args: unknown[]) => findByIdWithPatient(...args),
     transition: (...args: unknown[]) => transition(...args),
@@ -67,6 +69,7 @@ const {
   getCaseWithPatientById,
   listCases,
   listCasesWithPatient,
+  searchCasesWithPatient,
   listCaseAuditEvents,
   reassignClinician,
   transitionCase,
@@ -158,6 +161,12 @@ describe('cases service', () => {
     listAllWithPatient.mockResolvedValue([]);
     await listCasesWithPatient();
     expect(listAllWithPatient).toHaveBeenCalledWith(masterKey);
+  });
+
+  it('searchCasesWithPatient passes filters/page/pageSize and the master key through', async () => {
+    searchWithPatient.mockResolvedValue({ rows: [], total: 0 });
+    await searchCasesWithPatient({ status: 'sent_to_doctor' }, 2, 10);
+    expect(searchWithPatient).toHaveBeenCalledWith({ status: 'sent_to_doctor' }, 2, 10, masterKey);
   });
 
   it('getCaseById passes the master key through', async () => {

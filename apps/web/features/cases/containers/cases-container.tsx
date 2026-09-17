@@ -9,10 +9,10 @@ import { logAccessDenied } from '../../../lib/audit-access';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
 import { getSettings } from '../../settings/services/settings-service';
-import { derivedPaymentStatus } from '../billing-status';
+import type { CaseSearchFilters } from '@ncb/database';
 import { CaseList } from '../components/case-list';
 import { CasesFilters } from '../components/cases-filters';
-import { listCasesWithPatient, listReviewQueueCases } from '../services/cases-service';
+import { listReviewQueueCases, searchCasesWithPatient } from '../services/cases-service';
 
 export interface CasesContainerProps {
   searchParams?: {
@@ -117,19 +117,14 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
     const to = searchParams.to ?? '';
     const hasActiveFilters = Boolean(query || status || billing || from || to);
 
-    const allCases = await listCasesWithPatient();
-    const filtered = allCases.filter((medicalCase) => {
-      const matchesQuery = !query || medicalCase.patient.fullName.toLowerCase().includes(query.toLowerCase());
-      const matchesStatus = !status || medicalCase.status === status;
-      const matchesBilling = !billing || derivedPaymentStatus(medicalCase.status, medicalCase.paymentStatus) === billing;
-      const matchesFrom = !from || medicalCase.createdAt >= new Date(`${from}T00:00:00.000Z`);
-      const matchesTo = !to || medicalCase.createdAt <= new Date(`${to}T23:59:59.999Z`);
-      return matchesQuery && matchesStatus && matchesBilling && matchesFrom && matchesTo;
-    });
-
-    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-    const currentPage = Math.min(Math.max(1, Number(searchParams.page) || 1), totalPages);
-    const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    const requestedPage = Math.max(1, Number(searchParams.page) || 1);
+    const { rows: pageRows, total } = await searchCasesWithPatient(
+      { query, status, billing: billing as CaseSearchFilters['billing'], from, to },
+      requestedPage,
+      PAGE_SIZE
+    );
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const currentPage = Math.min(requestedPage, totalPages);
 
     function hrefForPage(page: number): string {
       const params = new URLSearchParams({ tab: 'all' });
@@ -143,7 +138,7 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
     }
 
     content = (
-      <SectionCard title="All cases" description={`${filtered.length} case${filtered.length === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}`}>
+      <SectionCard title="All cases" description={`${total} case${total === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}`}>
         <div className="flex flex-col gap-4">
           <CasesFilters query={query} status={status} billing={billing} from={from} to={to} hasActiveFilters={hasActiveFilters} />
           <CaseList cases={pageRows} slaDefinitions={sla.definitions} />

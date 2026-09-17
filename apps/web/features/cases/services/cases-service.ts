@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { auditRepository, casesRepository, usersRepository } from '@ncb/database';
+import { auditRepository, casesRepository, usersRepository, type CaseSearchFilters } from '@ncb/database';
 import { loadMasterKey } from '../../../lib/master-key';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import { sendNotification } from '../../notifications/services/notification-service';
@@ -73,10 +73,16 @@ export async function listCases() {
   return casesRepository.listAll(masterKey);
 }
 
-/** All cases with the patient's non-encrypted name/employeeId joined in, for the cases list page and the candidates page's per-candidate case history. */
+/** All cases with the patient's non-encrypted name/employeeId joined in, for the candidates page's per-candidate case history and the dashboard/audit-log aggregate reads that need every case. Prefer searchCasesWithPatient for anything that shows a filterable, paginated list. */
 export async function listCasesWithPatient() {
   const masterKey = loadMasterKey();
   return casesRepository.listAllWithPatient<CasePayload>(masterKey);
+}
+
+/** The "All cases" tab's actual data source — filters/paginates in SQL (see casesRepository.searchWithPatient) instead of fetching and decrypting every case in the system just to throw most of it away. */
+export async function searchCasesWithPatient(filters: CaseSearchFilters, page: number, pageSize: number) {
+  const masterKey = loadMasterKey();
+  return casesRepository.searchWithPatient<CasePayload>(filters, page, pageSize, masterKey);
 }
 
 export async function getCaseById(id: string) {

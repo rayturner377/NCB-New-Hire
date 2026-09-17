@@ -1,6 +1,61 @@
 import { decryptJson, encryptJson, type EncryptedRecord } from '@ncb/shared';
-import type { MedicalCase, PrismaClient } from '../generated/client/index.js';
+import type { MedicalCase, Prisma, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
+
+/** Matches billing-status.ts's isCancelledCase — kept in sync there, not re-derived, since that's the one place this business rule is defined. */
+const CANCELLED_STATUSES = ['canceled_by_doctor', 'withdrawn'];
+
+export interface CaseSearchFilters {
+  /** Matched against the joined patient's fullName — case-insensitive, substring. */
+  query?: string;
+  status?: string;
+  /** Same billing classification as billing-status.ts's derivedPaymentStatus, translated to SQL so it composes correctly with pagination instead of being applied after an in-memory decrypt. */
+  billing?: 'paid' | 'unpaid' | 'not_payable' | '';
+  /** Inclusive "YYYY-MM-DD", applied to createdAt. */
+  from?: string;
+  to?: string;
+}
+
+/**
+ * The SQL equivalent of cases-container.tsx's old in-memory filter — every clause here has to stay
+ * behaviorally identical to derivedPaymentStatus's own rules (billing-status.ts) since this is the
+ * one place that logic is reimplemented as a `where` instead of a post-fetch predicate. Built as an
+ * `AND` array (not a shared `where.status`/`where.paymentStatus` object) so `status` and `billing`
+ * can both be active at once without one clobbering the other's own use of the same column.
+ */
+export function buildCaseSearchWhere(filters: CaseSearchFilters): Prisma.MedicalCaseWhereInput {
+  const and: Prisma.MedicalCaseWhereInput[] = [{ deletedAt: null }];
+
+  if (filters.query) {
+    and.push({ patient: { fullName: { contains: filters.query, mode: 'insensitive' } } });
+  }
+  if (filters.status) {
+    and.push({ status: filters.status });
+  }
+  if (filters.billing === 'not_payable') {
+    and.push({ OR: [{ status: { in: CANCELLED_STATUSES } }, { paymentStatus: 'not_payable' }] });
+  } else if (filters.billing === 'paid') {
+    and.push({ status: { notIn: CANCELLED_STATUSES } }, { paymentStatus: 'paid' });
+  } else if (filters.billing === 'unpaid') {
+    and.push(
+      { status: { notIn: CANCELLED_STATUSES } },
+      { OR: [{ paymentStatus: null }, { paymentStatus: { notIn: ['paid', 'not_payable'] } }] }
+    );
+  } else if (filters.billing) {
+    // Not one of the three real BillingStatus values — derivedPaymentStatus could never have
+    // equaled this either, so (matching the old in-memory filter's behavior exactly) no row can
+    // match rather than silently ignoring the filter.
+    and.push({ id: '__no_case_has_this_id__' });
+  }
+  if (filters.from) {
+    and.push({ createdAt: { gte: new Date(`${filters.from}T00:00:00.000Z`) } });
+  }
+  if (filters.to) {
+    and.push({ createdAt: { lte: new Date(`${filters.to}T23:59:59.999Z`) } });
+  }
+
+  return { AND: and };
+}
 
 export interface NewCaseInput {
   id: string;
@@ -65,6 +120,32 @@ export function createCasesRepository(db: PrismaClient) {
         orderBy: { updatedAt: 'desc' }
       });
       return rows.map((row) => ({ ...decryptCase<T>(row, masterKey), patient: row.patient }));
+    },
+
+    /**
+     * The paginated, filtered equivalent of listAllWithPatient — every filter here (query/status/
+     * billing/date range) only ever touches plain columns (see buildCaseSearchWhere), so the `where`
+     * clause narrows the result set in SQL before anything is fetched, and only the returned page
+     * gets decrypted, not the whole table. Used by the "All cases" tab (cases-container.tsx).
+     */
+    async searchWithPatient<T = unknown>(
+      filters: CaseSearchFilters,
+      page: number,
+      pageSize: number,
+      masterKey: Buffer
+    ): Promise<{ rows: CaseWithPatient<T>[]; total: number }> {
+      const where = buildCaseSearchWhere(filters);
+      const [rows, total] = await Promise.all([
+        db.medicalCase.findMany({
+          where,
+          include: { patient: { select: { id: true, fullName: true, employeeId: true } } },
+          orderBy: { updatedAt: 'desc' },
+          skip: (page - 1) * pageSize,
+          take: pageSize
+        }),
+        db.medicalCase.count({ where })
+      ]);
+      return { rows: rows.map((row) => ({ ...decryptCase<T>(row, masterKey), patient: row.patient })), total };
     },
 
     /** Single case with the patient joined in, for the case detail workspace. */
