@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import type { CandidateSearchFilters } from '@ncb/database';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { Button } from '../../../components/ui/button';
-import { derivedPaymentStatus } from '../../cases/billing-status';
+import { derivedPaymentStatus, parseBillingFilter, type BillingStatus } from '../../cases/billing-status';
 import { listCasesForPatient, listCasesForPatients } from '../../cases/services/cases-service';
 import { logAccessDenied } from '../../../lib/audit-access';
 import { parsePageNumber } from '../../../lib/pagination';
@@ -25,7 +25,7 @@ interface CandidateFilters {
   query: string;
   position: string;
   stage: string;
-  billing: string;
+  billing: BillingStatus | '';
   requestedPage: number;
 }
 
@@ -35,7 +35,7 @@ function parseCandidateFilters(searchParams: CandidatesContainerProps['searchPar
     query: searchParams.query?.trim() ?? '',
     position: searchParams.position ?? '',
     stage: searchParams.stage ?? '',
-    billing: searchParams.billing ?? '',
+    billing: parseBillingFilter(searchParams.billing),
     requestedPage: parsePageNumber(searchParams.page)
   };
 }
@@ -70,7 +70,7 @@ function buildCasesByPatientId(cases: Awaited<ReturnType<typeof listCasesForPati
   return casesByPatientId;
 }
 
-type BuildCandidatesHref = (next: { query: string; position: string; stage: string; billing: string; page: number }) => string;
+type BuildCandidatesHref = (next: { query: string; position: string; stage: string; billing: BillingStatus | ''; page: number }) => string;
 
 /**
  * A patient's own view: a small, bounded, entirely-in-memory filter over their own candidate
@@ -118,12 +118,7 @@ async function loadPatientCandidatePage(userId: string, filters: CandidateFilter
 async function loadStaffCandidatePage(filters: CandidateFilters, buildHref: BuildCandidatesHref): Promise<CandidatePage> {
   const { query, position, stage, billing, requestedPage } = filters;
 
-  const searchFilters: CandidateSearchFilters = {
-    query,
-    position,
-    caseStage: stage,
-    caseBilling: billing as CandidateSearchFilters['caseBilling']
-  };
+  const searchFilters: CandidateSearchFilters = { query, position, caseStage: stage, caseBilling: billing };
   const result = await searchCandidates(searchFilters, requestedPage, PAGE_SIZE);
   const candidates = result.rows;
   const total = result.total;

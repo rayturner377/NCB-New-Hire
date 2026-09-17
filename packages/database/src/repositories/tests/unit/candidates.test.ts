@@ -140,10 +140,9 @@ describe('candidates repository', () => {
       });
     });
 
-    it('an unrecognized caseBilling value matches no candidate', () => {
-      // @ts-expect-error deliberately invalid, to confirm the fallback for a garbage query param
-      const where = buildCandidateSearchWhere({ caseBilling: 'garbage' });
-      expect(where.AND).toContainEqual({ cases: { some: { id: '__no_case_matches_this_billing_value__' } } });
+    it('throws for a caseBilling value outside the CaseBillingFilter union — callers must validate URL input themselves', () => {
+      // @ts-expect-error deliberately invalid — see parseBillingFilter
+      expect(() => buildCandidateSearchWhere({ caseBilling: 'garbage' })).toThrow(/not a valid billing filter/);
     });
   });
 

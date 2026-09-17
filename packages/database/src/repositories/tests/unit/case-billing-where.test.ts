@@ -33,8 +33,8 @@ describe('buildCaseBillingWhere()', () => {
     }
   });
 
-  it('an unrecognized value matches no case', () => {
-    // @ts-expect-error deliberately invalid, to confirm the fallback for a garbage query param
-    expect(buildCaseBillingWhere('garbage')).toEqual({ id: '__no_case_matches_this_billing_value__' });
+  it('throws for a value outside the CaseBillingFilter union — a call-site bug, not a query to interpret', () => {
+    // @ts-expect-error deliberately invalid — callers taking raw URL input must validate it themselves (see parseBillingFilter)
+    expect(() => buildCaseBillingWhere('garbage')).toThrow(/not a valid billing filter/);
   });
 });

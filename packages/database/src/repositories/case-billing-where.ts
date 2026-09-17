@@ -26,8 +26,12 @@ export function buildCaseBillingWhere(billing: CaseBillingFilter | undefined): P
     };
   }
   if (billing) {
-    // An unrecognized non-empty value — match nothing rather than silently ignoring the filter.
-    return { id: '__no_case_matches_this_billing_value__' };
+    // CaseBillingFilter is an exhaustive union of the 4 valid values — reaching here means a
+    // caller bypassed that type (e.g. an unvalidated raw string cast through `as`), which is a
+    // bug at the call site, not a value this layer should try to interpret. Callers taking input
+    // from a URL should validate it upstream (see billing-status.ts's parseBillingFilter) so a
+    // typo/garbage query param never reaches this far in the first place.
+    throw new Error(`buildCaseBillingWhere: not a valid billing filter: ${JSON.stringify(billing)}`);
   }
   return null;
 }

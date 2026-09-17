@@ -10,9 +10,9 @@ import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
 import { getSettings } from '../../settings/services/settings-service';
 import { parsePageNumber } from '../../../lib/pagination';
-import type { CaseSearchFilters } from '@ncb/database';
 import { CaseList } from '../components/case-list';
 import { CasesFilters } from '../components/cases-filters';
+import { parseBillingFilter } from '../billing-status';
 import { listReviewQueueCases, searchCasesWithPatient } from '../services/cases-service';
 
 export interface CasesContainerProps {
@@ -120,17 +120,13 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
   } else {
     const query = searchParams.query?.trim() ?? '';
     const status = searchParams.status ?? '';
-    const billing = searchParams.billing ?? '';
+    const billing = parseBillingFilter(searchParams.billing);
     const from = searchParams.from ?? '';
     const to = searchParams.to ?? '';
     const hasActiveFilters = Boolean(query || status || billing || from || to);
 
     const requestedPage = parsePageNumber(searchParams.page);
-    const { rows: pageRows, total } = await searchCasesWithPatient(
-      { query, status, billing: billing as CaseSearchFilters['billing'], from, to },
-      requestedPage,
-      PAGE_SIZE
-    );
+    const { rows: pageRows, total } = await searchCasesWithPatient({ query, status, billing, from, to }, requestedPage, PAGE_SIZE);
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
     function hrefForPage(page: number): string {

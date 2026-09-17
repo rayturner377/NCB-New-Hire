@@ -313,10 +313,9 @@ describe('cases repository', () => {
       });
     });
 
-    it('an unrecognized billing value matches nothing, the same as the old in-memory filter always failing to match', () => {
-      // @ts-expect-error deliberately an invalid value, to confirm the fallback for a garbage query param
-      const where = buildCaseSearchWhere({ billing: 'garbage' });
-      expect(where.AND).toContainEqual({ id: '__no_case_matches_this_billing_value__' });
+    it('throws for a billing value outside the CaseBillingFilter union — callers must validate URL input themselves', () => {
+      // @ts-expect-error deliberately an invalid value — see parseBillingFilter
+      expect(() => buildCaseSearchWhere({ billing: 'garbage' })).toThrow(/not a valid billing filter/);
     });
 
     it('applies from/to as an inclusive createdAt range', () => {
