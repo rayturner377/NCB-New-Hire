@@ -3,11 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { CaseVersionConflictError } from '@ncb/database';
 import { assertSameOrigin } from '../../../lib/assert-same-origin';
-import { parseAndValidateImageDataUrl } from '../../../lib/image-data-url';
 import { requireFullSession } from '../../../lib/session';
 import { patientOwnsCase } from '../case-authorization';
 import { parsePatientCaseData } from '../parse-patient-case-data';
-import { FAMILY_DISORDER_CATALOG, MEDICAL_DISEASE_CATALOG } from '../patient-case-data';
+import { validatePatientIntakeForSubmission } from '../patient-case-validation';
 import { getCaseWithPatientById, savePatientCaseProgress, submitPatientCase } from '../services/cases-service';
 
 export interface SavePatientCaseResult {
@@ -73,31 +72,9 @@ export async function savePatientCaseAction(
     return { ok: true, message: 'Draft saved.' };
   }
 
-  const { consent } = patientCaseData;
-  if (!consent.accepted || !consent.signedBy || !consent.signedAt || !consent.signatureDataUrl) {
-    return { ok: false, error: 'Consent acceptance and signature are required before submitting.' };
-  }
-  try {
-    parseAndValidateImageDataUrl(consent.signatureDataUrl, 500 * 1024);
-  } catch {
-    return { ok: false, error: 'Your signature could not be read — please sign again.' };
-  }
-  if (!patientCaseData.assignedClinicianId) {
-    return { ok: false, error: 'Choose the doctor who will complete your assessment.' };
-  }
-  for (const item of FAMILY_DISORDER_CATALOG) {
-    if (!patientCaseData.familyHistory.disorders[item.key]?.answer) {
-      return { ok: false, error: 'The family illnesses or disorders section is not complete.' };
-    }
-  }
-  for (const item of MEDICAL_DISEASE_CATALOG) {
-    const answer = patientCaseData.medicalHistory.diseases[item.key];
-    if (!answer?.answer) {
-      return { ok: false, error: 'The medical history section is not complete.' };
-    }
-    if (answer.answer === 'yes' && !answer.year) {
-      return { ok: false, error: 'Add a year for each "Yes" answer in your medical history.' };
-    }
+  const validationError = validatePatientIntakeForSubmission(patientCaseData);
+  if (validationError) {
+    return { ok: false, error: validationError };
   }
 
   await submitPatientCase(caseId, patientCaseData, medicalCase.version, session.user.id, medicalCase.payload);

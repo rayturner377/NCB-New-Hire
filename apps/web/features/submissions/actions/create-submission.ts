@@ -38,6 +38,27 @@ function candidateSummaryFrom(candidate: CandidatePayload) {
   };
 }
 
+/** Pulls & validates caseId/caseVersion off the submitted form — same convention save-submission-draft.ts uses for its own autosave posts. */
+function parseCaseReference(formData: FormData): { caseId: string; expectedVersion: number } | null {
+  const caseId = String(formData.get('caseId') || '');
+  const expectedVersion = Number.parseInt(String(formData.get('caseVersion') || ''), 10);
+  if (!caseId || !Number.isFinite(expectedVersion)) {
+    return null;
+  }
+  return { caseId, expectedVersion };
+}
+
+/**
+ * Snapshots the doctor's *current* rate onto the case at the moment they submit — a fixed amount
+ * from here on, independent of the doctor's own rate changing later (only an admin can adjust it
+ * after this point, see actions/update-case-billing.ts). A rate of 0 (unset, or a clinician/support
+ * account with no billable rate) leaves payableAmount alone rather than writing a misleading $0.00.
+ */
+function buildDoctorBillingSnapshot(medicalProfile: { defaultMedicalFee?: number } | null): { payableAmount: number; paymentStatus: string } | undefined {
+  const doctorRate = Number(medicalProfile?.defaultMedicalFee);
+  return Number.isFinite(doctorRate) && doctorRate > 0 ? { payableAmount: doctorRate, paymentStatus: 'unpaid' } : undefined;
+}
+
 export async function createSubmissionAction(
   _prevState: SubmissionActionResult | null,
   formData: FormData
@@ -64,11 +85,11 @@ export async function createSubmissionAction(
     return { ok: false, error: 'Only the assigned doctor can submit this assessment.' };
   }
 
-  const caseId = String(formData.get('caseId') || '');
-  const expectedVersion = Number.parseInt(String(formData.get('caseVersion') || ''), 10);
-  if (!caseId || !Number.isFinite(expectedVersion)) {
+  const caseReference = parseCaseReference(formData);
+  if (!caseReference) {
     return { ok: false, error: 'Missing or invalid case reference.' };
   }
+  const { caseId, expectedVersion } = caseReference;
 
   const medicalCase = await getCaseById(caseId);
   if (!medicalCase) {
@@ -92,14 +113,7 @@ export async function createSubmissionAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid assessment details.' };
   }
 
-  // Snapshots the doctor's *current* rate onto the case at the moment they submit — a fixed
-  // amount from here on, independent of the doctor's own rate changing later (only an admin can
-  // adjust it after this point, see actions/update-case-billing.ts). A rate of 0 (unset, or a
-  // clinician/support account with no billable rate) leaves payableAmount alone rather than
-  // writing a misleading $0.00.
-  const medicalProfile = session.user.medicalProfile as { defaultMedicalFee?: number } | null;
-  const doctorRate = Number(medicalProfile?.defaultMedicalFee);
-  const billing = Number.isFinite(doctorRate) && doctorRate > 0 ? { payableAmount: doctorRate, paymentStatus: 'unpaid' } : undefined;
+  const billing = buildDoctorBillingSnapshot(session.user.medicalProfile as { defaultMedicalFee?: number } | null);
 
   // The submission insert, billing snapshot, and case transition all happen in one DB
   // transaction — a stale expectedVersion rolls back the submission/billing writes too, instead
