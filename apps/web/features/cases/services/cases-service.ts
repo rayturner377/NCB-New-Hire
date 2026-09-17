@@ -6,7 +6,7 @@ import { sendNotification } from '../../notifications/services/notification-serv
 import { getSettings } from '../../settings/services/settings-service';
 import type { PatientCaseData } from '../patient-case-data';
 import type { CreateCaseSchemaInput } from '../schemas/case';
-import type { CaseStatus } from '../types';
+import { isCaseClosed, type CaseStatus } from '../types';
 
 export interface CreateCaseInput extends CreateCaseSchemaInput {
   createdBy: string;
@@ -459,7 +459,6 @@ export async function setCaseHidden(
 export async function countCasesForClinician(clinicianId: string): Promise<{ total: number; active: number }> {
   const masterKey = loadMasterKey();
   const cases = await casesRepository.listForClinician(clinicianId, masterKey);
-  const closedStatuses = new Set(['reviewed', 'archived', 'canceled_by_doctor', 'withdrawn']);
-  const active = cases.filter((item) => !closedStatuses.has(item.status)).length;
+  const active = cases.filter((item) => !isCaseClosed(item.status)).length;
   return { total: cases.length, active };
 }

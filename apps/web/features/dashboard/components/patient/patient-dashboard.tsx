@@ -3,14 +3,13 @@ import { StatCard } from '../../../../components/dashboard/stat-card';
 import { SectionCard } from '../../../../components/dashboard/section-card';
 import { Button } from '../../../../components/ui/button';
 import { statusLabel } from '../../../../lib/status-labels';
+import { isCaseClosed } from '../../../cases/types';
 import type { PatientCaseRow, PatientDashboardData } from '../../services/patient/patient-dashboard-service';
 import { PatientMedicalTable } from './patient-medical-table';
 
 export interface PatientDashboardProps {
   data: PatientDashboardData;
 }
-
-const CLOSED_STATUSES = new Set(['reviewed', 'archived', 'canceled_by_doctor', 'withdrawn']);
 
 /** No `patientCaseData` saved yet means the patient has never opened/started this case — used to tell "Open" from "Continue". */
 function hasStarted(row: PatientCaseRow): boolean {
@@ -47,7 +46,7 @@ export function PatientDashboard({ data }: PatientDashboardProps) {
 
   const actionCases = cases.filter((c) => c.status === 'sent_to_patient');
   const historyCases = cases.filter((c) => c.status !== 'sent_to_patient');
-  const active = cases.filter((c) => !CLOSED_STATUSES.has(c.status)).length;
+  const active = cases.filter((c) => !isCaseClosed(c.status)).length;
   const completed = cases.filter((c) => c.status === 'reviewed').length;
 
   return (

@@ -4,6 +4,7 @@ import { roleLabel } from '../../../../lib/role-labels';
 import { LIST_PATH_BY_ROLE } from '../../../../lib/role-list-paths';
 import { derivedPaymentStatus } from '../../../cases/billing-status';
 import { hasDoctorSubmitted, listCasesWithPatient, REVIEW_QUEUE_STATUSES } from '../../../cases/services/cases-service';
+import { isCancelledCase } from '../../../cases/types';
 import { listUsers } from '../../../users/services/users-service';
 
 export interface ReviewerDashboardCounts {
@@ -53,9 +54,12 @@ export interface ReviewerDashboardData {
   recentUpdates: RecentUpdateRow[];
 }
 
-/** Statuses that mean a case is fully closed out — everything else counts toward "Open cases" below, including a reviewed-but-unpaid case, which still has work left (see cases-service.ts's listReviewQueueCases). */
-const CLOSED_STATUSES = new Set(['archived', 'withdrawn', 'canceled_by_doctor']);
-const CANCELED_STATUSES = new Set(['canceled_by_doctor', 'withdrawn']);
+/**
+ * Statuses that mean a case is off the reviewer's plate entirely — deliberately narrower than
+ * isCaseClosed (types.ts): a reviewed-but-unpaid case still counts toward "Open cases" below since
+ * it still has work left (see cases-service.ts's listReviewQueueCases).
+ */
+const CLOSED_FOR_QUEUE_STATUSES = new Set(['archived', 'withdrawn', 'canceled_by_doctor']);
 
 /** Case- and user-lifecycle events surfaced in the dashboard's "Recent updates" feed — deliberately excludes login/logout/access-denied noise, which is session activity rather than a change to a case or account (the full /audit log still shows all of it). */
 const RECENT_UPDATE_EVENT_TYPES = new Set([
@@ -98,7 +102,7 @@ export async function getReviewerDashboardData(from: string, to: string): Promis
 
   const usersById = new Map(allUsers.map((user) => [user.id, user]));
 
-  const openCases = cases.filter((item) => !CLOSED_STATUSES.has(item.status)).length;
+  const openCases = cases.filter((item) => !CLOSED_FOR_QUEUE_STATUSES.has(item.status)).length;
   const awaitingPatient = cases.filter((item) => item.status === 'sent_to_patient').length;
   const withDoctor = cases.filter((item) => item.status === 'sent_to_doctor').length;
   const hrReview = cases.filter((item) => item.status === 'doctor_submitted').length;
@@ -112,7 +116,7 @@ export async function getReviewerDashboardData(from: string, to: string): Promis
     : 0;
 
   const unpaidCases = cases.filter(
-    (item) => hasDoctorSubmitted(item.status) && !CANCELED_STATUSES.has(item.status) && derivedPaymentStatus(item.status, item.paymentStatus) === 'unpaid'
+    (item) => hasDoctorSubmitted(item.status) && !isCancelledCase(item.status) && derivedPaymentStatus(item.status, item.paymentStatus) === 'unpaid'
   );
   const billing: ReviewerOutstandingBilling = {
     count: unpaidCases.length,

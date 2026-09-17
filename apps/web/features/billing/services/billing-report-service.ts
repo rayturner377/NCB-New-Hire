@@ -2,11 +2,9 @@ import { casesRepository, type CaseWithPatient } from '@ncb/database';
 import { loadMasterKey } from '../../../lib/master-key';
 import { derivedPaymentStatus, type BillingStatus } from '../../cases/billing-status';
 import { hasDoctorSubmitted, type CasePayload } from '../../cases/services/cases-service';
+import { isCancelledCase } from '../../cases/types';
 import { listUsers } from '../../users/services/users-service';
 import { financialYearOptions } from '../financial-year';
-
-/** A canceled case is never payable (see billing-status.ts's derivedPaymentStatus) and, per that same reasoning, doesn't belong on a billing report at all — not even as a $0 "not payable" row cluttering the list. */
-const CANCELED_STATUSES = new Set(['canceled_by_doctor', 'withdrawn']);
 
 export interface BillingReportFilters {
   from?: string;
@@ -48,7 +46,7 @@ type BilledCase = CaseWithPatient<CasePayload>;
  * show up here as outstanding so HR notices it and can set one, rather than
  * silently vanishing from the report the moment it's most relevant. A
  * canceled/withdrawn case is dropped entirely instead — see
- * CANCELED_STATUSES.
+ * isCancelledCase.
  *
  * Shared by both the per-doctor and organization-wide reports, parameterized
  * by which date column the range applies to — the doctor's own report
@@ -66,7 +64,7 @@ function filterBilled(
   const { from, to, query } = filters;
   const needle = query?.trim().toLowerCase();
   return cases.filter((item) => {
-    if (!hasDoctorSubmitted(item.status) || CANCELED_STATUSES.has(item.status)) return false;
+    if (!hasDoctorSubmitted(item.status) || isCancelledCase(item.status)) return false;
     const date = item[dateField];
     if ((from || to) && !date) return false;
     if (from && date! < new Date(`${from}T00:00:00.000Z`)) return false;
