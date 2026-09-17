@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { auditRepository, candidatesRepository } from '@ncb/database';
+import { auditRepository, candidatesRepository, type CandidateSearchFilters } from '@ncb/database';
 import { loadMasterKey } from '../../../lib/master-key';
 import { createUser } from '../../users/services/users-service';
 import type { CreateCandidateSchemaInput, UpdateCandidateSchemaInput } from '../schemas/candidate';
@@ -31,6 +31,8 @@ async function persist(payload: CandidatePayload): Promise<void> {
       contactNumber: payload.contactNumber || undefined,
       createdBy: payload.createdBy,
       linkedUserId: payload.linkedUserId || undefined,
+      status: payload.status,
+      position: payload.position,
       payload
     },
     masterKey
@@ -109,10 +111,41 @@ export async function listCandidates(): Promise<CandidatePayload[]> {
   return rows.map((row) => row.payload).filter((payload): payload is CandidatePayload => payload !== null);
 }
 
+export interface CandidateListRow extends CandidatePayload {
+  /** From Prisma's own _count aggregate — see candidatesRepository.search's own doc comment on why this isn't a full case fetch. */
+  caseCount: number;
+}
+
+/** The paginated, filtered equivalent of listCandidates — query/status/position/caseStage/caseBilling all match plain columns or the cases relation on PatientProfile now (see candidatesRepository.search's own doc comment), so this decrypts only the page actually returned instead of every candidate in the system. */
+export async function searchCandidates(
+  filters: CandidateSearchFilters,
+  page: number,
+  pageSize: number
+): Promise<{ rows: CandidateListRow[]; total: number }> {
+  const masterKey = loadMasterKey();
+  const { rows, total } = await candidatesRepository.search<CandidatePayload>(filters, page, pageSize, masterKey);
+  return {
+    rows: rows
+      .filter((row): row is typeof row & { payload: CandidatePayload } => row.payload !== null)
+      .map((row) => ({ ...row.payload, caseCount: row.caseCount })),
+    total
+  };
+}
+
+/** Every distinct position on file, for the candidates list's position filter dropdown. */
+export async function listCandidatePositions(): Promise<string[]> {
+  return candidatesRepository.listDistinctPositions();
+}
+
 export async function listCandidatesForUser(linkedUserId: string): Promise<CandidatePayload[]> {
   const masterKey = loadMasterKey();
   const rows = await candidatesRepository.listForUser<CandidatePayload>(linkedUserId, masterKey);
   return rows.map((row) => row.payload).filter((payload): payload is CandidatePayload => payload !== null);
+}
+
+/** The candidates list's stat cards — a role-wide (or, for a patient viewer, their own-record-only) count, independent of whichever page of the list is currently showing. */
+export async function getCandidateStats(linkedUserId?: string) {
+  return candidatesRepository.getStats(linkedUserId);
 }
 
 export async function getCandidateById(id: string): Promise<CandidatePayload | null> {

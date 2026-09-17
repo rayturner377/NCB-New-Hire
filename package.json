@@ -24,6 +24,7 @@
     "db:migrate:dev": "dotenv -- npm run migrate:dev -w @ncb/database",
     "db:migrate:deploy": "dotenv -- npm run migrate:deploy -w @ncb/database",
     "db:verify-audit-chain": "dotenv -- npm run verify-audit-chain -w @ncb/database",
+    "db:backfill-candidate-columns": "dotenv -- npm run backfill-candidate-columns -w @ncb/database",
     "db:seed:users": "dotenv -- npm run seed:users -w @ncb/database",
     "db:create-admin": "dotenv -- npm run create-admin -w @ncb/database --"
   },

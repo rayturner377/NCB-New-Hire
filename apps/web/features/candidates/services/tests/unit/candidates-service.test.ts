@@ -7,13 +7,19 @@ const listAll = vi.fn();
 const listForUser = vi.fn();
 const findById = vi.fn();
 const auditAppend = vi.fn();
+const searchMock = vi.fn();
+const getStatsMock = vi.fn();
+const listDistinctPositionsMock = vi.fn();
 
 vi.mock('@ncb/database', () => ({
   candidatesRepository: {
     save: (...args: unknown[]) => save(...args),
     listAll: (...args: unknown[]) => listAll(...args),
     listForUser: (...args: unknown[]) => listForUser(...args),
-    findById: (...args: unknown[]) => findById(...args)
+    findById: (...args: unknown[]) => findById(...args),
+    search: (...args: unknown[]) => searchMock(...args),
+    getStats: (...args: unknown[]) => getStatsMock(...args),
+    listDistinctPositions: (...args: unknown[]) => listDistinctPositionsMock(...args)
   },
   auditRepository: {
     append: (...args: unknown[]) => auditAppend(...args)
@@ -28,9 +34,16 @@ vi.mock('../../../../users/services/users-service', () => ({
   createUser: (...args: unknown[]) => createUser(...args)
 }));
 
-const { createCandidate, getCandidateById, listCandidates, listCandidatesForUser, updateCandidate } = await import(
-  '../../candidates-service'
-);
+const {
+  createCandidate,
+  getCandidateById,
+  listCandidates,
+  listCandidatesForUser,
+  updateCandidate,
+  searchCandidates,
+  getCandidateStats,
+  listCandidatePositions
+} = await import('../../candidates-service');
 
 function samplePayload(overrides: Partial<CandidatePayload> = {}): CandidatePayload {
   return {
@@ -74,6 +87,9 @@ describe('candidates service', () => {
     findById.mockReset();
     createUser.mockReset();
     auditAppend.mockReset();
+    searchMock.mockReset();
+    getStatsMock.mockReset();
+    listDistinctPositionsMock.mockReset();
   });
 
   it('createCandidate builds the full payload and persists it', async () => {
@@ -173,6 +189,37 @@ describe('candidates service', () => {
     await listCandidatesForUser('usr_doctor_demo');
 
     expect(listForUser).toHaveBeenCalledWith('usr_doctor_demo', masterKey);
+  });
+
+  it('searchCandidates passes filters/page/pageSize through, drops rows with no payload, and surfaces caseCount', async () => {
+    searchMock.mockResolvedValue({
+      rows: [
+        { payload: samplePayload(), caseCount: 2 },
+        { payload: null, caseCount: 0 }
+      ],
+      total: 5
+    });
+
+    const result = await searchCandidates({ query: 'jane' }, 2, 8);
+
+    expect(searchMock).toHaveBeenCalledWith({ query: 'jane' }, 2, 8, masterKey);
+    expect(result.total).toBe(5);
+    expect(result.rows).toEqual([expect.objectContaining({ id: 'cand_1', caseCount: 2 })]);
+  });
+
+  it('getCandidateStats passes the linkedUserId scope through', async () => {
+    getStatsMock.mockResolvedValue({ total: 3, newThisMonth: 1, portalAccessGranted: 2, noMedicalsYet: 0 });
+
+    const result = await getCandidateStats('usr_patient_1');
+
+    expect(getStatsMock).toHaveBeenCalledWith('usr_patient_1');
+    expect(result).toEqual({ total: 3, newThisMonth: 1, portalAccessGranted: 2, noMedicalsYet: 0 });
+  });
+
+  it('listCandidatePositions returns the repository result as-is', async () => {
+    listDistinctPositionsMock.mockResolvedValue(['Analyst', 'Teller']);
+
+    expect(await listCandidatePositions()).toEqual(['Analyst', 'Teller']);
   });
 
   it('getCandidateById returns null when nothing is found', async () => {

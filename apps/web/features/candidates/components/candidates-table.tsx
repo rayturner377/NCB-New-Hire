@@ -1,7 +1,8 @@
 'use client';
 
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, Eye, KeyRound, UserX } from 'lucide-react';
 import { Pagination } from '../../../components/dashboard/pagination';
 import { Button } from '../../../components/ui/button';
@@ -9,12 +10,12 @@ import { Input } from '../../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import { StatusBadge } from '../../../components/ui/status-badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table';
-import { BILLING_STATUS_OPTIONS, derivedPaymentStatus } from '../../cases/billing-status';
+import { BILLING_STATUS_OPTIONS } from '../../cases/billing-status';
 import { caseStatusSchema } from '../../cases/schemas/case';
 import { cn } from '../../../lib/utils';
 import { statusLabel } from '../../../lib/status-labels';
 import { withdrawCandidateAction } from '../actions/withdraw-candidate';
-import type { CandidatePayload } from '../types';
+import type { CandidateListRow } from '../services/candidates-service';
 
 export interface CandidateCaseSummary {
   id: string;
@@ -27,14 +28,32 @@ export interface CandidateCaseSummary {
   caseNumber?: number;
 }
 
+interface CandidatesFilterValues {
+  query: string;
+  position: string;
+  stage: string;
+  billing: string;
+}
+
 export interface CandidatesTableProps {
-  candidates: CandidatePayload[];
+  /** Already the current page's rows only — filtering/pagination happens server-side (see candidates-container.tsx's use of searchCandidates). */
+  candidates: CandidateListRow[];
   casesByPatientId: Record<string, CandidateCaseSummary[]>;
   /** Whether the viewer can withdraw a candidacy — auditors can view this list but not act on it. */
   canUpdate: boolean;
+  /** Every distinct position on file, for the filter dropdown — see listCandidatePositions. */
+  positions: string[];
+  query: string;
+  position: string;
+  stage: string;
+  billing: string;
+  page: number;
+  totalPages: number;
+  /** Builds the href for a given filter/page combination — mirrors cases-filters.tsx/users-table.tsx's own pattern. */
+  buildHref: (params: CandidatesFilterValues & { page: number }) => string;
 }
 
-const PAGE_SIZE = 8;
+const DEBOUNCE_MS = 400;
 
 const ALL_POSITIONS = '__all__';
 const ALL_STAGES = '__all__';
@@ -57,56 +76,46 @@ function caseTitle(medicalCase: CandidateCaseSummary): string {
 /**
  * Real candidates (features/candidates/services/candidates-service.ts), real
  * cases grouped by patientId (fetched once in the container, not per row).
- * Filtering/pagination stays client-side over the already-loaded set — same
- * as the Users tables — since candidate counts are small enough not to need
- * server-side paging yet. Rows expand in place rather than navigating away,
+ * Filtering/pagination happens server-side (see candidates-container.tsx) —
+ * this component only decides *when* to navigate to a new filter/page combo,
+ * the same debounced-search-input pattern cases-filters.tsx/users-table.tsx
+ * already established. Rows expand in place rather than navigating away,
  * since a candidate can have several medicals and several actions.
  */
-export function CandidatesTable({ candidates, casesByPatientId, canUpdate }: CandidatesTableProps) {
-  const [query, setQuery] = useState('');
-  const [position, setPosition] = useState('');
-  const [stage, setStage] = useState('');
-  const [billing, setBilling] = useState('');
+export function CandidatesTable({
+  candidates,
+  casesByPatientId,
+  canUpdate,
+  positions,
+  query: initialQuery,
+  position,
+  stage,
+  billing,
+  page,
+  totalPages,
+  buildHref
+}: CandidatesTableProps) {
+  const router = useRouter();
+  const [query, setQuery] = useState(initialQuery);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const positions = useMemo(() => Array.from(new Set(candidates.map((c) => c.position))).sort(), [candidates]);
-
-  const filtered = useMemo(
-    () =>
-      candidates.filter((candidate) => {
-        const cases = casesByPatientId[candidate.id] ?? [];
-        const matchesQuery = !query || candidate.fullName.toLowerCase().includes(query.trim().toLowerCase());
-        const matchesPosition = !position || candidate.position === position;
-        const matchesStage = !stage || cases.some((c) => c.status === stage);
-        const matchesBilling = !billing || cases.some((c) => derivedPaymentStatus(c.status, c.paymentStatus) === billing);
-        return matchesQuery && matchesPosition && matchesStage && matchesBilling;
-      }),
-    [candidates, casesByPatientId, query, position, stage, billing]
+  useEffect(() => setQuery(initialQuery), [initialQuery]);
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    []
   );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  function navigate(next: Partial<CandidatesFilterValues>) {
+    router.push(buildHref({ query, position, stage, billing, page: 1, ...next }));
+  }
 
   function updateQuery(value: string) {
     setQuery(value);
-    setPage(1);
-  }
-
-  function updatePosition(value: string) {
-    setPosition(value);
-    setPage(1);
-  }
-
-  function updateStage(value: string) {
-    setStage(value);
-    setPage(1);
-  }
-
-  function updateBilling(value: string) {
-    setBilling(value);
-    setPage(1);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => navigate({ query: value }), DEBOUNCE_MS);
   }
 
   function toggleExpanded(id: string) {
@@ -122,7 +131,7 @@ export function CandidatesTable({ candidates, casesByPatientId, canUpdate }: Can
           placeholder="Search by candidate name…"
           className="sm:max-w-sm"
         />
-        <Select value={position || ALL_POSITIONS} onValueChange={(value) => updatePosition(value === ALL_POSITIONS ? '' : value)}>
+        <Select value={position || ALL_POSITIONS} onValueChange={(value) => navigate({ position: value === ALL_POSITIONS ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[10rem]">
             <SelectValue placeholder="All positions" />
           </SelectTrigger>
@@ -136,7 +145,7 @@ export function CandidatesTable({ candidates, casesByPatientId, canUpdate }: Can
           </SelectContent>
         </Select>
 
-        <Select value={stage || ALL_STAGES} onValueChange={(value) => updateStage(value === ALL_STAGES ? '' : value)}>
+        <Select value={stage || ALL_STAGES} onValueChange={(value) => navigate({ stage: value === ALL_STAGES ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[11rem]">
             <SelectValue placeholder="All medical stages" />
           </SelectTrigger>
@@ -150,7 +159,7 @@ export function CandidatesTable({ candidates, casesByPatientId, canUpdate }: Can
           </SelectContent>
         </Select>
 
-        <Select value={billing || ALL_BILLING} onValueChange={(value) => updateBilling(value === ALL_BILLING ? '' : value)}>
+        <Select value={billing || ALL_BILLING} onValueChange={(value) => navigate({ billing: value === ALL_BILLING ? '' : value })}>
           <SelectTrigger className="h-9 w-auto min-w-[11rem]">
             <SelectValue placeholder="All billing statuses" />
           </SelectTrigger>
@@ -165,9 +174,9 @@ export function CandidatesTable({ candidates, casesByPatientId, canUpdate }: Can
         </Select>
       </div>
 
-      {filtered.length === 0 ? (
+      {candidates.length === 0 ? (
         <p className="text-sm italic text-muted-foreground">
-          {candidates.length === 0 ? 'No candidates yet.' : 'No candidates match these filters.'}
+          {!query && !position && !stage && !billing ? 'No candidates yet.' : 'No candidates match these filters.'}
         </p>
       ) : (
         <>
@@ -182,7 +191,7 @@ export function CandidatesTable({ candidates, casesByPatientId, canUpdate }: Can
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pageRows.map((candidate) => {
+              {candidates.map((candidate) => {
                 const isExpanded = expandedId === candidate.id;
                 const cases = casesByPatientId[candidate.id] ?? [];
                 return (
@@ -310,7 +319,7 @@ export function CandidatesTable({ candidates, casesByPatientId, canUpdate }: Can
             </TableBody>
           </Table>
 
-          <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+          <Pagination page={page} totalPages={totalPages} hrefForPage={(target) => buildHref({ query, position, stage, billing, page: target })} />
         </>
       )}
     </div>

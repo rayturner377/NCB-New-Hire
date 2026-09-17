@@ -157,6 +157,13 @@ model PatientProfile {
   nationalIdHash    String?   @map("national_id_hash") @db.Char(64)
   dateOfBirth       DateTime? @map("date_of_birth") @db.Date
   contactNumber     String?   @map("contact_number") @db.VarChar(50)
+  /// Mirrors CandidatePayload.status (the encrypted profilePayload's own copy stays the source of
+  /// truth) — added so the candidates list can filter/paginate by status in SQL instead of
+  /// decrypting every row. Nullable only until the one-time backfill script
+  /// (packages/database/src/scripts/backfill-candidate-columns.ts) populates existing rows.
+  status            String?   @db.VarChar(20)
+  /// Mirrors CandidatePayload.position — same reasoning as `status` above.
+  position          String?   @db.VarChar(140)
   profilePayload    Bytes?    @map("profile_payload")
   payloadKeyVersion  Int       @default(1) @map("payload_key_version") @db.SmallInt
   createdBy         String?   @map("created_by") @db.VarChar(80)
@@ -171,6 +178,7 @@ model PatientProfile {
   @@index([email], map: "idx_patients_email")
   @@index([employeeId], map: "idx_patients_employee_id")
   @@index([linkedUserId], map: "idx_patients_linked_user")
+  @@index([status], map: "idx_patients_status")
   @@map("patient_profiles")
 }
 
