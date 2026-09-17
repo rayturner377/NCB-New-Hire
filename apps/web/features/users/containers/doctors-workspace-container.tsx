@@ -10,12 +10,8 @@ import { parsePageNumber } from '../../../lib/pagination';
 import { getSession } from '../../../lib/session';
 import { MedicalOfficesTable } from '../../medical-offices/components/medical-offices-table';
 import { listAllMedicalOffices } from '../../medical-offices/services/medical-offices-service';
-import { countCasesForClinicians } from '../../cases/services/cases-service';
-import { UserStats } from '../components/user-stats';
-import { UsersTable } from '../components/users-table';
-import { getUserRoleStats, searchUsers } from '../services/users-service';
-
-const PAGE_SIZE = 8;
+import { RoleUserListSection } from '../components/role-user-list-section';
+import { loadRoleUserPage } from './load-role-user-page';
 
 export interface DoctorsWorkspaceContainerProps {
   /** `?tab=offices` lands directly on Medical facilities — used by the sidebar link and the facility create/cancel flow. Defaults to `doctors`. */
@@ -74,47 +70,24 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
       return `/doctors?${params.toString()}`;
     }
 
-    const [stats, { rows: doctors, total }] = await Promise.all([
-      getUserRoleStats('clinician'),
-      searchUsers({ role: 'clinician', query }, requestedPage, PAGE_SIZE)
-    ]);
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-    // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
-    // "Page N of M" label that implies real rows exist there.
-    if (requestedPage > totalPages) {
-      redirect(buildHref({ query, page: totalPages }));
-    }
-
-    const caseCounts = await countCasesForClinicians(doctors.map((doctor) => doctor.id));
+    const { stats, users: doctors, totalPages, caseCounts } = await loadRoleUserPage('clinician', { query, requestedPage }, buildHref);
 
     content = (
-      <div className="flex flex-col gap-6">
-        <UserStats total={stats.total} active={stats.active} label="Doctors" />
-
-        {canCreateDoctor ? (
-          <div className="flex justify-end">
-            <Button variant="link" size="sm" className="h-auto p-0" asChild>
-              <Link href="/doctors/new">
-                <Plus className="mr-1.5 h-4 w-4" /> New doctor
-              </Link>
-            </Button>
-          </div>
-        ) : null}
-
-        <SectionCard title="All doctors">
-          <UsersTable
-            users={doctors}
-            currentUserId={session.user.id}
-            caseCounts={caseCounts}
-            canManage={canCreateDoctor}
-            query={query}
-            page={requestedPage}
-            totalPages={totalPages}
-            buildHref={buildHref}
-          />
-        </SectionCard>
-      </div>
+      <RoleUserListSection
+        title="All doctors"
+        roleLabel="Doctors"
+        roleLabelSingular="doctor"
+        newHref="/doctors/new"
+        canCreate={canCreateDoctor}
+        currentUserId={session.user.id}
+        stats={stats}
+        users={doctors}
+        caseCounts={caseCounts}
+        query={query}
+        page={requestedPage}
+        totalPages={totalPages}
+        buildHref={buildHref}
+      />
     );
   } else {
     content = (

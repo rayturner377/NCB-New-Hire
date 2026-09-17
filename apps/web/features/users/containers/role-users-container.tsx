@@ -1,18 +1,10 @@
-import { Plus } from 'lucide-react';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { SectionCard } from '../../../components/dashboard/section-card';
-import { Button } from '../../../components/ui/button';
-import { countCasesForClinicians } from '../../cases/services/cases-service';
 import { canManageUserAccount, hasPermission, type Permission } from '../../../lib/permissions';
 import { parsePageNumber } from '../../../lib/pagination';
 import { getSession } from '../../../lib/session';
 import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
-import { UserStats } from '../components/user-stats';
-import { UsersTable } from '../components/users-table';
-import { getUserRoleStats, searchUsers } from '../services/users-service';
-
-const PAGE_SIZE = 8;
+import { RoleUserListSection } from '../components/role-user-list-section';
+import { loadRoleUserPage } from './load-role-user-page';
 
 export interface RoleUsersContainerProps {
   /** The AppUser.role value this page scopes down to. */
@@ -68,46 +60,25 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
     return qs ? `${basePath}?${qs}` : basePath;
   }
 
-  const [stats, { rows: users, total }] = await Promise.all([
-    getUserRoleStats(role),
-    searchUsers({ role, query }, requestedPage, PAGE_SIZE)
-  ]);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
-  // "Page N of M" label that implies real rows exist there.
-  if (requestedPage > totalPages) {
-    redirect(buildHref({ query, page: totalPages }));
-  }
-
-  const caseCounts = role === 'clinician' ? await countCasesForClinicians(users.map((user) => user.id)) : undefined;
+  const { stats, users, totalPages, caseCounts } = await loadRoleUserPage(role, { query, requestedPage }, buildHref);
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <UserStats total={stats.total} active={stats.active} label={roleLabel} />
-
-      {canCreate ? (
-        <div className="flex justify-end">
-          <Button variant="link" size="sm" className="h-auto p-0" asChild>
-            <Link href={newHref}>
-              <Plus className="mr-1.5 h-4 w-4" /> New {roleLabelSingular}
-            </Link>
-          </Button>
-        </div>
-      ) : null}
-
-      <SectionCard title={`All ${roleLabel.toLowerCase()}`}>
-        <UsersTable
-          users={users}
-          currentUserId={session.user.id}
-          caseCounts={caseCounts}
-          canManage={canCreate}
-          query={query}
-          page={requestedPage}
-          totalPages={totalPages}
-          buildHref={buildHref}
-        />
-      </SectionCard>
+      <RoleUserListSection
+        title={`All ${roleLabel.toLowerCase()}`}
+        roleLabel={roleLabel}
+        roleLabelSingular={roleLabelSingular}
+        newHref={newHref}
+        canCreate={canCreate}
+        currentUserId={session.user.id}
+        stats={stats}
+        users={users}
+        caseCounts={caseCounts}
+        query={query}
+        page={requestedPage}
+        totalPages={totalPages}
+        buildHref={buildHref}
+      />
     </div>
   );
 }
