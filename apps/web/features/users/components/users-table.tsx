@@ -29,8 +29,10 @@ export interface UsersTableProps {
   query: string;
   page: number;
   totalPages: number;
-  /** Builds the href for a given page/query combination — e.g. `/doctors?tab=doctors&query=...&page=...`. Mirrors cases-container.tsx's own hrefForPage pattern. */
-  buildHref: (params: { query: string; page: number }) => string;
+  /** The list's own path, e.g. '/reviewers' or '/doctors' — combined with fixedParams/query/page below to build every href this table navigates to. A plain string (not a function) since this crosses the Server → Client Component boundary as a prop, and Next.js can't serialize a closure across it — see doctors-workspace-container.tsx/role-users-container.tsx for what each caller passes. */
+  basePath: string;
+  /** Query params every href for this table must always carry, e.g. `{ tab: 'doctors' }` for the Doctors tab of /doctors — merged in ahead of query/page. */
+  fixedParams?: Record<string, string>;
 }
 
 const HEAD_CLASS = 'h-auto px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground';
@@ -70,7 +72,17 @@ function ActiveSwitch({ userId, active }: { userId: string; active: boolean }) {
  * expanded panel only, so clicking those never fights the row's own
  * click-to-expand handler.
  */
-export function UsersTable({ users, currentUserId, caseCounts, canManage, query: initialQuery, page, totalPages, buildHref }: UsersTableProps) {
+export function UsersTable({
+  users,
+  currentUserId,
+  caseCounts,
+  canManage,
+  query: initialQuery,
+  page,
+  totalPages,
+  basePath,
+  fixedParams
+}: UsersTableProps) {
   const { navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -78,6 +90,14 @@ export function UsersTable({ users, currentUserId, caseCounts, canManage, query:
   // Keeps the input in sync with the URL on back/forward navigation, without fighting the debounce
   // below — same pattern as cases-filters.tsx's own handling of this.
   useEffect(() => setQuery(initialQuery), [initialQuery]);
+
+  function buildHref({ query: nextQuery, page: nextPage }: { query: string; page: number }): string {
+    const params = new URLSearchParams(fixedParams);
+    if (nextQuery) params.set('query', nextQuery);
+    if (nextPage > 1) params.set('page', String(nextPage));
+    const qs = params.toString();
+    return qs ? `${basePath}?${qs}` : basePath;
+  }
 
   function updateQuery(value: string) {
     setQuery(value);

@@ -86,7 +86,8 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
         query={query}
         page={requestedPage}
         totalPages={totalPages}
-        buildHref={buildHref}
+        basePath="/doctors"
+        fixedParams={{ tab: 'doctors' }}
       />
     );
   } else {

@@ -10,6 +10,7 @@ import { logAccessDenied } from '../../../lib/audit-access';
 import { parsePageNumber } from '../../../lib/pagination';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
+import { buildCandidatesHref } from '../candidates-href';
 import { CandidatesStats } from '../components/candidates-stats';
 import { CandidatesTable, type CandidateCaseSummary } from '../components/candidates-table';
 import type { CandidateListRow } from '../services/candidates-service';
@@ -29,7 +30,7 @@ interface CandidateFilters {
   requestedPage: number;
 }
 
-/** Reads and normalizes this page's URL searchParams — the one place both loaders and the container's own buildHref agree on what each filter defaults to. */
+/** Reads and normalizes this page's URL searchParams — the one place both loaders and buildCandidatesHref agree on what each filter defaults to. */
 function parseCandidateFilters(searchParams: CandidatesContainerProps['searchParams'] = {}): CandidateFilters {
   return {
     query: searchParams.query?.trim() ?? '',
@@ -70,15 +71,13 @@ function buildCasesByPatientId(cases: Awaited<ReturnType<typeof listCasesForPati
   return casesByPatientId;
 }
 
-type BuildCandidatesHref = (next: { query: string; position: string; stage: string; billing: BillingStatus | ''; page: number }) => string;
-
 /**
  * A patient's own view: a small, bounded, entirely-in-memory filter over their own candidate
  * record(s) — usually exactly one, so this never needs to scale. Its search matches only on name,
  * narrower than the staff path below (name, email, employeeId), since a patient searching their
  * own handful of records has no practical need for the latter.
  */
-async function loadPatientCandidatePage(userId: string, filters: CandidateFilters, buildHref: BuildCandidatesHref): Promise<CandidatePage> {
+async function loadPatientCandidatePage(userId: string, filters: CandidateFilters): Promise<CandidatePage> {
   const { query, position, stage, billing, requestedPage } = filters;
 
   const own = await listCandidatesForUser(userId);
@@ -96,7 +95,7 @@ async function loadPatientCandidatePage(userId: string, filters: CandidateFilter
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (requestedPage > totalPages) {
-    redirect(buildHref({ query, position, stage, billing, page: totalPages }));
+    redirect(buildCandidatesHref({ query, position, stage, billing, page: totalPages }));
   }
   const candidates = filtered
     .slice((requestedPage - 1) * PAGE_SIZE, requestedPage * PAGE_SIZE)
@@ -113,7 +112,7 @@ async function loadPatientCandidatePage(userId: string, filters: CandidateFilter
  * name, email, AND employeeId (see buildCandidateSearchWhere) — broader than the patient path
  * above, since staff routinely search by employee ID.
  */
-async function loadStaffCandidatePage(filters: CandidateFilters, buildHref: BuildCandidatesHref): Promise<CandidatePage> {
+async function loadStaffCandidatePage(filters: CandidateFilters): Promise<CandidatePage> {
   const { query, position, stage, billing, requestedPage } = filters;
 
   const searchFilters: CandidateSearchFilters = { query, position, caseStage: stage, caseBilling: billing };
@@ -125,7 +124,7 @@ async function loadStaffCandidatePage(filters: CandidateFilters, buildHref: Buil
   // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
   // "Page N of M" label that implies real rows exist there.
   if (requestedPage > totalPages) {
-    redirect(buildHref({ query, position, stage, billing, page: totalPages }));
+    redirect(buildCandidatesHref({ query, position, stage, billing, page: totalPages }));
   }
 
   const cases = await listCasesForPatients(candidates.map((candidate) => candidate.id));
@@ -163,20 +162,9 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
   const filters = parseCandidateFilters(searchParams);
   const { query, position, stage, billing, requestedPage } = filters;
 
-  function buildHref(next: { query: string; position: string; stage: string; billing: string; page: number }): string {
-    const params = new URLSearchParams();
-    if (next.query) params.set('query', next.query);
-    if (next.position) params.set('position', next.position);
-    if (next.stage) params.set('stage', next.stage);
-    if (next.billing) params.set('billing', next.billing);
-    if (next.page > 1) params.set('page', String(next.page));
-    const qs = params.toString();
-    return qs ? `/candidates?${qs}` : '/candidates';
-  }
-
   const { candidates, total, casesByPatientId } = isPatient
-    ? await loadPatientCandidatePage(session.user.id, filters, buildHref)
-    : await loadStaffCandidatePage(filters, buildHref);
+    ? await loadPatientCandidatePage(session.user.id, filters)
+    : await loadStaffCandidatePage(filters);
 
   const stats = await getCandidateStats(isPatient ? session.user.id : undefined);
   const positions = await listCandidatePositions();
@@ -213,7 +201,6 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
           billing={billing}
           page={requestedPage}
           totalPages={totalPages}
-          buildHref={buildHref}
         />
       </SectionCard>
     </div>

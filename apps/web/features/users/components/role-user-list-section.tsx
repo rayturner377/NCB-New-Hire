@@ -23,7 +23,9 @@ export interface RoleUserListSectionProps {
   query: string;
   page: number;
   totalPages: number;
-  buildHref: (params: { query: string; page: number }) => string;
+  /** UsersTable's own basePath/fixedParams — see its doc comment for why these are plain data, not a buildHref function. */
+  basePath: string;
+  fixedParams?: Record<string, string>;
 }
 
 /**
@@ -45,7 +47,8 @@ export function RoleUserListSection({
   query,
   page,
   totalPages,
-  buildHref
+  basePath,
+  fixedParams
 }: RoleUserListSectionProps) {
   return (
     <div className="flex flex-col gap-6">
@@ -70,7 +73,8 @@ export function RoleUserListSection({
           query={query}
           page={page}
           totalPages={totalPages}
-          buildHref={buildHref}
+          basePath={basePath}
+          fixedParams={fixedParams}
         />
       </SectionCard>
     </div>

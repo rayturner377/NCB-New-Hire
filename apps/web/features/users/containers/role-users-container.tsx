@@ -77,7 +77,7 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
         query={query}
         page={requestedPage}
         totalPages={totalPages}
-        buildHref={buildHref}
+        basePath={basePath}
       />
     </div>
   );

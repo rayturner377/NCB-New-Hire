@@ -9,8 +9,9 @@ import { Input } from '../../../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import { StatusBadge } from '../../../components/ui/status-badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table';
-import { BILLING_STATUS_OPTIONS } from '../../cases/billing-status';
+import { BILLING_STATUS_OPTIONS, parseBillingFilter, type BillingStatus } from '../../cases/billing-status';
 import { caseStatusSchema } from '../../cases/schemas/case';
+import { buildCandidatesHref } from '../candidates-href';
 import { useDebouncedFilterNavigation } from '../../../lib/hooks/use-debounced-filter-navigation';
 import { cn } from '../../../lib/utils';
 import { statusLabel } from '../../../lib/status-labels';
@@ -32,7 +33,7 @@ interface CandidatesFilterValues {
   query: string;
   position: string;
   stage: string;
-  billing: string;
+  billing: BillingStatus | '';
 }
 
 export interface CandidatesTableProps {
@@ -46,11 +47,9 @@ export interface CandidatesTableProps {
   query: string;
   position: string;
   stage: string;
-  billing: string;
+  billing: BillingStatus | '';
   page: number;
   totalPages: number;
-  /** Builds the href for a given filter/page combination — mirrors cases-filters.tsx/users-table.tsx's own pattern. */
-  buildHref: (params: CandidatesFilterValues & { page: number }) => string;
 }
 
 const ALL_POSITIONS = '__all__';
@@ -80,7 +79,7 @@ interface CandidateFiltersProps {
   onQueryChange: (value: string) => void;
   onPositionChange: (value: string) => void;
   onStageChange: (value: string) => void;
-  onBillingChange: (value: string) => void;
+  onBillingChange: (value: BillingStatus | '') => void;
 }
 
 /** The search input + position/stage/billing dropdowns — owns the ALL_* sentinel-to-'' translation so callers only ever see a real value or ''. */
@@ -131,7 +130,7 @@ function CandidateFilters({
         </SelectContent>
       </Select>
 
-      <Select value={billing || ALL_BILLING} onValueChange={(value) => onBillingChange(value === ALL_BILLING ? '' : value)}>
+      <Select value={billing || ALL_BILLING} onValueChange={(value) => onBillingChange(parseBillingFilter(value === ALL_BILLING ? '' : value))}>
         <SelectTrigger className="h-9 w-auto min-w-[11rem]">
           <SelectValue placeholder="All billing statuses" />
         </SelectTrigger>
@@ -306,8 +305,7 @@ export function CandidatesTable({
   stage,
   billing,
   page,
-  totalPages,
-  buildHref
+  totalPages
 }: CandidatesTableProps) {
   const { navigate, navigateDebounced } = useDebouncedFilterNavigation();
   const [query, setQuery] = useState(initialQuery);
@@ -316,12 +314,12 @@ export function CandidatesTable({
   useEffect(() => setQuery(initialQuery), [initialQuery]);
 
   function navigateTo(next: Partial<CandidatesFilterValues>) {
-    navigate(buildHref({ query, position, stage, billing, page: 1, ...next }));
+    navigate(buildCandidatesHref({ query, position, stage, billing, page: 1, ...next }));
   }
 
   function updateQuery(value: string) {
     setQuery(value);
-    navigateDebounced(buildHref({ query: value, position, stage, billing, page: 1 }));
+    navigateDebounced(buildCandidatesHref({ query: value, position, stage, billing, page: 1 }));
   }
 
   function toggleExpanded(id: string) {
@@ -372,7 +370,11 @@ export function CandidatesTable({
             </TableBody>
           </Table>
 
-          <Pagination page={page} totalPages={totalPages} hrefForPage={(target) => buildHref({ query, position, stage, billing, page: target })} />
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            hrefForPage={(target) => buildCandidatesHref({ query, position, stage, billing, page: target })}
+          />
         </>
       )}
     </div>
