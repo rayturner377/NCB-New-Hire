@@ -1,7 +1,7 @@
 import { PERMISSIONS, ROLES, hasPermission } from '../../lib/permissions';
 import type { AuthenticatedSession } from '../../lib/session';
 import { matchesClinicianAssignment } from './case-authorization';
-import { hasDoctorSubmitted } from './services/cases-service';
+import { hasDoctorSubmitted } from './case-workflow';
 
 /**
  * Everything case-detail-container.tsx's staff workspace needs to decide what to show/lock, derived

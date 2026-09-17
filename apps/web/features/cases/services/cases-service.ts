@@ -8,6 +8,9 @@ import type { PatientCaseData } from '../patient-case-data';
 import type { CreateCaseSchemaInput } from '../schemas/case';
 import { isCaseClosed, type CaseStatus } from '../types';
 
+/** Re-exported for the several call sites that already import other case-service functions here alongside it — see case-workflow.ts for the actual (dependency-light) implementation. */
+export { hasDoctorSubmitted } from '../case-workflow';
+
 export interface CreateCaseInput extends CreateCaseSchemaInput {
   createdBy: string;
 }
@@ -381,14 +384,6 @@ export async function setCaseBilling(
     entityId: caseId,
     details: { payableAmount, paymentStatus }
   });
-}
-
-/** Statuses reached before a doctor has actually submitted an assessment — a case's billed amount/payment status don't exist yet at any of these (create-submission.ts snapshots the billed amount only at submission time), so billing/payment controls should stay disabled until past this set. */
-const PRE_DOCTOR_STATUSES = new Set(['draft', 'sent_to_patient', 'patient_completed', 'sent_to_doctor']);
-
-/** Whether a case has progressed far enough for billing/payment to make sense — see PRE_DOCTOR_STATUSES above. */
-export function hasDoctorSubmitted(status: string): boolean {
-  return !PRE_DOCTOR_STATUSES.has(status);
 }
 
 /** A case has doctor work done but isn't finished with HR yet if it's landed on HR's desk (`doctor_submitted`) or HR has signed off but the doctor hasn't been paid yet (`reviewed`, `paymentStatus !== 'paid'`) — see listReviewQueueCases below for where this actually drives the queue. */
