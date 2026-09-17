@@ -227,6 +227,12 @@ export async function listCasesForPatient(patientId: string) {
   return casesRepository.listForPatient<CasePayload>(patientId, masterKey);
 }
 
+/** The candidates list's per-candidate case-count/history summary — scoped to just the given patient ids (e.g. the current page's candidates) via SQL `IN`, not every case in the system. */
+export async function listCasesForPatients(patientIds: string[]) {
+  const masterKey = loadMasterKey();
+  return casesRepository.listForPatients<CasePayload>(patientIds, masterKey);
+}
+
 /**
  * Optimistic-concurrency status transition via the transition_medical_case
  * stored procedure (packages/database's casesRepository.transition) — on a

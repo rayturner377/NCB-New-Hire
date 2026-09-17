@@ -14,6 +14,7 @@ const submitAndTransition = vi.fn();
 const updatePayload = vi.fn();
 const setBilling = vi.fn();
 const listForClinician = vi.fn();
+const listForPatients = vi.fn();
 const auditAppend = vi.fn();
 const auditListForEntity = vi.fn();
 const settingsRead = vi.fn();
@@ -35,7 +36,8 @@ vi.mock('@ncb/database', () => ({
     submitAndTransition: (...args: unknown[]) => submitAndTransition(...args),
     updatePayload: (...args: unknown[]) => updatePayload(...args),
     setBilling: (...args: unknown[]) => setBilling(...args),
-    listForClinician: (...args: unknown[]) => listForClinician(...args)
+    listForClinician: (...args: unknown[]) => listForClinician(...args),
+    listForPatients: (...args: unknown[]) => listForPatients(...args)
   },
   auditRepository: {
     append: (...args: unknown[]) => auditAppend(...args),
@@ -69,6 +71,7 @@ const {
   getCaseWithPatientById,
   listCases,
   listCasesWithPatient,
+  listCasesForPatients,
   searchCasesWithPatient,
   listCaseAuditEvents,
   reassignClinician,
@@ -98,6 +101,7 @@ describe('cases service', () => {
     updatePayload.mockResolvedValue({ id: 'case_1', version: 5 });
     setBilling.mockReset();
     listForClinician.mockReset();
+    listForPatients.mockReset();
     auditAppend.mockReset();
     auditListForEntity.mockReset();
     settingsRead.mockReset();
@@ -161,6 +165,12 @@ describe('cases service', () => {
     listAllWithPatient.mockResolvedValue([]);
     await listCasesWithPatient();
     expect(listAllWithPatient).toHaveBeenCalledWith(masterKey);
+  });
+
+  it('listCasesForPatients passes the patient ids and master key through', async () => {
+    listForPatients.mockResolvedValue([]);
+    await listCasesForPatients(['cand_1', 'cand_2']);
+    expect(listForPatients).toHaveBeenCalledWith(['cand_1', 'cand_2'], masterKey);
   });
 
   it('searchCasesWithPatient passes filters/page/pageSize and the master key through', async () => {

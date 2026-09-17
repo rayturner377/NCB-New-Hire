@@ -150,6 +150,29 @@ describe('cases repository', () => {
     });
   });
 
+  it('listForPatients() scopes to a set of patient profile ids via IN', async () => {
+    const findMany = vi.fn().mockResolvedValue([rowWithPatient]);
+    const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+    await createCasesRepository(db).listForPatients(['cand_1', 'cand_2'], masterKey);
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { patientId: { in: ['cand_1', 'cand_2'] }, deletedAt: null },
+      include: { patient: patientSelect },
+      orderBy: { updatedAt: 'desc' }
+    });
+  });
+
+  it('listForPatients() returns [] without querying at all for an empty id list', async () => {
+    const findMany = vi.fn();
+    const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+    const result = await createCasesRepository(db).listForPatients([], masterKey);
+
+    expect(result).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it('setAssignedClinician() stamps assignedAt alongside the clinician id', async () => {
     const update = vi.fn().mockResolvedValue({ id: 'case_1' });
     const db = { medicalCase: { update } } as unknown as PrismaClient;

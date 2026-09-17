@@ -5,7 +5,7 @@ import type { CandidateSearchFilters } from '@ncb/database';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { Button } from '../../../components/ui/button';
 import { derivedPaymentStatus } from '../../cases/billing-status';
-import { listCasesForPatient, listCasesWithPatient } from '../../cases/services/cases-service';
+import { listCasesForPatient, listCasesForPatients } from '../../cases/services/cases-service';
 import { logAccessDenied } from '../../../lib/audit-access';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
@@ -20,7 +20,7 @@ export interface CandidatesContainerProps {
   searchParams?: { query?: string; position?: string; stage?: string; billing?: string; page?: string };
 }
 
-function buildCasesByPatientId(cases: Awaited<ReturnType<typeof listCasesWithPatient>>): Record<string, CandidateCaseSummary[]> {
+function buildCasesByPatientId(cases: Awaited<ReturnType<typeof listCasesForPatients>>): Record<string, CandidateCaseSummary[]> {
   const casesByPatientId: Record<string, CandidateCaseSummary[]> = {};
   for (const medicalCase of cases) {
     const list = (casesByPatientId[medicalCase.patientId] ??= []);
@@ -113,9 +113,9 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
     candidates = result.rows;
     total = result.total;
 
-    // Scoped to just this page's candidates, not every case in the system.
-    const candidateIds = new Set(candidates.map((candidate) => candidate.id));
-    const cases = (await listCasesWithPatient()).filter((medicalCase) => candidateIds.has(medicalCase.patientId));
+    // Queried scoped to just this page's candidates via SQL IN (listCasesForPatients), not
+    // fetched-and-decrypted for every case in the system and filtered afterward.
+    const cases = await listCasesForPatients(candidates.map((candidate) => candidate.id));
     casesByPatientId = buildCasesByPatientId(cases);
   }
 

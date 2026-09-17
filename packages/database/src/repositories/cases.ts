@@ -182,6 +182,22 @@ export function createCasesRepository(db: PrismaClient) {
     },
 
     /**
+     * Scoped to a specific set of patients via `patientId IN (...)` — for the candidates list's
+     * per-candidate case-count/history summary, which only ever needs cases for the candidates on
+     * the current page, not every case in the system. Returns [] without querying at all for an
+     * empty list, rather than letting an empty `IN ()` clause reach Postgres.
+     */
+    async listForPatients<T = unknown>(patientIds: string[], masterKey: Buffer): Promise<CaseWithPatient<T>[]> {
+      if (patientIds.length === 0) return [];
+      const rows = await db.medicalCase.findMany({
+        where: { patientId: { in: patientIds }, deletedAt: null },
+        include: { patient: { select: { id: true, fullName: true, employeeId: true } } },
+        orderBy: { updatedAt: 'desc' }
+      });
+      return rows.map((row) => ({ ...decryptCase<T>(row, masterKey), patient: row.patient }));
+    },
+
+    /**
      * Sets the clinician column (not just the encrypted payload) —
      * listForClinician/listForPatient filter on this real column, so the
      * patient intake form's doctor choice has to land here too.
