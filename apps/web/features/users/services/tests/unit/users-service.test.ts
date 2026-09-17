@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const findByEmail = vi.fn();
 const create = vi.fn();
 const listUsersMock = vi.fn();
+const searchMock = vi.fn();
+const countByRoleMock = vi.fn();
 const setActive = vi.fn();
 const updateMock = vi.fn();
 const auditAppend = vi.fn();
@@ -24,6 +26,8 @@ vi.mock('@ncb/database', () => ({
     findByEmail: (...args: unknown[]) => findByEmail(...args),
     create: (...args: unknown[]) => create(...args),
     listUsers: (...args: unknown[]) => listUsersMock(...args),
+    search: (...args: unknown[]) => searchMock(...args),
+    countByRole: (...args: unknown[]) => countByRoleMock(...args),
     setActive: (...args: unknown[]) => setActive(...args),
     update: (...args: unknown[]) => updateMock(...args),
     findById: (...args: unknown[]) => findById(...args),
@@ -46,6 +50,8 @@ const {
   createUser,
   DuplicateEmailError,
   listUsers,
+  searchUsers,
+  getUserRoleStats,
   listActiveDoctors,
   listDelegatesForClinician,
   isOwnDelegate,
@@ -264,6 +270,27 @@ describe('users service', () => {
         permissionOverrides: { grant: [], revoke: [] }
       }
     ]);
+  });
+
+  it('searchUsers passes filters/page/pageSize through and maps rows to summaries', async () => {
+    searchMock.mockResolvedValue({ rows: [sampleUser()], total: 1 });
+
+    const result = await searchUsers({ role: 'reviewer', query: 'Jane' }, 2, 8);
+
+    expect(searchMock).toHaveBeenCalledWith({ role: 'reviewer', query: 'Jane' }, 2, 8);
+    expect(result.total).toBe(1);
+    expect(result.rows).toEqual([
+      expect.objectContaining({ id: 'usr_1', displayName: 'Demo Reviewer', role: 'reviewer' })
+    ]);
+  });
+
+  it('getUserRoleStats passes the role through to the repository count', async () => {
+    countByRoleMock.mockResolvedValue({ total: 5, active: 4 });
+
+    const result = await getUserRoleStats('clinician');
+
+    expect(countByRoleMock).toHaveBeenCalledWith('clinician');
+    expect(result).toEqual({ total: 5, active: 4 });
   });
 
   it('setUserActive toggles active state', async () => {

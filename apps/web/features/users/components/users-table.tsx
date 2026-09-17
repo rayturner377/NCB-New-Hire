@@ -1,7 +1,8 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight, LayoutDashboard, Pencil, Trash2 } from 'lucide-react';
 import { Pagination } from '../../../components/dashboard/pagination';
 import { Button } from '../../../components/ui/button';
@@ -17,15 +18,22 @@ import { setUserActiveAction } from '../actions/set-user-active';
 import type { UserSummary } from '../types';
 
 export interface UsersTableProps {
+  /** Already the current page's rows only — searching/paginating happens server-side (see role-users-container.tsx/doctors-workspace-container.tsx's use of searchUsers). */
   users: UserSummary[];
   currentUserId: string;
   /** Doctors only — total/active case counts per doctor id, prefetched by the container. */
   caseCounts?: Record<string, { total: number; active: number }>;
   /** canManageUserAccount(actor, role) for the role this table is scoped to — see role-users-container.tsx/doctors-workspace-container.tsx. Hides Edit/Deactivate/Delete entirely for a view-only viewer (e.g. an auditor), rather than rendering controls that would just be rejected server-side if used. */
   canManage: boolean;
+  /** The search box's current value, from the URL. */
+  query: string;
+  page: number;
+  totalPages: number;
+  /** Builds the href for a given page/query combination — e.g. `/doctors?tab=doctors&query=...&page=...`. Mirrors cases-container.tsx's own hrefForPage pattern. */
+  buildHref: (params: { query: string; page: number }) => string;
 }
 
-const PAGE_SIZE = 8;
+const DEBOUNCE_MS = 400;
 const HEAD_CLASS = 'h-auto px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-wide text-muted-foreground';
 const CELL_CLASS = 'px-3 py-2.5';
 
@@ -63,24 +71,26 @@ function ActiveSwitch({ userId, active }: { userId: string; active: boolean }) {
  * expanded panel only, so clicking those never fights the row's own
  * click-to-expand handler.
  */
-export function UsersTable({ users, currentUserId, caseCounts, canManage }: UsersTableProps) {
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
+export function UsersTable({ users, currentUserId, caseCounts, canManage, query: initialQuery, page, totalPages, buildHref }: UsersTableProps) {
+  const router = useRouter();
+  const [query, setQuery] = useState(initialQuery);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return users;
-    return users.filter((user) => user.displayName.toLowerCase().includes(needle) || user.email.toLowerCase().includes(needle));
-  }, [users, query]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  // Keeps the input in sync with the URL on back/forward navigation, without fighting the debounce
+  // below — same pattern as cases-filters.tsx's own handling of this.
+  useEffect(() => setQuery(initialQuery), [initialQuery]);
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    []
+  );
 
   function updateQuery(value: string) {
     setQuery(value);
-    setPage(1);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => router.push(buildHref({ query: value, page: 1 })), DEBOUNCE_MS);
   }
 
   function toggleExpanded(id: string) {
@@ -92,7 +102,7 @@ export function UsersTable({ users, currentUserId, caseCounts, canManage }: User
       <div className="flex flex-col gap-4">
         <Input value={query} onChange={(event) => updateQuery(event.target.value)} placeholder="Search by name or email…" className="sm:max-w-sm" />
 
-        {filtered.length === 0 ? (
+        {users.length === 0 ? (
           <p className="text-sm italic text-muted-foreground">No accounts match this search.</p>
         ) : (
           <>
@@ -107,7 +117,7 @@ export function UsersTable({ users, currentUserId, caseCounts, canManage }: User
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pageRows.map((user) => {
+                {users.map((user) => {
                   const isExpanded = expandedId === user.id;
                   const counts = caseCounts?.[user.id];
                   const editHref = `${LIST_PATH_BY_ROLE[user.role] ?? ''}/${user.id}/edit`;
@@ -223,7 +233,7 @@ export function UsersTable({ users, currentUserId, caseCounts, canManage }: User
                 })}
               </TableBody>
             </Table>
-            <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+            <Pagination page={page} totalPages={totalPages} hrefForPage={(target) => buildHref({ query, page: target })} />
           </>
         )}
       </div>

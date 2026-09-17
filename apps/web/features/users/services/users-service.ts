@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { auditRepository, usersRepository, type AppUser } from '@ncb/database';
+import { auditRepository, usersRepository, type AppUser, type UserSearchFilters } from '@ncb/database';
 import { setUserPassword, revokeAllSessionsForUser } from '@ncb/auth/utils';
 import { issueAccessCode } from '../../auth/services/access-codes-service';
 import { sendNotification } from '../../notifications/services/notification-service';
@@ -113,6 +113,21 @@ export async function getUserRole(id: string): Promise<string | null> {
 export async function listUsers(): Promise<UserSummary[]> {
   const users = await usersRepository.listUsers();
   return users.map(toSummary);
+}
+
+/** The paginated, filtered equivalent of listUsers — a role's list page uses this instead of fetching every account in the system and filtering/paginating in JS. */
+export async function searchUsers(
+  filters: UserSearchFilters,
+  page: number,
+  pageSize: number
+): Promise<{ rows: UserSummary[]; total: number }> {
+  const { rows, total } = await usersRepository.search(filters, page, pageSize);
+  return { rows: rows.map(toSummary), total };
+}
+
+/** Total/active counts for one role — for the stat cards atop a role's list page, independent of which page of results is currently showing. */
+export async function getUserRoleStats(role: string): Promise<{ total: number; active: number }> {
+  return usersRepository.countByRole(role);
 }
 
 /** A single account's full summary — the edit page's own lookup (edit-role-user-container.tsx), where listUsers()'s whole-role-list scan would be wasteful for just one record. Null for a deleted/nonexistent user. */

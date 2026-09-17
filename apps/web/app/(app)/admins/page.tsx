@@ -1,7 +1,8 @@
 import { RoleUsersContainer } from '../../../features/users/containers/role-users-container';
 import { PERMISSIONS } from '../../../lib/permissions';
 
-export default function AdminsPage() {
+export default async function AdminsPage(props: { searchParams: Promise<{ query?: string; page?: string }> }) {
+  const searchParams = await props.searchParams;
   return (
     <RoleUsersContainer
       role="admin"
@@ -9,6 +10,7 @@ export default function AdminsPage() {
       roleLabelSingular="admin"
       listPermission={PERMISSIONS.USERS_MANAGE}
       newHref="/admins/new"
+      searchParams={searchParams}
     />
   );
 }

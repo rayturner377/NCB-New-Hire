@@ -1,5 +1,27 @@
-import type { AppUser, PrismaClient } from '../generated/client/index.js';
+import type { AppUser, Prisma, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
+
+export interface UserSearchFilters {
+  role?: string;
+  /** Matched against displayName OR email, case-insensitive, substring. */
+  query?: string;
+}
+
+export function buildUserSearchWhere(filters: UserSearchFilters): Prisma.AppUserWhereInput {
+  const and: Prisma.AppUserWhereInput[] = [{ deletedAt: null }];
+  if (filters.role) {
+    and.push({ role: filters.role });
+  }
+  if (filters.query) {
+    and.push({
+      OR: [
+        { displayName: { contains: filters.query, mode: 'insensitive' } },
+        { email: { contains: filters.query, mode: 'insensitive' } }
+      ]
+    });
+  }
+  return { AND: and };
+}
 
 export interface NewUserInput {
   id: string;
@@ -34,6 +56,25 @@ export function createUsersRepository(db: PrismaClient) {
   return {
     listUsers(): Promise<AppUser[]> {
       return db.appUser.findMany({ where: { deletedAt: null } });
+    },
+
+    /** The paginated, filtered equivalent of listUsers — a role-scoped or searched list page uses this instead of fetching every account in the system and filtering in JS. */
+    async search(filters: UserSearchFilters, page: number, pageSize: number): Promise<{ rows: AppUser[]; total: number }> {
+      const where = buildUserSearchWhere(filters);
+      const [rows, total] = await Promise.all([
+        db.appUser.findMany({ where, skip: (page - 1) * pageSize, take: pageSize }),
+        db.appUser.count({ where })
+      ]);
+      return { rows, total };
+    },
+
+    /** Total/active counts for one role — the stat cards atop a role's list page need these regardless of which page of results is currently showing, so they're their own lightweight count query rather than derived from a fetched array. */
+    async countByRole(role: string): Promise<{ total: number; active: number }> {
+      const [total, active] = await Promise.all([
+        db.appUser.count({ where: { role, deletedAt: null } }),
+        db.appUser.count({ where: { role, deletedAt: null, active: true } })
+      ]);
+      return { total, active };
     },
 
     findByEmail(email: string): Promise<AppUser | null> {

@@ -6,9 +6,12 @@ import { Button } from '../../../components/ui/button';
 import { countCasesForClinician } from '../../cases/services/cases-service';
 import { canManageUserAccount, hasPermission, type Permission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
+import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
 import { UserStats } from '../components/user-stats';
 import { UsersTable } from '../components/users-table';
-import { listUsers } from '../services/users-service';
+import { getUserRoleStats, searchUsers } from '../services/users-service';
+
+const PAGE_SIZE = 8;
 
 export interface RoleUsersContainerProps {
   /** The AppUser.role value this page scopes down to. */
@@ -19,13 +22,15 @@ export interface RoleUsersContainerProps {
   roleLabelSingular: string;
   listPermission: Permission;
   newHref: string;
+  searchParams?: { query?: string; page?: string };
 }
 
 /**
- * One container reused for /doctors, /reviewers, and /admins — same
- * stats+table shell as CandidatesContainer, parameterized by role instead of
- * three near-identical copies. Unlike Candidates (still wireframed against
- * mock data), this is wired to the real listUsers() service throughout.
+ * One container reused for /reviewers, /admins, /auditors, and /delegates —
+ * same stats+table shell as CandidatesContainer, parameterized by role
+ * instead of near-identical copies. Both the stats and the table query only
+ * this role's own accounts, paginated/searched server-side (searchUsers/
+ * getUserRoleStats) rather than fetching every account in the system.
  *
  * Whether "New <role>" shows is decided by canManageUserAccount(actor, role)
  * rather than a separate createPermission prop — the same policy used by
@@ -40,7 +45,7 @@ export interface RoleUsersContainerProps {
  * account of this role" are the identical policy question for the same
  * target role, so there's one canManageUserAccount call per render, not two.
  */
-export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, listPermission, newHref }: RoleUsersContainerProps) {
+export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, listPermission, newHref, searchParams = {} }: RoleUsersContainerProps) {
   const session = await getSession();
   if (!session) {
     redirect('/login');
@@ -50,7 +55,24 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
   }
 
   const canCreate = canManageUserAccount(session.user, role);
-  const users = (await listUsers()).filter((user) => user.role === role);
+  const query = searchParams.query?.trim() ?? '';
+  const requestedPage = Math.max(1, Number(searchParams.page) || 1);
+
+  const [stats, { rows: users, total }] = await Promise.all([
+    getUserRoleStats(role),
+    searchUsers({ role, query }, requestedPage, PAGE_SIZE)
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.min(requestedPage, totalPages);
+
+  const basePath = LIST_PATH_BY_ROLE[role] ?? newHref.replace(/\/new$/, '');
+  function buildHref({ query: nextQuery, page }: { query: string; page: number }): string {
+    const params = new URLSearchParams();
+    if (nextQuery) params.set('query', nextQuery);
+    if (page > 1) params.set('page', String(page));
+    const qs = params.toString();
+    return qs ? `${basePath}?${qs}` : basePath;
+  }
 
   let caseCounts: Record<string, { total: number; active: number }> | undefined;
   if (role === 'clinician') {
@@ -60,7 +82,7 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <UserStats users={users} label={roleLabel} />
+      <UserStats total={stats.total} active={stats.active} label={roleLabel} />
 
       {canCreate ? (
         <div className="flex justify-end">
@@ -73,7 +95,16 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
       ) : null}
 
       <SectionCard title={`All ${roleLabel.toLowerCase()}`}>
-        <UsersTable users={users} currentUserId={session.user.id} caseCounts={caseCounts} canManage={canCreate} />
+        <UsersTable
+          users={users}
+          currentUserId={session.user.id}
+          caseCounts={caseCounts}
+          canManage={canCreate}
+          query={query}
+          page={currentPage}
+          totalPages={totalPages}
+          buildHref={buildHref}
+        />
       </SectionCard>
     </div>
   );

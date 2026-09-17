@@ -12,11 +12,13 @@ import { listAllMedicalOffices } from '../../medical-offices/services/medical-of
 import { countCasesForClinician } from '../../cases/services/cases-service';
 import { UserStats } from '../components/user-stats';
 import { UsersTable } from '../components/users-table';
-import { listUsers } from '../services/users-service';
+import { getUserRoleStats, searchUsers } from '../services/users-service';
+
+const PAGE_SIZE = 8;
 
 export interface DoctorsWorkspaceContainerProps {
   /** `?tab=offices` lands directly on Medical facilities — used by the sidebar link and the facility create/cancel flow. Defaults to `doctors`. */
-  searchParams?: { tab?: string };
+  searchParams?: { tab?: string; query?: string; page?: string };
 }
 
 /**
@@ -61,7 +63,23 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
 
   let content: ReactNode;
   if (activeTab === 'doctors') {
-    const doctors = (await listUsers()).filter((user) => user.role === 'clinician');
+    const query = searchParams.query?.trim() ?? '';
+    const requestedPage = Math.max(1, Number(searchParams.page) || 1);
+
+    const [stats, { rows: doctors, total }] = await Promise.all([
+      getUserRoleStats('clinician'),
+      searchUsers({ role: 'clinician', query }, requestedPage, PAGE_SIZE)
+    ]);
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    const currentPage = Math.min(requestedPage, totalPages);
+
+    function buildHref({ query: nextQuery, page }: { query: string; page: number }): string {
+      const params = new URLSearchParams({ tab: 'doctors' });
+      if (nextQuery) params.set('query', nextQuery);
+      if (page > 1) params.set('page', String(page));
+      return `/doctors?${params.toString()}`;
+    }
+
     const caseCountEntries = await Promise.all(
       doctors.map(async (doctor) => [doctor.id, await countCasesForClinician(doctor.id)] as const)
     );
@@ -69,7 +87,7 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
 
     content = (
       <div className="flex flex-col gap-6">
-        <UserStats users={doctors} label="Doctors" />
+        <UserStats total={stats.total} active={stats.active} label="Doctors" />
 
         {canCreateDoctor ? (
           <div className="flex justify-end">
@@ -82,7 +100,16 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
         ) : null}
 
         <SectionCard title="All doctors">
-          <UsersTable users={doctors} currentUserId={session.user.id} caseCounts={caseCounts} canManage={canCreateDoctor} />
+          <UsersTable
+            users={doctors}
+            currentUserId={session.user.id}
+            caseCounts={caseCounts}
+            canManage={canCreateDoctor}
+            query={query}
+            page={currentPage}
+            totalPages={totalPages}
+            buildHref={buildHref}
+          />
         </SectionCard>
       </div>
     );

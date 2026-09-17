@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '../../../generated/client/index.js';
-import { createUsersRepository } from '../../users.js';
+import { buildUserSearchWhere, createUsersRepository } from '../../users.js';
 
 describe('users repository', () => {
   it('create() passes through the expected fields', async () => {
@@ -63,6 +63,64 @@ describe('users repository', () => {
     await createUsersRepository(db).listUsers();
 
     expect(findMany).toHaveBeenCalledWith({ where: { deletedAt: null } });
+  });
+
+  describe('buildUserSearchWhere()', () => {
+    it('always excludes soft-deleted accounts, even with no filters', () => {
+      expect(buildUserSearchWhere({})).toEqual({ AND: [{ deletedAt: null }] });
+    });
+
+    it('scopes to a role', () => {
+      expect(buildUserSearchWhere({ role: 'clinician' })).toEqual({ AND: [{ deletedAt: null }, { role: 'clinician' }] });
+    });
+
+    it('matches the query against displayName OR email, case-insensitively', () => {
+      expect(buildUserSearchWhere({ query: 'jane' })).toEqual({
+        AND: [
+          { deletedAt: null },
+          {
+            OR: [
+              { displayName: { contains: 'jane', mode: 'insensitive' } },
+              { email: { contains: 'jane', mode: 'insensitive' } }
+            ]
+          }
+        ]
+      });
+    });
+
+    it('role and query compose as independent AND clauses', () => {
+      const where = buildUserSearchWhere({ role: 'reviewer', query: 'jane' });
+      expect(where.AND).toContainEqual({ role: 'reviewer' });
+      expect(where.AND).toHaveLength(3);
+    });
+  });
+
+  describe('search()', () => {
+    it('paginates via skip/take and runs a matching count in parallel', async () => {
+      const findMany = vi.fn().mockResolvedValue([{ id: 'user_1' }]);
+      const count = vi.fn().mockResolvedValue(42);
+      const db = { appUser: { findMany, count } } as unknown as PrismaClient;
+
+      const result = await createUsersRepository(db).search({ role: 'clinician' }, 3, 8);
+
+      const expectedWhere = buildUserSearchWhere({ role: 'clinician' });
+      expect(findMany).toHaveBeenCalledWith({ where: expectedWhere, skip: 16, take: 8 });
+      expect(count).toHaveBeenCalledWith({ where: expectedWhere });
+      expect(result).toEqual({ rows: [{ id: 'user_1' }], total: 42 });
+    });
+  });
+
+  describe('countByRole()', () => {
+    it('counts total and active accounts for the role, excluding soft-deleted rows', async () => {
+      const count = vi.fn().mockResolvedValueOnce(10).mockResolvedValueOnce(7);
+      const db = { appUser: { count } } as unknown as PrismaClient;
+
+      const result = await createUsersRepository(db).countByRole('clinician');
+
+      expect(count).toHaveBeenCalledWith({ where: { role: 'clinician', deletedAt: null } });
+      expect(count).toHaveBeenCalledWith({ where: { role: 'clinician', deletedAt: null, active: true } });
+      expect(result).toEqual({ total: 10, active: 7 });
+    });
   });
 
   it('setActive() toggles the active flag', async () => {
