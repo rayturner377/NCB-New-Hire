@@ -6,7 +6,7 @@ import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { createActionRateLimiter } from '../../../lib/action-rate-limit';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
-import { ownsCase } from '../case-authorization';
+import { matchesClinicianAssignment } from '../case-authorization';
 import { InvalidAttachmentError, uploadCaseAttachment } from '../services/case-attachments-service';
 import { getCaseById } from '../services/cases-service';
 
@@ -56,7 +56,7 @@ export async function uploadCaseAttachmentAction(
   if (!medicalCase) {
     return { ok: false, error: 'That case could not be found.' };
   }
-  if (!ownsCase(session.user, medicalCase)) {
+  if (!matchesClinicianAssignment(session.user, medicalCase)) {
     return { ok: false, error: 'This case is not assigned to you.' };
   }
 

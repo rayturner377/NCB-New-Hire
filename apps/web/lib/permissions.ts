@@ -12,7 +12,7 @@ export const ROLES = Object.freeze({
   /** Read-only HR/reviewer tier for auditors — new in this rebuild, no equivalent in the old app: same visibility as a reviewer, none of the write permissions (no review/transition/create). */
   AUDITOR: 'auditor',
   DOCTOR: 'clinician',
-  /** An assistant acting on behalf of exactly one doctor (AppUser.delegateForClinicianId) — same permission set as DOCTOR, scoped down to that one doctor's own cases by ownsCase() and the dashboard query, never the doctor's determination/attestation/signature or final submission. */
+  /** An assistant acting on behalf of exactly one doctor (AppUser.delegateForClinicianId) — same permission set as DOCTOR, scoped down to that one doctor's own cases by matchesClinicianAssignment() and the dashboard query, never the doctor's determination/attestation/signature or final submission. */
   DELEGATE: 'delegate',
   PATIENT: 'patient'
 } as const);
@@ -140,7 +140,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
   ]),
   /**
    * Shared by DOCTOR and DELEGATE below — a delegate is scoped down to exactly one doctor's own
-   * cases (see ownsCase() and the delegate dashboard query), never given a wider set of actions
+   * cases (see matchesClinicianAssignment() and the delegate dashboard query), never given a wider set of actions
    * than the doctor themselves. MEDICAL_CASES_BILLING_VIEW is deliberately NOT in this shared
    * list — it's the one thing that differs between the two roles, added to DOCTOR's own array
    * below and left as an opt-in per-delegate override instead (see permissionOverrides).

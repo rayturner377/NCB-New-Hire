@@ -102,7 +102,7 @@ describe('GET /cases/[id]/attachments/[attachmentId]', () => {
 
   it(
     'rejects a delegate whose linked doctor is not the one this case is assigned to — the exact gap ' +
-      'this route used to have before it shared ownsCase() with the rest of the app',
+      'this route used to have before it shared matchesClinicianAssignment() with the rest of the app',
     async () => {
       getSessionMock.mockResolvedValue({
         user: { id: 'usr_delegate', role: 'delegate', delegateForClinicianId: 'usr_a_different_doctor' }

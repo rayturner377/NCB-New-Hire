@@ -1,12 +1,12 @@
 import { PERMISSIONS, ROLES, hasPermission } from '../../lib/permissions';
 import type { AuthenticatedSession } from '../../lib/session';
-import { ownsCase } from './case-authorization';
+import { matchesClinicianAssignment } from './case-authorization';
 import { hasDoctorSubmitted } from './services/cases-service';
 
 /**
  * Everything case-detail-container.tsx's staff workspace needs to decide what to show/lock, derived
  * purely from the viewer and the case itself — no I/O, so it's cheap to compute once and pass down
- * rather than re-deriving hasPermission/ownsCase calls in three different tabs.
+ * rather than re-deriving hasPermission/matchesClinicianAssignment calls in three different tabs.
  */
 export interface CaseWorkspaceCapabilities {
   canUpdateBilling: boolean;
@@ -49,7 +49,7 @@ export function deriveCaseWorkspaceCapabilities(
     canTransition: hasPermission(user, PERMISSIONS.MEDICAL_CASES_TRANSITION),
     canReassign: hasPermission(user, PERMISSIONS.MEDICAL_CASES_REASSIGN),
     canHide: hasPermission(user, PERMISSIONS.MEDICAL_CASES_HIDE),
-    canUploadDocuments: hasPermission(user, PERMISSIONS.MEDICAL_CASES_ATTACH) && ownsCase(user, medicalCase),
+    canUploadDocuments: hasPermission(user, PERMISSIONS.MEDICAL_CASES_ATTACH) && matchesClinicianAssignment(user, medicalCase),
     canViewHistory: user.role !== ROLES.DOCTOR && user.role !== ROLES.DELEGATE,
     hidePositionFromViewer: user.role === ROLES.DOCTOR || user.role === ROLES.DELEGATE,
     isPaid: medicalCase.paymentStatus === 'paid',

@@ -6,7 +6,7 @@ import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { parseNestedFormData } from '../../../lib/form-data-to-object';
 import { ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
-import { ownsCase } from '../../cases/case-authorization';
+import { matchesClinicianAssignment } from '../../cases/case-authorization';
 import { getCaseById, saveDoctorAssessmentDraft } from '../../cases/services/cases-service';
 
 export interface SaveSubmissionDraftResult {
@@ -60,7 +60,7 @@ export async function saveSubmissionDraftAction(
   if (!medicalCase) {
     return { ok: false, error: 'That case could not be found.' };
   }
-  if (!ownsCase(session.user, medicalCase)) {
+  if (!matchesClinicianAssignment(session.user, medicalCase)) {
     return { ok: false, error: 'This case is not assigned to you.' };
   }
   if (medicalCase.status !== 'sent_to_doctor') {

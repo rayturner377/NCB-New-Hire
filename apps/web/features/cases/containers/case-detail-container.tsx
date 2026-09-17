@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { listCandidatesForUser } from '../../candidates/services/candidates-service';
 import { PatientCaseWorkspace } from '../components/patient-case-workspace';
 import { StaffCaseWorkspace } from '../components/staff-case-workspace';
-import { ownsCase } from '../case-authorization';
+import { matchesClinicianAssignment } from '../case-authorization';
 import { logAccessDenied } from '../../../lib/audit-access';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
@@ -58,7 +58,7 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
   // permission a clinician also holds, but that must not mean "any case in the system" — without
   // this, a doctor could open another doctor's assigned case (full candidate PII, family/medical
   // history) just by guessing/incrementing a case id.
-  if (!ownsCase(session.user, medicalCase)) {
+  if (!matchesClinicianAssignment(session.user, medicalCase)) {
     await logAccessDenied({
       userId: session.user.id,
       role: session.user.role,

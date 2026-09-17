@@ -43,7 +43,7 @@ function dashboardForRole(
     case ROLES.DOCTOR:
       return <DoctorDashboardContainer clinicianId={user.id} basePath="/" searchParams={searchParams} />;
     // A delegate's dashboard is the exact same container/query as their doctor's own, just scoped
-    // to the doctor they're linked to instead of their own id — see ownsCase()'s matching branch.
+    // to the doctor they're linked to instead of their own id — see matchesClinicianAssignment()'s matching branch.
     // No doctor linked yet resolves to an impossible clinicianId, so listForClinician legitimately
     // returns nothing rather than the container needing its own "no doctor assigned" empty state.
     case ROLES.DELEGATE:

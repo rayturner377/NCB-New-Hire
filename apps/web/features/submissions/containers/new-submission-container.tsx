@@ -3,7 +3,7 @@ import { Alert } from '../../../components/ui/alert';
 import { PERMISSIONS, ROLES, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
 import { getCandidateById } from '../../candidates/services/candidates-service';
-import { ownsCase } from '../../cases/case-authorization';
+import { matchesClinicianAssignment } from '../../cases/case-authorization';
 import type { CaseDocumentSummary } from '../../cases/components/case-documents/case-attachment-list';
 import { caseTypeLabel } from '../../cases/case-types';
 import { listCaseAttachments } from '../../cases/services/case-attachments-service';
@@ -44,7 +44,7 @@ export async function NewSubmissionContainer({ caseId }: NewSubmissionContainerP
   // SUBMISSIONS_CREATE is granted to every clinician, not just this case's assigned doctor —
   // without this, any doctor could open and complete another doctor's assessment by guessing/
   // incrementing a case id, the same class of bug fixed for /cases/[id] (see case-detail-container.tsx).
-  if (!ownsCase(session.user, medicalCase)) {
+  if (!matchesClinicianAssignment(session.user, medicalCase)) {
     return (
       <div className="flex flex-col gap-4 p-6">
         <Alert tone="error">That case could not be found.</Alert>

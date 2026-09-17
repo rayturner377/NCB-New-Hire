@@ -18,7 +18,7 @@ model AppUser {
   displayName    String    @map("display_name") @db.VarChar(140)
   role           String    @db.VarChar(30)
   active         Boolean   @default(true)
-  /// Set only for role === 'delegate' — the one doctor this assistant account acts on behalf of (1:1, not a list: a delegate supports exactly one doctor). Null for every other role. See ownsCase()'s ROLES.DELEGATE branch and the delegate dashboard query, both of which use this in place of the user's own id.
+  /// Set only for role === 'delegate' — the one doctor this assistant account acts on behalf of (1:1, not a list: a delegate supports exactly one doctor). Null for every other role. See matchesClinicianAssignment()'s ROLES.DELEGATE branch and the delegate dashboard query, both of which use this in place of the user's own id.
   delegateForClinicianId String? @map("delegate_for_clinician_id") @db.VarChar(80)
   mustChangePassword Boolean @default(false) @map("must_change_password")
   /// Required by Better Auth's own core user schema (unconditional, not a plugin) — this app has

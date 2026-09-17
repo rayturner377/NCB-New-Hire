@@ -20,7 +20,7 @@ import { listCandidatesForUser } from '../candidates/services/candidates-service
  * the coarser permission check and isn't meant to be limited to "cases
  * assigned to me."
  */
-export function ownsCase(
+export function matchesClinicianAssignment(
   user: { role: string; id: string; delegateForClinicianId?: string | null },
   medicalCase: { assignedClinicianId: string | null }
 ): boolean {
@@ -32,7 +32,7 @@ export function ownsCase(
 }
 
 /**
- * The patient-side equivalent of ownsCase — a patient's MEDICAL_CASES_LIST/
+ * The patient-side equivalent of matchesClinicianAssignment — a patient's MEDICAL_CASES_LIST/
  * UPDATE grants are role-wide too, so anything that lets a patient act on
  * "their" case still needs to confirm the case's patientId is actually one
  * of their own linked candidates. Extracted from case-detail-container.tsx's

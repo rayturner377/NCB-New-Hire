@@ -7,7 +7,7 @@ import { ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../
 import { requireFullSession } from '../../../lib/session';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import type { CandidatePayload } from '../../candidates/types';
-import { ownsCase } from '../../cases/case-authorization';
+import { matchesClinicianAssignment } from '../../cases/case-authorization';
 import { clearDoctorAssessmentDraft, getCaseById } from '../../cases/services/cases-service';
 import { createSubmissionSchema } from '../schemas/submission';
 import { createSubmissionAndTransitionCase } from '../services/submissions-service';
@@ -95,7 +95,7 @@ export async function createSubmissionAction(
   if (!medicalCase) {
     return { ok: false, error: 'That case could not be found.' };
   }
-  if (!ownsCase(session.user, medicalCase)) {
+  if (!matchesClinicianAssignment(session.user, medicalCase)) {
     return { ok: false, error: 'This case is not assigned to you.' };
   }
   if (medicalCase.status !== 'sent_to_doctor') {

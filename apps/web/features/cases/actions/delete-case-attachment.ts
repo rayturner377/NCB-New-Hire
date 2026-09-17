@@ -5,7 +5,7 @@ import { assertSameOrigin } from '../../../lib/assert-same-origin';
 import { ROLES } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
 import { auditRepository, caseAttachmentsRepository } from '@ncb/database';
-import { ownsCase } from '../case-authorization';
+import { matchesClinicianAssignment } from '../case-authorization';
 import { deleteCaseAttachment } from '../services/case-attachments-service';
 import { getCaseById } from '../services/cases-service';
 
@@ -42,7 +42,7 @@ export async function deleteCaseAttachmentAction(
   }
 
   const medicalCase = await getCaseById(caseId);
-  if (medicalCase && !ownsCase(session.user, medicalCase)) {
+  if (medicalCase && !matchesClinicianAssignment(session.user, medicalCase)) {
     return { ok: false, error: 'This case is not assigned to you.' };
   }
 

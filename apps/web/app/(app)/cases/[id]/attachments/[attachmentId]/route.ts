@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auditRepository } from '@ncb/database';
 import { listCandidatesForUser } from '../../../../../../features/candidates/services/candidates-service';
-import { ownsCase } from '../../../../../../features/cases/case-authorization';
+import { matchesClinicianAssignment } from '../../../../../../features/cases/case-authorization';
 import { getCaseAttachmentFile } from '../../../../../../features/cases/services/case-attachments-service';
 import { getCaseById } from '../../../../../../features/cases/services/cases-service';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../../../../lib/permissions';
@@ -47,7 +47,7 @@ export async function GET(
   // since neither this branch nor the patient one below applied to them. Now shares the exact same
   // ownership check as save-submission-draft.ts/case-detail-container.tsx instead of a second,
   // independently-maintained copy of it.
-  if (!ownsCase(session.user, medicalCase)) {
+  if (!matchesClinicianAssignment(session.user, medicalCase)) {
     return new NextResponse('Not found', { status: 404 });
   }
   if (session.user.role === 'patient') {

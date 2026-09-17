@@ -31,7 +31,7 @@ export interface StaffCaseWorkspaceProps {
 
 /**
  * The non-patient view of a case: HR/admin/reviewer/auditor/doctor/delegate all land here (after
- * case-detail-container.tsx's own auth + ownsCase check), just with different tabs/controls enabled
+ * case-detail-container.tsx's own auth + matchesClinicianAssignment check), just with different tabs/controls enabled
  * per deriveCaseWorkspaceCapabilities. One adaptive workspace rather than the old app's three
  * separate renderers (HR admin workspace / HR review-queue workspace / doctor's authoring form) —
  * tabs are always visible, but only the parts the current role+stage combination can act on show an
