@@ -31,8 +31,21 @@ export interface AuditLogPage {
 }
 
 type AuditEvent = Awaited<ReturnType<typeof auditRepository.query>>['rows'][number];
-type UsersById = Map<string, Awaited<ReturnType<typeof listUsers>>[number]>;
-type CasesById = Map<string, Awaited<ReturnType<typeof listCasesWithPatient>>[number]>;
+
+/** Only what resolveAuditActor/resolveAuditEntity actually read off a user — not the full UserSummary (email, medicalProfile, active, ...) listUsers() returns. */
+interface AuditActorSummary {
+  displayName: string;
+  role: string;
+}
+
+/** Only what resolveAuditEntity actually reads off a case — not the full decrypted CaseWithPatient<CasePayload> listCasesWithPatient() returns. */
+interface AuditCaseSummary {
+  id: string;
+  patient: { fullName: string };
+}
+
+type UsersById = Map<string, AuditActorSummary>;
+type CasesById = Map<string, AuditCaseSummary>;
 
 /** "System" for an unattributed event (e.g. a scheduled job), otherwise the actor's own name/role — same fallback case-history.ts's formatCaseHistory uses. */
 function resolveAuditActor(event: AuditEvent, usersById: UsersById): { actorName: string; actorRole: string } {
