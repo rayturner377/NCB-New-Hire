@@ -104,7 +104,12 @@ describe('users repository', () => {
       const result = await createUsersRepository(db).search({ role: 'clinician' }, 3, 8);
 
       const expectedWhere = buildUserSearchWhere({ role: 'clinician' });
-      expect(findMany).toHaveBeenCalledWith({ where: expectedWhere, skip: 16, take: 8 });
+      expect(findMany).toHaveBeenCalledWith({
+        where: expectedWhere,
+        orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+        skip: 16,
+        take: 8
+      });
       expect(count).toHaveBeenCalledWith({ where: expectedWhere });
       expect(result).toEqual({ rows: [{ id: 'user_1' }], total: 42 });
     });

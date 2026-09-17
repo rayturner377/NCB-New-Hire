@@ -6,6 +6,7 @@ import { RouteTabs } from '../../../components/dashboard/route-tabs';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { Button } from '../../../components/ui/button';
 import { PERMISSIONS, canManageUserAccount, hasPermission } from '../../../lib/permissions';
+import { parsePageNumber } from '../../../lib/pagination';
 import { getSession } from '../../../lib/session';
 import { MedicalOfficesTable } from '../../medical-offices/components/medical-offices-table';
 import { listAllMedicalOffices } from '../../medical-offices/services/medical-offices-service';
@@ -64,20 +65,25 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
   let content: ReactNode;
   if (activeTab === 'doctors') {
     const query = searchParams.query?.trim() ?? '';
-    const requestedPage = Math.max(1, Number(searchParams.page) || 1);
-
-    const [stats, { rows: doctors, total }] = await Promise.all([
-      getUserRoleStats('clinician'),
-      searchUsers({ role: 'clinician', query }, requestedPage, PAGE_SIZE)
-    ]);
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    const currentPage = Math.min(requestedPage, totalPages);
+    const requestedPage = parsePageNumber(searchParams.page);
 
     function buildHref({ query: nextQuery, page }: { query: string; page: number }): string {
       const params = new URLSearchParams({ tab: 'doctors' });
       if (nextQuery) params.set('query', nextQuery);
       if (page > 1) params.set('page', String(page));
       return `/doctors?${params.toString()}`;
+    }
+
+    const [stats, { rows: doctors, total }] = await Promise.all([
+      getUserRoleStats('clinician'),
+      searchUsers({ role: 'clinician', query }, requestedPage, PAGE_SIZE)
+    ]);
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+    // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
+    // "Page N of M" label that implies real rows exist there.
+    if (requestedPage > totalPages) {
+      redirect(buildHref({ query, page: totalPages }));
     }
 
     const caseCountEntries = await Promise.all(
@@ -106,7 +112,7 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
             caseCounts={caseCounts}
             canManage={canCreateDoctor}
             query={query}
-            page={currentPage}
+            page={requestedPage}
             totalPages={totalPages}
             buildHref={buildHref}
           />

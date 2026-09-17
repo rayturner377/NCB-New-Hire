@@ -1,6 +1,7 @@
 import { decryptJson, encryptJson, type EncryptedRecord } from '@ncb/shared';
 import type { PatientProfile, Prisma, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
+import type { PaginatedResult } from '../pagination.js';
 
 export interface CandidateInput {
   id: string;
@@ -112,11 +113,15 @@ export function createCandidatesRepository(db: PrismaClient) {
       page: number,
       pageSize: number,
       masterKey: Buffer
-    ): Promise<{ rows: (CandidateWithPayload<T> & { caseCount: number })[]; total: number }> {
+    ): Promise<PaginatedResult<CandidateWithPayload<T> & { caseCount: number }>> {
       const where = buildCandidateSearchWhere(filters);
       const [rows, total] = await Promise.all([
         db.patientProfile.findMany({
           where,
+          // `id` breaks ties between rows with the identical createdAt — without it, Postgres
+          // doesn't guarantee the same relative order across separate paginated queries, which can
+          // show a row twice or skip one entirely across a page boundary.
+          orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
           skip: (page - 1) * pageSize,
           take: pageSize,
           include: { _count: { select: { cases: true } } }

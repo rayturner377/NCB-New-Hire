@@ -1,6 +1,7 @@
 import { decryptJson, encryptJson, type EncryptedRecord } from '@ncb/shared';
 import type { MedicalCase, Prisma, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
+import type { PaginatedResult } from '../pagination.js';
 
 /** Matches billing-status.ts's isCancelledCase — kept in sync there, not re-derived, since that's the one place this business rule is defined. */
 const CANCELLED_STATUSES = ['canceled_by_doctor', 'withdrawn'];
@@ -133,13 +134,17 @@ export function createCasesRepository(db: PrismaClient) {
       page: number,
       pageSize: number,
       masterKey: Buffer
-    ): Promise<{ rows: CaseWithPatient<T>[]; total: number }> {
+    ): Promise<PaginatedResult<CaseWithPatient<T>>> {
       const where = buildCaseSearchWhere(filters);
       const [rows, total] = await Promise.all([
         db.medicalCase.findMany({
           where,
           include: { patient: { select: { id: true, fullName: true, employeeId: true } } },
-          orderBy: { updatedAt: 'desc' },
+          // `id` breaks ties between rows with the identical updatedAt (plausible for a batch of
+          // records touched together, e.g. a migration/backfill) — without it, Postgres doesn't
+          // guarantee the same relative order across separate paginated queries, which can show a
+          // row twice or skip one entirely across a page boundary.
+          orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
           skip: (page - 1) * pageSize,
           take: pageSize
         }),

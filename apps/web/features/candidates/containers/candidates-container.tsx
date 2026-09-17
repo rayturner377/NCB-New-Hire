@@ -7,6 +7,7 @@ import { Button } from '../../../components/ui/button';
 import { derivedPaymentStatus } from '../../cases/billing-status';
 import { listCasesForPatient, listCasesForPatients } from '../../cases/services/cases-service';
 import { logAccessDenied } from '../../../lib/audit-access';
+import { parsePageNumber } from '../../../lib/pagination';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
 import { CandidatesStats } from '../components/candidates-stats';
@@ -81,7 +82,18 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
   const position = searchParams.position ?? '';
   const stage = searchParams.stage ?? '';
   const billing = searchParams.billing ?? '';
-  const requestedPage = Math.max(1, Number(searchParams.page) || 1);
+  const requestedPage = parsePageNumber(searchParams.page);
+
+  function buildHref(next: { query: string; position: string; stage: string; billing: string; page: number }): string {
+    const params = new URLSearchParams();
+    if (next.query) params.set('query', next.query);
+    if (next.position) params.set('position', next.position);
+    if (next.stage) params.set('stage', next.stage);
+    if (next.billing) params.set('billing', next.billing);
+    if (next.page > 1) params.set('page', String(next.page));
+    const qs = params.toString();
+    return qs ? `/candidates?${qs}` : '/candidates';
+  }
 
   let candidates: CandidateListRow[];
   let total: number;
@@ -100,8 +112,14 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
       const matchesBilling = !billing || candidateCases.some((c) => derivedPaymentStatus(c.status, c.paymentStatus) === billing);
       return matchesQuery && matchesPosition && matchesStage && matchesBilling;
     });
-    candidates = filtered.map((candidate) => ({ ...candidate, caseCount: casesByPatientId[candidate.id]?.length ?? 0 }));
-    total = candidates.length;
+    total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (requestedPage > totalPages) {
+      redirect(buildHref({ query, position, stage, billing, page: totalPages }));
+    }
+    candidates = filtered
+      .slice((requestedPage - 1) * PAGE_SIZE, requestedPage * PAGE_SIZE)
+      .map((candidate) => ({ ...candidate, caseCount: casesByPatientId[candidate.id]?.length ?? 0 }));
   } else {
     const filters: CandidateSearchFilters = {
       query,
@@ -112,6 +130,13 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
     const result = await searchCandidates(filters, requestedPage, PAGE_SIZE);
     candidates = result.rows;
     total = result.total;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+    // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
+    // "Page N of M" label that implies real rows exist there.
+    if (requestedPage > totalPages) {
+      redirect(buildHref({ query, position, stage, billing, page: totalPages }));
+    }
 
     // Queried scoped to just this page's candidates via SQL IN (listCasesForPatients), not
     // fetched-and-decrypted for every case in the system and filtered afterward.
@@ -122,18 +147,6 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
   const stats = await getCandidateStats(isPatient ? session.user.id : undefined);
   const positions = await listCandidatePositions();
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const currentPage = Math.min(requestedPage, totalPages);
-
-  function buildHref(next: { query: string; position: string; stage: string; billing: string; page: number }): string {
-    const params = new URLSearchParams();
-    if (next.query) params.set('query', next.query);
-    if (next.position) params.set('position', next.position);
-    if (next.stage) params.set('stage', next.stage);
-    if (next.billing) params.set('billing', next.billing);
-    if (next.page > 1) params.set('page', String(next.page));
-    const qs = params.toString();
-    return qs ? `/candidates?${qs}` : '/candidates';
-  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -164,7 +177,7 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
           position={position}
           stage={stage}
           billing={billing}
-          page={currentPage}
+          page={requestedPage}
           totalPages={totalPages}
           buildHref={buildHref}
         />

@@ -1,5 +1,6 @@
 import type { AppUser, Prisma, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
+import type { PaginatedResult } from '../pagination.js';
 
 export interface UserSearchFilters {
   role?: string;
@@ -59,10 +60,18 @@ export function createUsersRepository(db: PrismaClient) {
     },
 
     /** The paginated, filtered equivalent of listUsers — a role-scoped or searched list page uses this instead of fetching every account in the system and filtering in JS. */
-    async search(filters: UserSearchFilters, page: number, pageSize: number): Promise<{ rows: AppUser[]; total: number }> {
+    async search(filters: UserSearchFilters, page: number, pageSize: number): Promise<PaginatedResult<AppUser>> {
       const where = buildUserSearchWhere(filters);
       const [rows, total] = await Promise.all([
-        db.appUser.findMany({ where, skip: (page - 1) * pageSize, take: pageSize }),
+        db.appUser.findMany({
+          where,
+          // `id` breaks ties between rows with the identical displayName — without it, Postgres
+          // doesn't guarantee the same relative order across separate paginated queries, which can
+          // show a row twice or skip one entirely across a page boundary.
+          orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+          skip: (page - 1) * pageSize,
+          take: pageSize
+        }),
         db.appUser.count({ where })
       ]);
       return { rows, total };

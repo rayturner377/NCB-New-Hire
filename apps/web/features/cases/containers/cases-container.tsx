@@ -9,6 +9,7 @@ import { logAccessDenied } from '../../../lib/audit-access';
 import { PERMISSIONS, hasPermission } from '../../../lib/permissions';
 import { getSession } from '../../../lib/session';
 import { getSettings } from '../../settings/services/settings-service';
+import { parsePageNumber } from '../../../lib/pagination';
 import type { CaseSearchFilters } from '@ncb/database';
 import { CaseList } from '../components/case-list';
 import { CasesFilters } from '../components/cases-filters';
@@ -91,12 +92,19 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
     const queueCases = await listReviewQueueCases();
     const sortedQueue = [...queueCases].sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime());
     const totalPages = Math.max(1, Math.ceil(sortedQueue.length / PAGE_SIZE));
-    const currentPage = Math.min(Math.max(1, Number(searchParams.page) || 1), totalPages);
-    const pageRows = sortedQueue.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    const requestedPage = parsePageNumber(searchParams.page);
 
-    function hrefForPage(page: number): string {
+    function hrefForReviewPage(page: number): string {
       return page > 1 ? `/cases?tab=review&page=${page}` : '/cases?tab=review';
     }
+
+    // Corrects the URL itself rather than silently showing the last valid page under a
+    // page-number label that no longer matches it (e.g. requesting page 999 of 3).
+    if (requestedPage > totalPages) {
+      redirect(hrefForReviewPage(totalPages));
+    }
+
+    const pageRows = sortedQueue.slice((requestedPage - 1) * PAGE_SIZE, requestedPage * PAGE_SIZE);
 
     content = (
       <SectionCard
@@ -105,7 +113,7 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
       >
         <div className="flex flex-col gap-4">
           <CaseList cases={pageRows} slaDefinitions={sla.definitions} />
-          <Pagination page={currentPage} totalPages={totalPages} hrefForPage={hrefForPage} />
+          <Pagination page={requestedPage} totalPages={totalPages} hrefForPage={hrefForReviewPage} />
         </div>
       </SectionCard>
     );
@@ -117,14 +125,13 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
     const to = searchParams.to ?? '';
     const hasActiveFilters = Boolean(query || status || billing || from || to);
 
-    const requestedPage = Math.max(1, Number(searchParams.page) || 1);
+    const requestedPage = parsePageNumber(searchParams.page);
     const { rows: pageRows, total } = await searchCasesWithPatient(
       { query, status, billing: billing as CaseSearchFilters['billing'], from, to },
       requestedPage,
       PAGE_SIZE
     );
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    const currentPage = Math.min(requestedPage, totalPages);
 
     function hrefForPage(page: number): string {
       const params = new URLSearchParams({ tab: 'all' });
@@ -137,12 +144,19 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
       return `/cases?${params.toString()}`;
     }
 
+    // Corrects the URL itself (a real redirect, not just a relabeled page number) rather than
+    // showing 0 rows from the out-of-range page under a "Page N of M" label that implies real
+    // rows exist there.
+    if (requestedPage > totalPages) {
+      redirect(hrefForPage(totalPages));
+    }
+
     content = (
       <SectionCard title="All cases" description={`${total} case${total === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}`}>
         <div className="flex flex-col gap-4">
           <CasesFilters query={query} status={status} billing={billing} from={from} to={to} hasActiveFilters={hasActiveFilters} />
           <CaseList cases={pageRows} slaDefinitions={sla.definitions} />
-          <Pagination page={currentPage} totalPages={totalPages} hrefForPage={hrefForPage} />
+          <Pagination page={requestedPage} totalPages={totalPages} hrefForPage={hrefForPage} />
         </div>
       </SectionCard>
     );

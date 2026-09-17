@@ -158,6 +158,7 @@ describe('candidates repository', () => {
       const expectedWhere = buildCandidateSearchWhere({ status: 'assigned' });
       expect(findMany).toHaveBeenCalledWith({
         where: expectedWhere,
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         skip: 8,
         take: 8,
         include: { _count: { select: { cases: true } } }

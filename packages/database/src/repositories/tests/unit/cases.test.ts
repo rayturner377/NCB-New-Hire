@@ -304,7 +304,7 @@ describe('cases repository', () => {
       expect(findMany).toHaveBeenCalledWith({
         where: expectedWhere,
         include: { patient: patientSelect },
-        orderBy: { updatedAt: 'desc' },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: 20,
         take: 10
       });

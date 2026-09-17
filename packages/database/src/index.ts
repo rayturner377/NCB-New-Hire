@@ -1,4 +1,5 @@
 export * from './client.js';
+export * from './pagination.js';
 // Model types (AppUser, PatientProfile, MedicalCase, ...) for
 // consumers like apps/web — types only, so this doesn't re-export the
 // generated PrismaClient class itself (client.ts already does that).

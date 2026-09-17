@@ -5,6 +5,7 @@ import { SectionCard } from '../../../components/dashboard/section-card';
 import { Button } from '../../../components/ui/button';
 import { countCasesForClinician } from '../../cases/services/cases-service';
 import { canManageUserAccount, hasPermission, type Permission } from '../../../lib/permissions';
+import { parsePageNumber } from '../../../lib/pagination';
 import { getSession } from '../../../lib/session';
 import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
 import { UserStats } from '../components/user-stats';
@@ -56,14 +57,7 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
 
   const canCreate = canManageUserAccount(session.user, role);
   const query = searchParams.query?.trim() ?? '';
-  const requestedPage = Math.max(1, Number(searchParams.page) || 1);
-
-  const [stats, { rows: users, total }] = await Promise.all([
-    getUserRoleStats(role),
-    searchUsers({ role, query }, requestedPage, PAGE_SIZE)
-  ]);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const currentPage = Math.min(requestedPage, totalPages);
+  const requestedPage = parsePageNumber(searchParams.page);
 
   const basePath = LIST_PATH_BY_ROLE[role] ?? newHref.replace(/\/new$/, '');
   function buildHref({ query: nextQuery, page }: { query: string; page: number }): string {
@@ -72,6 +66,18 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
     if (page > 1) params.set('page', String(page));
     const qs = params.toString();
     return qs ? `${basePath}?${qs}` : basePath;
+  }
+
+  const [stats, { rows: users, total }] = await Promise.all([
+    getUserRoleStats(role),
+    searchUsers({ role, query }, requestedPage, PAGE_SIZE)
+  ]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
+  // "Page N of M" label that implies real rows exist there.
+  if (requestedPage > totalPages) {
+    redirect(buildHref({ query, page: totalPages }));
   }
 
   let caseCounts: Record<string, { total: number; active: number }> | undefined;
@@ -101,7 +107,7 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
           caseCounts={caseCounts}
           canManage={canCreate}
           query={query}
-          page={currentPage}
+          page={requestedPage}
           totalPages={totalPages}
           buildHref={buildHref}
         />
