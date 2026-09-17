@@ -1,8 +1,8 @@
 import { casesRepository, type CaseWithPatient } from '@ncb/database';
 import { loadMasterKey } from '../../../lib/master-key';
 import { derivedPaymentStatus, type BillingStatus } from '../../cases/billing-status';
-import { hasDoctorSubmitted, type CasePayload } from '../../cases/services/cases-service';
-import { isCancelledCase } from '../../cases/types';
+import { hasDoctorSubmitted, isCancelledCase } from '../../cases/case-workflow';
+import type { CasePayload } from '../../cases/services/cases-service';
 import { listUsers } from '../../users/services/users-service';
 import { financialYearOptions } from '../financial-year';
 
@@ -37,7 +37,7 @@ type BilledCase = CaseWithPatient<CasePayload>;
 
 /**
  * Cases a doctor has actually processed — anything from the moment they
- * submit an assessment onward (see cases-service.ts's hasDoctorSubmitted;
+ * submit an assessment onward (see case-workflow.ts's hasDoctorSubmitted;
  * before that there's nothing to bill, matching the same gate the case
  * workspace's Billing tab uses) — within a date range and matching a
  * candidate-name search, before any billing-status split. Deliberately NOT

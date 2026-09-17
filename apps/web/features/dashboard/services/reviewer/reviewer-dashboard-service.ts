@@ -3,8 +3,8 @@ import { eventLabel } from '../../../../lib/audit-event-labels';
 import { roleLabel } from '../../../../lib/role-labels';
 import { LIST_PATH_BY_ROLE } from '../../../../lib/role-list-paths';
 import { derivedPaymentStatus } from '../../../cases/billing-status';
-import { hasDoctorSubmitted, listCasesWithPatient, REVIEW_QUEUE_STATUSES } from '../../../cases/services/cases-service';
-import { isCancelledCase } from '../../../cases/types';
+import { hasDoctorSubmitted, isCancelledCase } from '../../../cases/case-workflow';
+import { listCasesWithPatient, REVIEW_QUEUE_STATUSES } from '../../../cases/services/cases-service';
 import { listUsers } from '../../../users/services/users-service';
 
 export interface ReviewerDashboardCounts {
@@ -56,8 +56,8 @@ export interface ReviewerDashboardData {
 
 /**
  * Statuses that mean a case is off the reviewer's plate entirely — deliberately narrower than
- * isCaseClosed (types.ts): a reviewed-but-unpaid case still counts toward "Open cases" below since
- * it still has work left (see cases-service.ts's listReviewQueueCases).
+ * isCaseClosed (case-workflow.ts): a reviewed-but-unpaid case still counts toward "Open cases"
+ * below since it still has work left (see cases-service.ts's listReviewQueueCases).
  */
 const CLOSED_FOR_QUEUE_STATUSES = new Set(['archived', 'withdrawn', 'canceled_by_doctor']);
 

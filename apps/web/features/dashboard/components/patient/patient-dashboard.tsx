@@ -3,7 +3,7 @@ import { StatCard } from '../../../../components/dashboard/stat-card';
 import { SectionCard } from '../../../../components/dashboard/section-card';
 import { Button } from '../../../../components/ui/button';
 import { statusLabel } from '../../../../lib/status-labels';
-import { isCaseClosed } from '../../../cases/types';
+import { isCaseClosed } from '../../../cases/case-workflow';
 import type { PatientCaseRow, PatientDashboardData } from '../../services/patient/patient-dashboard-service';
 import { PatientMedicalTable } from './patient-medical-table';
 

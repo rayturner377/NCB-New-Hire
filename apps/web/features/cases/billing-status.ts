@@ -1,4 +1,4 @@
-import { isCancelledCase } from './types';
+import { isCancelledCase } from './case-workflow';
 
 export const BILLING_STATUS_OPTIONS = ['unpaid', 'paid', 'not_payable'] as const;
 

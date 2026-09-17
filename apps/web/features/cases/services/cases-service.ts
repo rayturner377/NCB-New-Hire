@@ -6,7 +6,8 @@ import { sendNotification } from '../../notifications/services/notification-serv
 import { getSettings } from '../../settings/services/settings-service';
 import type { PatientCaseData } from '../patient-case-data';
 import type { CreateCaseSchemaInput } from '../schemas/case';
-import { isCaseClosed, type CaseStatus } from '../types';
+import type { CaseStatus } from '../types';
+import { isCaseClosed } from '../case-workflow';
 
 /** Re-exported for the several call sites that already import other case-service functions here alongside it — see case-workflow.ts for the actual (dependency-light) implementation. */
 export { hasDoctorSubmitted } from '../case-workflow';
