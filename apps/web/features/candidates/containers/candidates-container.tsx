@@ -21,6 +21,31 @@ export interface CandidatesContainerProps {
   searchParams?: { query?: string; position?: string; stage?: string; billing?: string; page?: string };
 }
 
+interface CandidateFilters {
+  query: string;
+  position: string;
+  stage: string;
+  billing: string;
+  requestedPage: number;
+}
+
+/** Reads and normalizes this page's URL searchParams — the one place both loaders and the container's own buildHref agree on what each filter defaults to. */
+function parseCandidateFilters(searchParams: CandidatesContainerProps['searchParams'] = {}): CandidateFilters {
+  return {
+    query: searchParams.query?.trim() ?? '',
+    position: searchParams.position ?? '',
+    stage: searchParams.stage ?? '',
+    billing: searchParams.billing ?? '',
+    requestedPage: parsePageNumber(searchParams.page)
+  };
+}
+
+interface CandidatePage {
+  candidates: CandidateListRow[];
+  total: number;
+  casesByPatientId: Record<string, CandidateCaseSummary[]>;
+}
+
 function buildCasesByPatientId(cases: Awaited<ReturnType<typeof listCasesForPatients>>): Record<string, CandidateCaseSummary[]> {
   const casesByPatientId: Record<string, CandidateCaseSummary[]> = {};
   for (const medicalCase of cases) {
@@ -45,18 +70,84 @@ function buildCasesByPatientId(cases: Awaited<ReturnType<typeof listCasesForPati
   return casesByPatientId;
 }
 
+type BuildCandidatesHref = (next: { query: string; position: string; stage: string; billing: string; page: number }) => string;
+
+/**
+ * A patient's own view: a small, bounded, entirely-in-memory filter over their own candidate
+ * record(s) (usually exactly one) — the same client-side predicate this whole page used to run
+ * over every candidate in the system, just now scoped to a set that was always tiny to begin with,
+ * so there's no scaling concern here to fix. Note its search semantics are narrower than the staff
+ * path below: it only matches on name, not email/employeeId, since a patient searching their own
+ * handful of records has no practical need for the latter.
+ */
+async function loadPatientCandidatePage(userId: string, filters: CandidateFilters, buildHref: BuildCandidatesHref): Promise<CandidatePage> {
+  const { query, position, stage, billing, requestedPage } = filters;
+
+  const own = await listCandidatesForUser(userId);
+  const cases = (await Promise.all(own.map((candidate) => listCasesForPatient(candidate.id)))).flat();
+  const casesByPatientId = buildCasesByPatientId(cases);
+
+  const filtered = own.filter((candidate) => {
+    const candidateCases = casesByPatientId[candidate.id] ?? [];
+    const matchesQuery = !query || candidate.fullName.toLowerCase().includes(query.toLowerCase());
+    const matchesPosition = !position || candidate.position === position;
+    const matchesStage = !stage || candidateCases.some((c) => c.status === stage);
+    const matchesBilling = !billing || candidateCases.some((c) => derivedPaymentStatus(c.status, c.paymentStatus) === billing);
+    return matchesQuery && matchesPosition && matchesStage && matchesBilling;
+  });
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (requestedPage > totalPages) {
+    redirect(buildHref({ query, position, stage, billing, page: totalPages }));
+  }
+  const candidates = filtered
+    .slice((requestedPage - 1) * PAGE_SIZE, requestedPage * PAGE_SIZE)
+    .map((candidate) => ({ ...candidate, caseCount: casesByPatientId[candidate.id]?.length ?? 0 }));
+
+  return { candidates, total, casesByPatientId };
+}
+
+/**
+ * The staff view: query/status/position/stage/billing filtering and pagination happen server-side
+ * (see searchCandidates) — only the current page's candidates get decrypted, and cases are fetched
+ * separately, scoped to just that page's candidates via SQL IN (listCasesForPatients), not
+ * fetched-and-decrypted for every case in the system and filtered afterward. Its search matches
+ * name, email, AND employeeId (see buildCandidateSearchWhere) — broader than the patient path
+ * above, since staff routinely search by employee ID.
+ */
+async function loadStaffCandidatePage(filters: CandidateFilters, buildHref: BuildCandidatesHref): Promise<CandidatePage> {
+  const { query, position, stage, billing, requestedPage } = filters;
+
+  const searchFilters: CandidateSearchFilters = {
+    query,
+    position,
+    caseStage: stage,
+    caseBilling: billing as CandidateSearchFilters['caseBilling']
+  };
+  const result = await searchCandidates(searchFilters, requestedPage, PAGE_SIZE);
+  const candidates = result.rows;
+  const total = result.total;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
+  // "Page N of M" label that implies real rows exist there.
+  if (requestedPage > totalPages) {
+    redirect(buildHref({ query, position, stage, billing, page: totalPages }));
+  }
+
+  const cases = await listCasesForPatients(candidates.map((candidate) => candidate.id));
+  const casesByPatientId = buildCasesByPatientId(cases);
+
+  return { candidates, total, casesByPatientId };
+}
+
 /**
  * Real data throughout — the earlier wireframe pass (MOCK_CANDIDATES) is
- * gone. Query/status/position/stage/billing filtering and pagination happen
- * server-side for the staff view (see searchCandidates) — only the current
- * page's candidates get decrypted, and cases are fetched separately, scoped
- * to just that page's candidates, not every case in the system.
- *
- * A patient's own view stays a small, bounded, entirely-in-memory filter
- * over their own candidate record(s) (usually exactly one) — the same
- * client-side predicate this whole page used to run over every candidate in
- * the system, just now scoped to a set that was always tiny to begin with,
- * so there's no scaling concern here to fix.
+ * gone. Loading is split into loadPatientCandidatePage/loadStaffCandidatePage
+ * above — two substantially different algorithms (an in-memory filter over a
+ * handful of records vs. a server-side search+pagination query) that just
+ * happen to return the same shape — leaving this container responsible only
+ * for authorization and composing the result into the page.
  */
 export async function CandidatesContainer({ searchParams = {} }: CandidatesContainerProps) {
   const session = await getSession();
@@ -78,11 +169,8 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
   const canUpdate = hasPermission(session.user, PERMISSIONS.PATIENT_PROFILES_UPDATE);
   const isPatient = session.user.role === 'patient';
 
-  const query = searchParams.query?.trim() ?? '';
-  const position = searchParams.position ?? '';
-  const stage = searchParams.stage ?? '';
-  const billing = searchParams.billing ?? '';
-  const requestedPage = parsePageNumber(searchParams.page);
+  const filters = parseCandidateFilters(searchParams);
+  const { query, position, stage, billing, requestedPage } = filters;
 
   function buildHref(next: { query: string; position: string; stage: string; billing: string; page: number }): string {
     const params = new URLSearchParams();
@@ -95,54 +183,9 @@ export async function CandidatesContainer({ searchParams = {} }: CandidatesConta
     return qs ? `/candidates?${qs}` : '/candidates';
   }
 
-  let candidates: CandidateListRow[];
-  let total: number;
-  let casesByPatientId: Record<string, CandidateCaseSummary[]>;
-
-  if (isPatient) {
-    const own = await listCandidatesForUser(session.user.id);
-    const cases = (await Promise.all(own.map((candidate) => listCasesForPatient(candidate.id)))).flat();
-    casesByPatientId = buildCasesByPatientId(cases);
-
-    const filtered = own.filter((candidate) => {
-      const candidateCases = casesByPatientId[candidate.id] ?? [];
-      const matchesQuery = !query || candidate.fullName.toLowerCase().includes(query.toLowerCase());
-      const matchesPosition = !position || candidate.position === position;
-      const matchesStage = !stage || candidateCases.some((c) => c.status === stage);
-      const matchesBilling = !billing || candidateCases.some((c) => derivedPaymentStatus(c.status, c.paymentStatus) === billing);
-      return matchesQuery && matchesPosition && matchesStage && matchesBilling;
-    });
-    total = filtered.length;
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    if (requestedPage > totalPages) {
-      redirect(buildHref({ query, position, stage, billing, page: totalPages }));
-    }
-    candidates = filtered
-      .slice((requestedPage - 1) * PAGE_SIZE, requestedPage * PAGE_SIZE)
-      .map((candidate) => ({ ...candidate, caseCount: casesByPatientId[candidate.id]?.length ?? 0 }));
-  } else {
-    const filters: CandidateSearchFilters = {
-      query,
-      position,
-      caseStage: stage,
-      caseBilling: billing as CandidateSearchFilters['caseBilling']
-    };
-    const result = await searchCandidates(filters, requestedPage, PAGE_SIZE);
-    candidates = result.rows;
-    total = result.total;
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-    // Corrects the URL itself rather than showing 0 rows from the out-of-range page under a
-    // "Page N of M" label that implies real rows exist there.
-    if (requestedPage > totalPages) {
-      redirect(buildHref({ query, position, stage, billing, page: totalPages }));
-    }
-
-    // Queried scoped to just this page's candidates via SQL IN (listCasesForPatients), not
-    // fetched-and-decrypted for every case in the system and filtered afterward.
-    const cases = await listCasesForPatients(candidates.map((candidate) => candidate.id));
-    casesByPatientId = buildCasesByPatientId(cases);
-  }
+  const { candidates, total, casesByPatientId } = isPatient
+    ? await loadPatientCandidatePage(session.user.id, filters, buildHref)
+    : await loadStaffCandidatePage(filters, buildHref);
 
   const stats = await getCandidateStats(isPatient ? session.user.id : undefined);
   const positions = await listCandidatePositions();
