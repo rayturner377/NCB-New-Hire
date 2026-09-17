@@ -7,6 +7,7 @@ import { parseNestedFormData } from '../../../lib/form-data-to-object';
 import { ForbiddenError, PERMISSIONS, ROLES, requirePermission } from '../../../lib/permissions';
 import { requireFullSession } from '../../../lib/session';
 import { matchesClinicianAssignment } from '../../cases/case-authorization';
+import { parseCaseReference } from '../../cases/case-reference';
 import { getCaseById, saveDoctorAssessmentDraft } from '../../cases/services/cases-service';
 
 export interface SaveSubmissionDraftResult {
@@ -50,11 +51,11 @@ export async function saveSubmissionDraftAction(
     throw error;
   }
 
-  const caseId = String(formData.get('caseId') || '');
-  const expectedVersion = Number.parseInt(String(formData.get('caseVersion') || ''), 10);
-  if (!caseId || !Number.isFinite(expectedVersion)) {
+  const caseReference = parseCaseReference(formData);
+  if (!caseReference) {
     return { ok: false, error: 'Missing case reference.' };
   }
+  const { caseId, expectedVersion } = caseReference;
 
   const medicalCase = await getCaseById(caseId);
   if (!medicalCase) {

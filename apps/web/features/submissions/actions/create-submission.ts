@@ -8,6 +8,7 @@ import { requireFullSession } from '../../../lib/session';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import type { CandidatePayload } from '../../candidates/types';
 import { matchesClinicianAssignment } from '../../cases/case-authorization';
+import { parseCaseReference } from '../../cases/case-reference';
 import { clearDoctorAssessmentDraft, getCaseById } from '../../cases/services/cases-service';
 import { createSubmissionSchema } from '../schemas/submission';
 import { createSubmissionAndTransitionCase } from '../services/submissions-service';
@@ -36,16 +37,6 @@ function candidateSummaryFrom(candidate: CandidatePayload) {
     position: candidate.position,
     medicationInformation: candidate.medicationInformation
   };
-}
-
-/** Pulls & validates caseId/caseVersion off the submitted form — same convention save-submission-draft.ts uses for its own autosave posts. */
-function parseCaseReference(formData: FormData): { caseId: string; expectedVersion: number } | null {
-  const caseId = String(formData.get('caseId') || '');
-  const expectedVersion = Number.parseInt(String(formData.get('caseVersion') || ''), 10);
-  if (!caseId || !Number.isFinite(expectedVersion)) {
-    return null;
-  }
-  return { caseId, expectedVersion };
 }
 
 /**
