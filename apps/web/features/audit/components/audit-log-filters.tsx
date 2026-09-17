@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { EVENT_LABELS, EVENT_TYPE_GROUPS } from '../../../lib/audit-event-labels';
+import { EVENT_TYPE_GROUPS, eventLabel } from '../../../lib/audit-event-labels';
 import { DateRangeInputs } from '../../../components/dashboard/date-range-inputs';
 import { Button } from '../../../components/ui/button';
 import { MultiSelectPopover, type MultiSelectGroup } from '../../../components/ui/multi-select';
@@ -22,7 +22,7 @@ interface FilterValues {
 
 const EVENT_TYPE_OPTION_GROUPS: MultiSelectGroup[] = EVENT_TYPE_GROUPS.map((group) => ({
   label: group.label,
-  options: group.eventTypes.map((type) => ({ value: type, label: EVENT_LABELS[type] ?? type }))
+  options: group.eventTypes.map((type) => ({ value: type, label: eventLabel(type) }))
 }));
 
 /**

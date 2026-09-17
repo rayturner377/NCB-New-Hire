@@ -1,5 +1,5 @@
 import type { AuditEvent } from '@ncb/database';
-import { EVENT_LABELS } from '../../lib/audit-event-labels';
+import { eventLabel } from '../../lib/audit-event-labels';
 import { roleLabel } from '../../lib/role-labels';
 import { statusLabel } from '../../lib/status-labels';
 
@@ -48,7 +48,7 @@ export function formatCaseHistory(events: AuditEvent[], usersById: Map<string, C
     return {
       id: String(event.id),
       occurredAt: event.occurredAt.toISOString(),
-      eventLabel: EVENT_LABELS[event.eventType] ?? event.eventType,
+      eventLabel: eventLabel(event.eventType),
       from,
       to,
       actorName,

@@ -50,8 +50,17 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
   ]);
 
   const capabilities = deriveCaseWorkspaceCapabilities(user, medicalCase);
-  const { canTransition, canReassign, canHide, canUploadDocuments, canViewHistory, hidePositionFromViewer, exportLockedMessage, uploadLockedMessage } =
-    capabilities;
+  const {
+    canTransition,
+    canReassign,
+    canHide,
+    canUploadDocuments,
+    canViewHistory,
+    hidePositionFromViewer,
+    hideNationalIdFromViewer,
+    exportLockedMessage,
+    uploadLockedMessage
+  } = capabilities;
 
   const slaStages = computeSlaStatus(
     {
@@ -171,7 +180,7 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
               employeeId={candidate.employeeId}
               email={candidate.email}
               doctors={doctors}
-              hideNationalId={hidePositionFromViewer}
+              hideNationalId={hideNationalIdFromViewer}
             />
           ) : (
             <p className="text-sm text-muted-foreground">The patient hasn&apos;t completed their intake form yet.</p>

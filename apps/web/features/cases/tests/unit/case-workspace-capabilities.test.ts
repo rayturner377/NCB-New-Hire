@@ -16,14 +16,16 @@ describe('deriveCaseWorkspaceCapabilities', () => {
     expect(capabilities.canUploadDocuments).toBe(true);
     expect(capabilities.canViewHistory).toBe(true);
     expect(capabilities.hidePositionFromViewer).toBe(false);
+    expect(capabilities.hideNationalIdFromViewer).toBe(false);
   });
 
-  it('lets an assigned clinician upload documents but hides the position and the history tab from them', () => {
+  it('lets an assigned clinician upload documents but hides the position, national ID, and the history tab from them', () => {
     const capabilities = deriveCaseWorkspaceCapabilities({ role: 'clinician', id: 'usr_doctor_1' } as never, baseCase);
 
     expect(capabilities.canUploadDocuments).toBe(true);
     expect(capabilities.canViewHistory).toBe(false);
     expect(capabilities.hidePositionFromViewer).toBe(true);
+    expect(capabilities.hideNationalIdFromViewer).toBe(true);
   });
 
   it('blocks a clinician not assigned to the case from uploading documents', () => {

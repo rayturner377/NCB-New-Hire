@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auditRepository } from '@ncb/database';
-import { listCandidatesForUser } from '../../../../../../features/candidates/services/candidates-service';
-import { matchesClinicianAssignment } from '../../../../../../features/cases/case-authorization';
+import { matchesClinicianAssignment, patientOwnsCase } from '../../../../../../features/cases/case-authorization';
 import { getCaseAttachmentFile } from '../../../../../../features/cases/services/case-attachments-service';
 import { getCaseById } from '../../../../../../features/cases/services/cases-service';
 import { ForbiddenError, PERMISSIONS, requirePermission } from '../../../../../../lib/permissions';
@@ -50,11 +49,8 @@ export async function GET(
   if (!matchesClinicianAssignment(session.user, medicalCase)) {
     return new NextResponse('Not found', { status: 404 });
   }
-  if (session.user.role === 'patient') {
-    const ownCandidates = await listCandidatesForUser(session.user.id);
-    if (!ownCandidates.some((candidate) => candidate.id === medicalCase.patientId)) {
-      return new NextResponse('Not found', { status: 404 });
-    }
+  if (session.user.role === 'patient' && !(await patientOwnsCase(session.user.id, medicalCase))) {
+    return new NextResponse('Not found', { status: 404 });
   }
 
   const result = await getCaseAttachmentFile(params.attachmentId);
