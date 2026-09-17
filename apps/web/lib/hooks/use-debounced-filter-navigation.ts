@@ -5,15 +5,11 @@ import { useEffect, useRef } from 'react';
 
 /**
  * Shared by every URL-searchParams-driven filter bar (cases, candidates, users, billing reports,
- * messages): a dropdown/date change navigates immediately, while a text search debounces so it
- * doesn't re-fetch on every keystroke. Each of those filter bars used to hand-roll its own
- * `debounceRef`/cleanup/`clearTimeout` for this, and every one of them had the same latent bug —
- * `navigate()` (the immediate path) never cancelled a debounce timer already pending from an
- * earlier keystroke. That timer closed over the filter values as they stood *when the debounce was
- * scheduled*, so if a dropdown was changed while a search was still debouncing, the stale timer
- * later fired and silently reverted that dropdown back to its pre-change value. `navigate` here
- * cancels any pending debounced navigation before pushing, since the value it's about to push
- * already reflects whatever the user just typed — there's nothing left for the pending one to do.
+ * messages): a dropdown/date change navigates immediately via `navigate`, while a text search
+ * debounces via `navigateDebounced` so it doesn't re-fetch on every keystroke. `navigate` cancels
+ * any pending debounced navigation before pushing — without that, a dropdown change made while a
+ * search is still debouncing could be overwritten when the stale timer later fires with the
+ * filter values as they stood before the dropdown changed.
  */
 export function useDebouncedFilterNavigation(debounceMs = 400) {
   const router = useRouter();

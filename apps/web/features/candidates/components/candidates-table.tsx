@@ -291,13 +291,10 @@ function CandidateRow({ candidate, cases, isExpanded, onToggle, canUpdate }: Can
 }
 
 /**
- * Real candidates (features/candidates/services/candidates-service.ts), real
- * cases grouped by patientId (fetched once in the container, not per row).
- * Filtering/pagination happens server-side (see candidates-container.tsx) —
- * this component only decides *when* to navigate to a new filter/page combo,
- * the same debounced-search-input pattern cases-filters.tsx/users-table.tsx
- * already established. Rows expand in place rather than navigating away,
- * since a candidate can have several medicals and several actions.
+ * Cases are grouped by patientId once in the container, not fetched per row. Filtering/pagination
+ * happens server-side (see candidates-container.tsx) — this component only decides *when* to
+ * navigate to a new filter/page combo. Rows expand in place rather than navigating away, since a
+ * candidate can have several medicals and several actions.
  */
 export function CandidatesTable({
   candidates,

@@ -74,11 +74,9 @@ type BuildCandidatesHref = (next: { query: string; position: string; stage: stri
 
 /**
  * A patient's own view: a small, bounded, entirely-in-memory filter over their own candidate
- * record(s) (usually exactly one) — the same client-side predicate this whole page used to run
- * over every candidate in the system, just now scoped to a set that was always tiny to begin with,
- * so there's no scaling concern here to fix. Note its search semantics are narrower than the staff
- * path below: it only matches on name, not email/employeeId, since a patient searching their own
- * handful of records has no practical need for the latter.
+ * record(s) — usually exactly one, so this never needs to scale. Its search matches only on name,
+ * narrower than the staff path below (name, email, employeeId), since a patient searching their
+ * own handful of records has no practical need for the latter.
  */
 async function loadPatientCandidatePage(userId: string, filters: CandidateFilters, buildHref: BuildCandidatesHref): Promise<CandidatePage> {
   const { query, position, stage, billing, requestedPage } = filters;
@@ -137,11 +135,9 @@ async function loadStaffCandidatePage(filters: CandidateFilters, buildHref: Buil
 }
 
 /**
- * Real data throughout — the earlier wireframe pass (MOCK_CANDIDATES) is
- * gone. Loading is split into loadPatientCandidatePage/loadStaffCandidatePage
- * above — two substantially different algorithms (an in-memory filter over a
- * handful of records vs. a server-side search+pagination query) that just
- * happen to return the same shape — leaving this container responsible only
+ * Loading is split into loadPatientCandidatePage/loadStaffCandidatePage above — two substantially
+ * different algorithms (an in-memory filter over a handful of records vs. a server-side
+ * search+pagination query) that return the same shape — leaving this container responsible only
  * for authorization and composing the result into the page.
  */
 export async function CandidatesContainer({ searchParams = {} }: CandidatesContainerProps) {
