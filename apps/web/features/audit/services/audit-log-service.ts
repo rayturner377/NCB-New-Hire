@@ -30,6 +30,75 @@ export interface AuditLogPage {
   total: number;
 }
 
+type AuditEvent = Awaited<ReturnType<typeof auditRepository.query>>['rows'][number];
+type UsersById = Map<string, Awaited<ReturnType<typeof listUsers>>[number]>;
+type CasesById = Map<string, Awaited<ReturnType<typeof listCasesWithPatient>>[number]>;
+
+/** "System" for an unattributed event (e.g. a scheduled job), otherwise the actor's own name/role — same fallback case-history.ts's formatCaseHistory uses. */
+function resolveAuditActor(event: AuditEvent, usersById: UsersById): { actorName: string; actorRole: string } {
+  if (!event.actorUserId) {
+    return { actorName: 'System', actorRole: '—' };
+  }
+  const actor = usersById.get(event.actorUserId);
+  return { actorName: actor?.displayName ?? 'Unknown user', actorRole: roleLabel(actor?.role ?? '') };
+}
+
+/** The one-line "what changed" detail for a case-entity event — only a few event types have anything worth summarizing here; everything else is blank. */
+function describeCaseAuditEvent(event: AuditEvent, details: Record<string, unknown>, usersById: UsersById): string {
+  if (event.eventType === 'case_transition') {
+    return `${details.from ? statusLabel(String(details.from)) : 'the start'} → ${statusLabel(String(details.to))}`;
+  }
+  if (event.eventType === 'case_reassigned') {
+    const from = details.from ? usersById.get(String(details.from))?.displayName ?? 'a previous doctor' : 'Unassigned';
+    const to = usersById.get(String(details.to))?.displayName ?? 'Unknown doctor';
+    return `${from} → ${to}`;
+  }
+  if (event.eventType === 'case_payment_confirmed') {
+    return details.paidOn ? `Paid on ${String(details.paidOn)}` : 'Paid';
+  }
+  return '';
+}
+
+/** The entity-specific columns (kind/label/link/detail) — one branch per entityType audit_events actually records; entityType/entityId with no matching branch fall through to the generic "—" row below. */
+function resolveAuditEntity(
+  event: AuditEvent,
+  details: Record<string, unknown>,
+  usersById: UsersById,
+  casesById: CasesById
+): Pick<AuditLogRow, 'entityKind' | 'entityLabel' | 'href' | 'detail'> {
+  if (event.entityType === 'case' && event.entityId) {
+    const relatedCase = casesById.get(event.entityId);
+    return {
+      entityKind: 'Patient case',
+      entityLabel: relatedCase?.patient.fullName ?? 'Deleted case',
+      href: relatedCase ? `/cases/${relatedCase.id}` : null,
+      detail: describeCaseAuditEvent(event, details, usersById)
+    };
+  }
+
+  if (event.entityType === 'user' && event.entityId) {
+    const targetUser = usersById.get(event.entityId);
+    const role = targetUser?.role ?? String(details.role ?? '');
+    const displayName = targetUser?.displayName ?? String(details.displayName ?? 'Unknown user');
+    return {
+      entityKind: 'User account',
+      entityLabel: displayName,
+      href: targetUser ? LIST_PATH_BY_ROLE[targetUser.role] ?? '/users' : null,
+      detail: role ? roleLabel(role) : ''
+    };
+  }
+
+  if (event.entityType === 'settings') {
+    return { entityKind: 'System settings', entityLabel: event.entityId ?? 'Settings', href: '/settings', detail: '' };
+  }
+
+  if (event.entityType === 'route' && event.entityId) {
+    return { entityKind: 'Route', entityLabel: event.entityId, href: null, detail: details.permission ? String(details.permission) : '' };
+  }
+
+  return { entityKind: '—', entityLabel: '—', href: null, detail: '' };
+}
+
 /**
  * Same "join actor/patient names onto raw audit_events rows" pattern as
  * case-history.ts's formatCaseHistory and reviewer-dashboard-service.ts's
@@ -54,96 +123,18 @@ export async function getAuditLog(filters: AuditLogFilters, page: number, pageSi
     listCasesWithPatient()
   ]);
 
-  const usersById = new Map(allUsers.map((user) => [user.id, user]));
-  const casesById = new Map(cases.map((item) => [item.id, item]));
+  const usersById: UsersById = new Map(allUsers.map((user) => [user.id, user]));
+  const casesById: CasesById = new Map(cases.map((item) => [item.id, item]));
 
   const formatted: AuditLogRow[] = rows.map((event) => {
-    const actor = event.actorUserId ? usersById.get(event.actorUserId) : undefined;
-    const actorName = event.actorUserId ? actor?.displayName ?? 'Unknown user' : 'System';
-    const actorRole = event.actorUserId ? roleLabel(actor?.role ?? '') : '—';
     const details = (event.details as Record<string, unknown>) ?? {};
-    const action = eventLabel(event.eventType);
-
-    if (event.entityType === 'case' && event.entityId) {
-      const relatedCase = casesById.get(event.entityId);
-      let detail = '';
-      if (event.eventType === 'case_transition') {
-        detail = `${details.from ? statusLabel(String(details.from)) : 'the start'} → ${statusLabel(String(details.to))}`;
-      } else if (event.eventType === 'case_reassigned') {
-        const from = details.from ? usersById.get(String(details.from))?.displayName ?? 'a previous doctor' : 'Unassigned';
-        const to = usersById.get(String(details.to))?.displayName ?? 'Unknown doctor';
-        detail = `${from} → ${to}`;
-      } else if (event.eventType === 'case_payment_confirmed') {
-        detail = details.paidOn ? `Paid on ${String(details.paidOn)}` : 'Paid';
-      }
-      return {
-        id: String(event.id),
-        occurredAt: event.occurredAt.toISOString(),
-        action,
-        actorName,
-        actorRole,
-        entityKind: 'Patient case',
-        entityLabel: relatedCase?.patient.fullName ?? 'Deleted case',
-        href: relatedCase ? `/cases/${relatedCase.id}` : null,
-        detail
-      };
-    }
-
-    if (event.entityType === 'user' && event.entityId) {
-      const targetUser = usersById.get(event.entityId);
-      const role = targetUser?.role ?? String(details.role ?? '');
-      const displayName = targetUser?.displayName ?? String(details.displayName ?? 'Unknown user');
-      return {
-        id: String(event.id),
-        occurredAt: event.occurredAt.toISOString(),
-        action,
-        actorName,
-        actorRole,
-        entityKind: 'User account',
-        entityLabel: displayName,
-        href: targetUser ? LIST_PATH_BY_ROLE[targetUser.role] ?? '/users' : null,
-        detail: role ? roleLabel(role) : ''
-      };
-    }
-
-    if (event.entityType === 'settings') {
-      return {
-        id: String(event.id),
-        occurredAt: event.occurredAt.toISOString(),
-        action,
-        actorName,
-        actorRole,
-        entityKind: 'System settings',
-        entityLabel: event.entityId ?? 'Settings',
-        href: '/settings',
-        detail: ''
-      };
-    }
-
-    if (event.entityType === 'route' && event.entityId) {
-      return {
-        id: String(event.id),
-        occurredAt: event.occurredAt.toISOString(),
-        action,
-        actorName,
-        actorRole,
-        entityKind: 'Route',
-        entityLabel: event.entityId,
-        href: null,
-        detail: details.permission ? String(details.permission) : ''
-      };
-    }
 
     return {
       id: String(event.id),
       occurredAt: event.occurredAt.toISOString(),
-      action,
-      actorName,
-      actorRole,
-      entityKind: '—',
-      entityLabel: '—',
-      href: null,
-      detail: ''
+      action: eventLabel(event.eventType),
+      ...resolveAuditActor(event, usersById),
+      ...resolveAuditEntity(event, details, usersById, casesById)
     };
   });
 
