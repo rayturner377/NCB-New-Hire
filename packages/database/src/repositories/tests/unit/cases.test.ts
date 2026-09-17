@@ -173,6 +173,40 @@ describe('cases repository', () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
+  describe('listStatusesByClinicianId()', () => {
+    it('queries once via IN and groups statuses per clinician, needing no masterKey/decryption', async () => {
+      const findMany = vi.fn().mockResolvedValue([
+        { assignedClinicianId: 'clinician_1', status: 'sent_to_doctor' },
+        { assignedClinicianId: 'clinician_1', status: 'reviewed' },
+        { assignedClinicianId: 'clinician_2', status: 'doctor_submitted' }
+      ]);
+      const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+      const result = await createCasesRepository(db).listStatusesByClinicianId(['clinician_1', 'clinician_2']);
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { assignedClinicianId: { in: ['clinician_1', 'clinician_2'] }, deletedAt: null },
+        select: { assignedClinicianId: true, status: true }
+      });
+      expect(result).toEqual(
+        new Map([
+          ['clinician_1', ['sent_to_doctor', 'reviewed']],
+          ['clinician_2', ['doctor_submitted']]
+        ])
+      );
+    });
+
+    it('returns an empty map without querying at all for an empty id list', async () => {
+      const findMany = vi.fn();
+      const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+      const result = await createCasesRepository(db).listStatusesByClinicianId([]);
+
+      expect(result).toEqual(new Map());
+      expect(findMany).not.toHaveBeenCalled();
+    });
+  });
+
   it('setAssignedClinician() stamps assignedAt alongside the clinician id', async () => {
     const update = vi.fn().mockResolvedValue({ id: 'case_1' });
     const db = { medicalCase: { update } } as unknown as PrismaClient;

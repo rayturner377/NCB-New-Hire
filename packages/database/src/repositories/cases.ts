@@ -163,6 +163,32 @@ export function createCasesRepository(db: PrismaClient) {
       return rows.map((row) => ({ ...decryptCase<T>(row, masterKey), patient: row.patient }));
     },
 
+    /**
+     * Every clinician's case statuses in one query — for the doctors/role-users list's per-row case
+     * count (see cases-service.ts's countCasesForClinicians), which previously called
+     * listForClinician (decrypting every one of that doctor's cases just to count them) once per
+     * doctor on the page. `status` is a plain column, so this needs no masterKey/decryption at all.
+     * Returns an empty map without querying for an empty list.
+     */
+    async listStatusesByClinicianId(clinicianIds: string[]): Promise<Map<string, string[]>> {
+      const statusesByClinicianId = new Map<string, string[]>();
+      if (clinicianIds.length === 0) return statusesByClinicianId;
+      const rows = await db.medicalCase.findMany({
+        where: { assignedClinicianId: { in: clinicianIds }, deletedAt: null },
+        select: { assignedClinicianId: true, status: true }
+      });
+      for (const row of rows) {
+        if (!row.assignedClinicianId) continue;
+        const statuses = statusesByClinicianId.get(row.assignedClinicianId);
+        if (statuses) {
+          statuses.push(row.status);
+        } else {
+          statusesByClinicianId.set(row.assignedClinicianId, [row.status]);
+        }
+      }
+      return statusesByClinicianId;
+    },
+
     /** Scoped to one patient's own cases (their dashboard/medical history) — patientId is PatientProfile.id, not the linked login user id. */
     async listForPatient<T = unknown>(patientId: string, masterKey: Buffer): Promise<CaseWithPatient<T>[]> {
       const rows = await db.medicalCase.findMany({

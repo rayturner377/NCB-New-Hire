@@ -467,10 +467,19 @@ export async function setCaseHidden(
   });
 }
 
-/** Case counts for a clinician's Doctor row (see features/users' role-users-container.tsx) — total assigned vs. still-active (not yet reviewed/archived/canceled/withdrawn). */
-export async function countCasesForClinician(clinicianId: string): Promise<{ total: number; active: number }> {
-  const masterKey = loadMasterKey();
-  const cases = await casesRepository.listForClinician(clinicianId, masterKey);
-  const active = cases.filter((item) => !isCaseClosed(item.status)).length;
-  return { total: cases.length, active };
+/**
+ * Case counts for a page of doctors' rows (see features/users' role-users-container.tsx and
+ * doctors-workspace-container.tsx) — total assigned vs. still-active (not yet reviewed/archived/
+ * canceled/withdrawn) per clinician, in one query rather than one per doctor on the page.
+ */
+export async function countCasesForClinicians(
+  clinicianIds: string[]
+): Promise<Record<string, { total: number; active: number }>> {
+  const statusesByClinicianId = await casesRepository.listStatusesByClinicianId(clinicianIds);
+  const counts: Record<string, { total: number; active: number }> = {};
+  for (const clinicianId of clinicianIds) {
+    const statuses = statusesByClinicianId.get(clinicianId) ?? [];
+    counts[clinicianId] = { total: statuses.length, active: statuses.filter((status) => !isCaseClosed(status)).length };
+  }
+  return counts;
 }

@@ -13,7 +13,7 @@ const confirmPayment = vi.fn();
 const submitAndTransition = vi.fn();
 const updatePayload = vi.fn();
 const setBilling = vi.fn();
-const listForClinician = vi.fn();
+const listStatusesByClinicianId = vi.fn();
 const listForPatients = vi.fn();
 const auditAppend = vi.fn();
 const auditListForEntity = vi.fn();
@@ -36,7 +36,7 @@ vi.mock('@ncb/database', () => ({
     submitAndTransition: (...args: unknown[]) => submitAndTransition(...args),
     updatePayload: (...args: unknown[]) => updatePayload(...args),
     setBilling: (...args: unknown[]) => setBilling(...args),
-    listForClinician: (...args: unknown[]) => listForClinician(...args),
+    listStatusesByClinicianId: (...args: unknown[]) => listStatusesByClinicianId(...args),
     listForPatients: (...args: unknown[]) => listForPatients(...args)
   },
   auditRepository: {
@@ -82,7 +82,7 @@ const {
   setCaseBilling,
   hasDoctorSubmitted,
   listReviewQueueCases,
-  countCasesForClinician,
+  countCasesForClinicians,
   saveDoctorAssessmentDraft
 } = await import('../../cases-service');
 
@@ -100,7 +100,7 @@ describe('cases service', () => {
     updatePayload.mockReset();
     updatePayload.mockResolvedValue({ id: 'case_1', version: 5 });
     setBilling.mockReset();
-    listForClinician.mockReset();
+    listStatusesByClinicianId.mockReset();
     listForPatients.mockReset();
     auditAppend.mockReset();
     auditListForEntity.mockReset();
@@ -529,16 +529,28 @@ describe('cases service', () => {
     expect(result.map((c) => c.id)).toEqual(['case_1']);
   });
 
-  it("countCasesForClinician tallies total vs. still-active (excluding reviewed/archived/canceled/withdrawn)", async () => {
-    listForClinician.mockResolvedValue([
-      { status: 'sent_to_doctor' },
-      { status: 'doctor_submitted' },
-      { status: 'reviewed' },
-      { status: 'withdrawn' }
-    ]);
+  it("countCasesForClinicians tallies total vs. still-active per clinician (excluding reviewed/archived/canceled/withdrawn), in one query", async () => {
+    listStatusesByClinicianId.mockResolvedValue(
+      new Map([
+        ['usr_doctor_demo', ['sent_to_doctor', 'doctor_submitted', 'reviewed', 'withdrawn']],
+        ['usr_doctor_2', ['sent_to_doctor']]
+      ])
+    );
 
-    const result = await countCasesForClinician('usr_doctor_demo');
+    const result = await countCasesForClinicians(['usr_doctor_demo', 'usr_doctor_2']);
 
-    expect(result).toEqual({ total: 4, active: 2 });
+    expect(listStatusesByClinicianId).toHaveBeenCalledWith(['usr_doctor_demo', 'usr_doctor_2']);
+    expect(result).toEqual({
+      usr_doctor_demo: { total: 4, active: 2 },
+      usr_doctor_2: { total: 1, active: 1 }
+    });
+  });
+
+  it('countCasesForClinicians defaults a clinician with no assigned cases to zero rather than omitting them', async () => {
+    listStatusesByClinicianId.mockResolvedValue(new Map());
+
+    const result = await countCasesForClinicians(['usr_doctor_demo']);
+
+    expect(result).toEqual({ usr_doctor_demo: { total: 0, active: 0 } });
   });
 });

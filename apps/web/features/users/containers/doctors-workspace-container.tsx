@@ -10,7 +10,7 @@ import { parsePageNumber } from '../../../lib/pagination';
 import { getSession } from '../../../lib/session';
 import { MedicalOfficesTable } from '../../medical-offices/components/medical-offices-table';
 import { listAllMedicalOffices } from '../../medical-offices/services/medical-offices-service';
-import { countCasesForClinician } from '../../cases/services/cases-service';
+import { countCasesForClinicians } from '../../cases/services/cases-service';
 import { UserStats } from '../components/user-stats';
 import { UsersTable } from '../components/users-table';
 import { getUserRoleStats, searchUsers } from '../services/users-service';
@@ -86,10 +86,7 @@ export async function DoctorsWorkspaceContainer({ searchParams = {} }: DoctorsWo
       redirect(buildHref({ query, page: totalPages }));
     }
 
-    const caseCountEntries = await Promise.all(
-      doctors.map(async (doctor) => [doctor.id, await countCasesForClinician(doctor.id)] as const)
-    );
-    const caseCounts = Object.fromEntries(caseCountEntries);
+    const caseCounts = await countCasesForClinicians(doctors.map((doctor) => doctor.id));
 
     content = (
       <div className="flex flex-col gap-6">

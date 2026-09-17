@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { Button } from '../../../components/ui/button';
-import { countCasesForClinician } from '../../cases/services/cases-service';
+import { countCasesForClinicians } from '../../cases/services/cases-service';
 import { canManageUserAccount, hasPermission, type Permission } from '../../../lib/permissions';
 import { parsePageNumber } from '../../../lib/pagination';
 import { getSession } from '../../../lib/session';
@@ -80,11 +80,7 @@ export async function RoleUsersContainer({ role, roleLabel, roleLabelSingular, l
     redirect(buildHref({ query, page: totalPages }));
   }
 
-  let caseCounts: Record<string, { total: number; active: number }> | undefined;
-  if (role === 'clinician') {
-    const entries = await Promise.all(users.map(async (user) => [user.id, await countCasesForClinician(user.id)] as const));
-    caseCounts = Object.fromEntries(entries);
-  }
+  const caseCounts = role === 'clinician' ? await countCasesForClinicians(users.map((user) => user.id)) : undefined;
 
   return (
     <div className="flex flex-col gap-6 p-6">
