@@ -1,6 +1,17 @@
 'use client';
 
-import { startTransition, useActionState, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type Dispatch,
+  type FormEvent,
+  type RefObject,
+  type SetStateAction
+} from 'react';
 import { useFormStatus } from 'react-dom';
 import { Alert } from '../../../components/ui/alert';
 import { Button } from '../../../components/ui/button';
@@ -52,6 +63,30 @@ function ChangeEmailLink({ onClick }: { onClick: () => void }) {
   );
 }
 
+/**
+ * The recurring "when this server action's state comes back ok, and we're still on the step that
+ * started it, advance to the next step" transition — three of LoginFlowSteps's four step changes
+ * (reset code sent → code, code verified → newPassword, new password redeemed → signingIn) are this
+ * exact rule with different states/steps. Named and pulled out once so those transitions read as
+ * the explicit "on success, move forward" events they are, rather than three near-identical effects
+ * a reader has to compare line-by-line to confirm are actually the same rule. The signingIn → actual
+ * submit effect below is a distinct kind of thing (a side effect, not a step transition) and stays
+ * separate.
+ */
+function useAdvanceStepOnSuccess<TState extends { ok?: boolean } | null>(
+  state: TState,
+  step: Step,
+  fromStep: Step,
+  toStep: Step,
+  setStep: Dispatch<SetStateAction<Step>>
+) {
+  useEffect(() => {
+    if (state?.ok && step === fromStep) {
+      setStep(toStep);
+    }
+  }, [state, step, fromStep, toStep, setStep]);
+}
+
 function EmailSummary({ email, onChangeEmail }: { email: string; onChangeEmail: () => void }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -61,6 +96,152 @@ function EmailSummary({ email, onChangeEmail }: { email: string; onChangeEmail: 
         <ChangeEmailLink onClick={onChangeEmail} />
       </div>
     </div>
+  );
+}
+
+interface PasswordStepProps {
+  email: string;
+  onChangeEmail: () => void;
+  loginFormAction: (formData: FormData) => void;
+  loginError: string | undefined;
+  onForgotPassword: () => void;
+}
+
+function PasswordStep({ email, onChangeEmail, loginFormAction, loginError, onForgotPassword }: PasswordStepProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <form action={loginFormAction} className="flex flex-col gap-4">
+        <input type="hidden" name="email" value={email} />
+        <EmailSummary email={email} onChangeEmail={onChangeEmail} />
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="password">Password</Label>
+          <PasswordInput id="password" name="password" autoComplete="current-password" required autoFocus />
+        </div>
+        {loginError ? <Alert tone="error">{loginError}</Alert> : null}
+        <StepSubmitButton pendingLabel="Signing in…">Sign in</StepSubmitButton>
+      </form>
+      <button type="button" onClick={onForgotPassword} className="self-start text-sm font-medium text-primary hover:underline">
+        Forgot password?
+      </button>
+    </div>
+  );
+}
+
+interface CodeStepProps {
+  email: string;
+  onChangeEmail: () => void;
+  sendingCode: boolean;
+  verifyFormRef: RefObject<HTMLFormElement | null>;
+  verifyFormAction: (formData: FormData) => void;
+  verifyError: string | undefined;
+  code: string;
+  onCodeChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onResend: () => void;
+  onUsePasswordInstead: () => void;
+}
+
+function CodeStep({
+  email,
+  onChangeEmail,
+  sendingCode,
+  verifyFormRef,
+  verifyFormAction,
+  verifyError,
+  code,
+  onCodeChange,
+  onResend,
+  onUsePasswordInstead
+}: CodeStepProps) {
+  return (
+    <div className="flex flex-col gap-4">
+      <EmailSummary email={email} onChangeEmail={onChangeEmail} />
+
+      {sendingCode ? (
+        <p className="text-sm text-muted-foreground">Sending a code to {email}…</p>
+      ) : (
+        <form ref={verifyFormRef} action={verifyFormAction} className="flex flex-col gap-4">
+          <input type="hidden" name="email" value={email} />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="code">6-digit code</Label>
+            <p className="text-xs text-muted-foreground">Enter the 6-digit code sent to {email}.</p>
+            <Input
+              id="code"
+              name="code"
+              type="text"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              autoComplete="one-time-code"
+              required
+              autoFocus
+              value={code}
+              onChange={onCodeChange}
+            />
+            {verifyError ? <p className="text-xs font-medium text-destructive">{verifyError}</p> : null}
+          </div>
+          <StepSubmitButton pendingLabel="Checking…">Verify code</StepSubmitButton>
+          <div className="flex items-center justify-between">
+            <button type="button" onClick={onResend} className="text-sm font-medium text-primary hover:underline">
+              Resend code
+            </button>
+            <button type="button" onClick={onUsePasswordInstead} className="text-sm font-medium text-primary hover:underline">
+              Sign in with password instead
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+interface NewPasswordStepProps {
+  email: string;
+  code: string;
+  redeemFormAction: (formData: FormData) => void;
+  redeemState: RedeemAccessCodeResult | null;
+  newPassword: string;
+  onNewPasswordChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}
+
+function NewPasswordStep({
+  email,
+  code,
+  redeemFormAction,
+  redeemState,
+  newPassword,
+  onNewPasswordChange
+}: NewPasswordStepProps) {
+  return (
+    <form action={redeemFormAction} className="flex flex-col gap-4">
+      <input type="hidden" name="email" value={email} />
+      <input type="hidden" name="code" value={code} />
+      <Alert tone="success">Code confirmed — choose a new password.</Alert>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="password">New password</Label>
+        <PasswordInput
+          id="password"
+          name="password"
+          autoComplete="new-password"
+          minLength={12}
+          required
+          autoFocus
+          value={newPassword}
+          onChange={onNewPasswordChange}
+        />
+        {redeemState?.fieldErrors?.password ? (
+          <p className="text-xs font-medium text-destructive">{redeemState.fieldErrors.password}</p>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="confirmPassword">Confirm new password</Label>
+        <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" minLength={12} required />
+        {redeemState?.fieldErrors?.confirmPassword ? (
+          <p className="text-xs font-medium text-destructive">{redeemState.fieldErrors.confirmPassword}</p>
+        ) : null}
+      </div>
+      {redeemState?.error ? <Alert tone="error">{redeemState.error}</Alert> : null}
+      <StepSubmitButton pendingLabel="Setting password…">Set new password</StepSubmitButton>
+    </form>
   );
 }
 
@@ -103,26 +284,12 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
 
   // requestPasswordResetAction always resolves ok on a well-formed email (see its own doc comment on
   // why) — this only ever fires from the "sendingCode" step, so a later resend from the "code" step
-  // re-triggers the action directly rather than looping back through this effect.
-  useEffect(() => {
-    if (resetState?.ok && step === 'sendingCode') {
-      setStep('code');
-    }
-  }, [resetState, step]);
-
-  useEffect(() => {
-    if (verifyState?.ok && step === 'code') {
-      setStep('newPassword');
-    }
-  }, [verifyState, step]);
-
+  // re-triggers the action directly rather than looping back through this transition.
+  useAdvanceStepOnSuccess(resetState, step, 'sendingCode', 'code', setStep);
+  useAdvanceStepOnSuccess(verifyState, step, 'code', 'newPassword', setStep);
   // The account holder just proved they own this code and chose a password — no reason to make them
   // type it again immediately after.
-  useEffect(() => {
-    if (redeemState?.ok && step === 'newPassword') {
-      setStep('signingIn');
-    }
-  }, [redeemState, step]);
+  useAdvanceStepOnSuccess(redeemState, step, 'newPassword', 'signingIn', setStep);
 
   // Split from the effect above: submitting here (once the 'signingIn' render has actually
   // committed and mounted the hidden form below) rather than right after setStep('signingIn')
@@ -156,99 +323,43 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
 
   if (step === 'password') {
     return (
-      <div className="flex flex-col gap-4">
-        <form action={loginFormAction} className="flex flex-col gap-4">
-          <input type="hidden" name="email" value={email} />
-          <EmailSummary email={email} onChangeEmail={onChangeEmail} />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">Password</Label>
-            <PasswordInput id="password" name="password" autoComplete="current-password" required autoFocus />
-          </div>
-          {loginState?.error ? <Alert tone="error">{loginState.error}</Alert> : null}
-          <StepSubmitButton pendingLabel="Signing in…">Sign in</StepSubmitButton>
-        </form>
-        <button type="button" onClick={sendResetCode} className="self-start text-sm font-medium text-primary hover:underline">
-          Forgot password?
-        </button>
-      </div>
+      <PasswordStep
+        email={email}
+        onChangeEmail={onChangeEmail}
+        loginFormAction={loginFormAction}
+        loginError={loginState?.error}
+        onForgotPassword={sendResetCode}
+      />
     );
   }
 
   if (step === 'sendingCode' || step === 'code') {
     return (
-      <div className="flex flex-col gap-4">
-        <EmailSummary email={email} onChangeEmail={onChangeEmail} />
-
-        {step === 'sendingCode' ? (
-          <p className="text-sm text-muted-foreground">Sending a code to {email}…</p>
-        ) : (
-          <form ref={verifyFormRef} action={verifyFormAction} className="flex flex-col gap-4">
-            <input type="hidden" name="email" value={email} />
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="code">6-digit code</Label>
-              <p className="text-xs text-muted-foreground">Enter the 6-digit code sent to {email}.</p>
-              <Input
-                id="code"
-                name="code"
-                type="text"
-                inputMode="numeric"
-                pattern="\d{6}"
-                maxLength={6}
-                autoComplete="one-time-code"
-                required
-                autoFocus
-                value={code}
-                onChange={handleCodeChange}
-              />
-              {verifyState?.error ? <p className="text-xs font-medium text-destructive">{verifyState.error}</p> : null}
-            </div>
-            <StepSubmitButton pendingLabel="Checking…">Verify code</StepSubmitButton>
-            <div className="flex items-center justify-between">
-              <button type="button" onClick={sendResetCode} className="text-sm font-medium text-primary hover:underline">
-                Resend code
-              </button>
-              <button type="button" onClick={() => setStep('password')} className="text-sm font-medium text-primary hover:underline">
-                Sign in with password instead
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
+      <CodeStep
+        email={email}
+        onChangeEmail={onChangeEmail}
+        sendingCode={step === 'sendingCode'}
+        verifyFormRef={verifyFormRef}
+        verifyFormAction={verifyFormAction}
+        verifyError={verifyState?.error}
+        code={code}
+        onCodeChange={handleCodeChange}
+        onResend={sendResetCode}
+        onUsePasswordInstead={() => setStep('password')}
+      />
     );
   }
 
   if (step === 'newPassword') {
     return (
-      <form action={redeemFormAction} className="flex flex-col gap-4">
-        <input type="hidden" name="email" value={email} />
-        <input type="hidden" name="code" value={code} />
-        <Alert tone="success">Code confirmed — choose a new password.</Alert>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password">New password</Label>
-          <PasswordInput
-            id="password"
-            name="password"
-            autoComplete="new-password"
-            minLength={12}
-            required
-            autoFocus
-            value={newPassword}
-            onChange={(event) => setNewPassword(event.target.value)}
-          />
-          {redeemState?.fieldErrors?.password ? (
-            <p className="text-xs font-medium text-destructive">{redeemState.fieldErrors.password}</p>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="confirmPassword">Confirm new password</Label>
-          <PasswordInput id="confirmPassword" name="confirmPassword" autoComplete="new-password" minLength={12} required />
-          {redeemState?.fieldErrors?.confirmPassword ? (
-            <p className="text-xs font-medium text-destructive">{redeemState.fieldErrors.confirmPassword}</p>
-          ) : null}
-        </div>
-        {redeemState?.error ? <Alert tone="error">{redeemState.error}</Alert> : null}
-        <StepSubmitButton pendingLabel="Setting password…">Set new password</StepSubmitButton>
-      </form>
+      <NewPasswordStep
+        email={email}
+        code={code}
+        redeemFormAction={redeemFormAction}
+        redeemState={redeemState}
+        newPassword={newPassword}
+        onNewPasswordChange={(event) => setNewPassword(event.target.value)}
+      />
     );
   }
 
@@ -301,9 +412,17 @@ export function LoginForm() {
     }
     setEmailError(null);
     setCheckingEmail(true);
-    const { method } = await checkSignInMethodAction(trimmed);
-    setCheckingEmail(false);
-    setStep(method === 'code' ? 'code' : 'password');
+    // checkSignInMethodAction can reject (a dropped connection, assertSameOrigin throwing) rather
+    // than resolve — without this catch, checkingEmail was left stuck true forever, the button
+    // permanently disabled on "Checking…" with no way for the person to retry.
+    try {
+      const { method } = await checkSignInMethodAction(trimmed);
+      setStep(method === 'code' ? 'code' : 'password');
+    } catch {
+      setEmailError('Something went wrong. Please try again.');
+    } finally {
+      setCheckingEmail(false);
+    }
   }
 
   if (step === 'email') {
