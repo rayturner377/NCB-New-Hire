@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+import writeXlsxFile from 'write-excel-file/node';
 
 /**
  * A single-sheet .xlsx workbook as a Buffer, ready to hand straight to a NextResponse body.
@@ -6,25 +6,25 @@ import ExcelJS from 'exceljs';
  * long note/description doesn't blow a column out to an unreadable width) — everything else about
  * styling is left to whoever opens it, this isn't trying to reproduce report.md's original request
  * for a fully formatted export, just a genuinely-.xlsx file rather than a CSV wearing a costume.
+ *
+ * write-excel-file over exceljs (used here previously): exceljs's last real release was October
+ * 2023 and pins a `uuid` version with an open moderate advisory it's never bumped past (not
+ * exploitable the way exceljs itself calls it, but still a permanent `npm audit` finding with no
+ * upstream fix available). write-excel-file's only dependency is fflate, a small, actively
+ * maintained, zero-dependency library — genuinely audit-clean, not just currently unaffected.
  */
 export async function toXlsxBuffer(sheetName: string, headers: string[], rows: (string | number)[][]): Promise<Buffer> {
-  const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet(sheetName);
+  const sheetData = [
+    headers.map((header) => ({ value: header, fontWeight: 'bold' as const })),
+    ...rows.map((row) => row.map((value) => ({ value })))
+  ];
 
-  sheet.addRow(headers);
-  sheet.getRow(1).font = { bold: true };
-  for (const row of rows) {
-    sheet.addRow(row);
-  }
-
-  sheet.columns.forEach((column, index) => {
-    const header = headers[index] ?? '';
+  const columns = headers.map((header, index) => {
     const longestValue = rows.reduce((max, row) => Math.max(max, String(row[index] ?? '').length), header.length);
-    column.width = Math.min(Math.max(longestValue + 2, 10), 40);
+    return { width: Math.min(Math.max(longestValue + 2, 10), 40) };
   });
 
-  const arrayBuffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(arrayBuffer);
+  return writeXlsxFile(sheetData, { sheet: sheetName, columns }).toBuffer();
 }
 
 /** A safe `Content-Disposition` filename, same rule as csv.ts's csvFilename. */

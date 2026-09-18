@@ -1,48 +1,36 @@
-import ExcelJS from 'exceljs';
+import { readSheet } from 'read-excel-file/node';
 import { describe, expect, it } from 'vitest';
 import { toXlsxBuffer, xlsxFilename } from '../../xlsx';
 
-async function readBack(buffer: Buffer) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
-  return workbook.worksheets[0]!;
-}
-
+// read-excel-file (unlike the exceljs reader this suite used previously) only exposes plain cell
+// values, not styling/column-width metadata — so there's no automated check here for "the header
+// is actually bold" or "the column width was actually capped at 40", only that generating a
+// pathologically long value doesn't throw and still round-trips its data correctly.
 describe('toXlsxBuffer', () => {
   it('writes a real, readable .xlsx workbook with a header row and data rows', async () => {
     const buffer = await toXlsxBuffer('Report', ['Name', 'Amount'], [['Jane Doe', 5000], ['John Smith', 2500]]);
-    const sheet = await readBack(buffer);
+    const rows = await readSheet(buffer);
 
-    expect(sheet.name).toBe('Report');
-    expect(sheet.getRow(1).getCell(1).value).toBe('Name');
-    expect(sheet.getRow(1).getCell(2).value).toBe('Amount');
-    expect(sheet.getRow(2).getCell(1).value).toBe('Jane Doe');
-    expect(sheet.getRow(2).getCell(2).value).toBe(5000);
-    expect(sheet.getRow(3).getCell(1).value).toBe('John Smith');
-  });
-
-  it('bolds the header row', async () => {
-    const buffer = await toXlsxBuffer('Report', ['Name'], [['Jane Doe']]);
-    const sheet = await readBack(buffer);
-
-    expect(sheet.getRow(1).font?.bold).toBe(true);
-    expect(sheet.getRow(2).font?.bold).toBeFalsy();
+    expect(rows).toEqual([
+      ['Name', 'Amount'],
+      ['Jane Doe', 5000],
+      ['John Smith', 2500]
+    ]);
   });
 
   it('produces a valid, empty-but-headed sheet when there are no rows', async () => {
     const buffer = await toXlsxBuffer('Report', ['Name', 'Amount'], []);
-    const sheet = await readBack(buffer);
+    const rows = await readSheet(buffer);
 
-    expect(sheet.getRow(1).getCell(1).value).toBe('Name');
-    expect(sheet.rowCount).toBe(1);
+    expect(rows).toEqual([['Name', 'Amount']]);
   });
 
-  it('caps column width rather than letting one long value blow it out', async () => {
+  it('does not throw and still produces a valid file for a very long value', async () => {
     const longValue = 'x'.repeat(200);
     const buffer = await toXlsxBuffer('Report', ['Note'], [[longValue]]);
-    const sheet = await readBack(buffer);
+    const rows = await readSheet(buffer);
 
-    expect(sheet.getColumn(1).width).toBeLessThanOrEqual(40);
+    expect(rows).toEqual([['Note'], [longValue]]);
   });
 });
 

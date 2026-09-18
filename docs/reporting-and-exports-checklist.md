@@ -20,13 +20,21 @@ scope for this branch.
 
 ## Excel export + all-cases export (second pass)
 
-- [x] `exceljs` added to `apps/web/package.json` (real .xlsx workbooks, not CSV wearing a `.xlsx`
-      name). Note: pulls in a moderate `npm audit` advisory via its `uuid` dependency
-      (GHSA-w5hq-g745-h8pq, a buffer-bounds issue when a caller supplies its own buffer to
-      `uuid.v3/v5/v6`) — not exploitable here, exceljs only ever calls it with no arguments for
-      internal id generation, we never pass it any buffer ourselves.
+- [x] `exceljs` added to `apps/web/package.json` for real .xlsx workbooks. Later swapped out (see
+      below) — no longer in the tree.
 - [x] `apps/web/lib/xlsx.ts` — `toXlsxBuffer(sheetName, headers, rows)`, bold header row,
       auto-sized (capped) columns, unit tested including a real load-it-back-and-read round trip
+- [x] **Swapped `exceljs` for `write-excel-file`** after `npm audit` flagged a moderate advisory in
+      `exceljs`'s pinned `uuid` dependency (GHSA-w5hq-g745-h8pq) with no upstream fix available —
+      confirmed not exploitable here (exceljs only ever calls `uuid.v4()` with no arguments), but
+      `exceljs` itself hasn't had a real release since October 2023, so this wasn't going away on
+      its own. `write-excel-file`'s only dependency is `fflate` (small, maintained,
+      zero-dependency) — genuinely audit-clean, not just currently unaffected. `read-excel-file`
+      (same author, devDependency-only) replaces exceljs's reader for the round-trip unit tests.
+      Tried fixing the original `uuid` pin via `package.json` `overrides` first — npm's own
+      documented limitation meant that required deleting the whole lockfile to take effect, which
+      floated ~88 unrelated packages (including Next.js and better-auth) and broke the build; the
+      library swap avoids that entirely since it's just adding one new, clean dependency.
 - [x] `apps/web/components/dashboard/export-buttons.tsx` — shared CSV+Excel button pair, used by
       every report/list below instead of a one-off "Export CSV" link each
 - [x] `casesRepository.searchAllWithPatient` / `searchAllCasesWithPatient` — the unpaginated

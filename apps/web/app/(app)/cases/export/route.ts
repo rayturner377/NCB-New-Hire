@@ -13,7 +13,7 @@ const HEADERS = ['Candidate', 'Employee ID', 'Stage', 'Type', 'Status', 'Initial
 /**
  * The "All cases" tab's export — same role/permission gate and filters as cases-container.tsx,
  * every matching row (not just the visible page), in whichever of the two formats is asked for.
- * Excel via exceljs rather than a CSV wearing a .xlsx name — a real workbook.
+ * Excel via write-excel-file (see lib/xlsx.ts) rather than a CSV wearing a .xlsx name — a real workbook.
  */
 export async function GET(request: Request) {
   const session = await getSession();
