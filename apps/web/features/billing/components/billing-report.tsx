@@ -1,7 +1,9 @@
-import { CheckCircle2, Clock, FileStack } from 'lucide-react';
+import { CheckCircle2, Clock, Download, FileStack } from 'lucide-react';
+import Link from 'next/link';
 import { Pagination } from '../../../components/dashboard/pagination';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { StatCard } from '../../../components/dashboard/stat-card';
+import { Button } from '../../../components/ui/button';
 import { formatCurrency } from '../../../lib/currency';
 import type { BillingReportData, BillingReportRow } from '../services/billing-report-service';
 import { BillingReportFilters } from './billing-report-filters';
@@ -13,11 +15,12 @@ export interface BillingReportProps {
   filters: { query: string; billing: string; from: string; to: string };
   hasActiveFilters: boolean;
   rangeLabel: string;
+  exportHref: string;
   pagination: { page: number; totalPages: number; hrefForPage: (page: number) => string };
 }
 
 /** A doctor's own earnings — how much they've been paid, how much is still outstanding, and how many cases that reflects, over whatever date range they pick. */
-export function BillingReport({ data, pageRows, filters, hasActiveFilters, rangeLabel, pagination }: BillingReportProps) {
+export function BillingReport({ data, pageRows, filters, hasActiveFilters, rangeLabel, exportHref, pagination }: BillingReportProps) {
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -34,6 +37,14 @@ export function BillingReport({ data, pageRows, filters, hasActiveFilters, range
       <SectionCard
         title="Billed cases"
         description={`${data.rows.length} case${data.rows.length === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}`}
+        action={
+          <Button variant="outline" size="sm" asChild>
+            <Link href={exportHref} prefetch={false}>
+              <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              Export CSV
+            </Link>
+          </Button>
+        }
       >
         <div className="flex flex-col gap-4">
           <BillingReportFilters query={filters.query} billing={filters.billing} from={filters.from} to={filters.to} hasActiveFilters={hasActiveFilters} />

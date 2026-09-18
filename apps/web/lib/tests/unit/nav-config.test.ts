@@ -49,6 +49,12 @@ describe('navItemsForRole', () => {
     expect(navItemsForRole(undefined)).toEqual([]);
     expect(navItemsForRole(null)).toEqual([]);
   });
+
+  it('shows HR turnaround to reviewer/admin but not doctor (no doctor-scoped equivalent exists)', () => {
+    expect(navItemsForRole('reviewer').some((item) => item.label === 'HR turnaround')).toBe(true);
+    expect(navItemsForRole('admin').some((item) => item.label === 'HR turnaround')).toBe(true);
+    expect(navItemsForRole('clinician').some((item) => item.label === 'HR turnaround')).toBe(false);
+  });
 });
 
 describe('navLabelForPathname', () => {

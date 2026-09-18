@@ -1,4 +1,4 @@
-import { Briefcase, DollarSign, LayoutDashboard, Mail, Settings, UserCog, Users, type LucideIcon } from 'lucide-react';
+import { Briefcase, DollarSign, Gauge, LayoutDashboard, Mail, Settings, UserCog, Users, type LucideIcon } from 'lucide-react';
 import { ROLES, type Role } from './permissions';
 
 export interface NavChildItem {
@@ -33,6 +33,9 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR, ROLES.DELEGATE, ROLES.PATIENT] },
   { href: '/billing', label: 'Billing report', icon: DollarSign, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR] },
+  // REPORTS_VIEW-gated like the org billing report above — no doctor-scoped equivalent, this is
+  // purely an HR operations view (how long HR itself takes to review, not a doctor's own earnings).
+  { href: '/reports/hr-turnaround', label: 'HR turnaround', icon: Gauge, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
   { href: '/cases', label: 'Cases', icon: Briefcase, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
   // Doctor-only, standalone rather than a child of "Users": that group is deliberately
   // hidden from DOCTOR entirely (see its own comment below), and /delegates renders a

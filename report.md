@@ -19,6 +19,16 @@ verified against the code.
   audit log.
 - **Audit log** (`/audit`) — filterable, paginated log of every case/user/settings/session event,
   independently of the billing/dashboard reports.
+- **HR review turnaround report** (`/reports/hr-turnaround`,
+  `apps/web/features/reports/services/hr-turnaround-report-service.ts`'s `getHrReviewTurnaroundReport`) —
+  how long HR itself takes on a case once a doctor submits it (`reviewedAt - doctorSubmittedAt`,
+  distinct from the dashboard's own createdAt→reviewedAt full-lifecycle average above), with
+  average/fastest/slowest stats and a case-level row list. Admin/reviewer/auditor only — no
+  doctor-scoped equivalent, this is purely an HR operations view.
+- **CSV export** — the doctor billing report, organization billing report (case-level rows when
+  drilled into one doctor, the per-doctor summary table otherwise), and the HR review turnaround
+  report can each be exported to CSV via an "Export CSV" button, honoring whatever filters are
+  currently applied rather than just the visible page.
 
 ## Not implemented
 
@@ -26,11 +36,10 @@ These were part of the original request below but don't exist today — noted he
 doesn't imply they do:
 
 - A dedicated per-doctor turnaround-time report (min/max/average, grouped by doctor or office).
-- A standalone HR-review-turnaround report (only the org-wide average above exists).
 - A standalone "pending medicals" report (the reviewer dashboard's queue counts cover similar
   ground but aren't a dedicated report page).
-- CSV/Excel/PDF export of any report (case-level attachments have their own PDF export, unrelated
-  to reporting).
+- Excel/PDF export of any report (CSV export exists — see above; case-level attachments have their
+  own PDF export, unrelated to reporting).
 - Medical-office-level grouping in the billing report (grouping is per-doctor only).
 
 ---
