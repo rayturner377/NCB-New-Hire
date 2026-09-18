@@ -11,7 +11,10 @@ export default mergeConfig(
   defineConfig({
     test: {
       include: ['src/**/*.integration.test.ts'],
-      testTimeout: 20000
+      testTimeout: 20000,
+      // Refuses to run at all unless DATABASE_URL looks like a disposable test database — see the
+      // guard's own doc comment for why this exists (a real dev-data audit_events wipe).
+      globalSetup: ['./src/test-utils/assert-safe-test-database.ts']
     }
   })
 );
