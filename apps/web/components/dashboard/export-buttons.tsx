@@ -1,29 +1,45 @@
-import { Download } from 'lucide-react';
+'use client';
+
+import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '../ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 
 export interface ExportButtonsProps {
-  /** The export route with every current filter already in the query string, minus `format` — this appends `format=csv`/`format=xlsx` itself. */
+  /** The export route with every current filter already in the query string, minus `format` — each menu item appends `format=csv`/`format=xlsx` itself. */
   href: string;
 }
 
-/** CSV + Excel export, side by side — shared by every report/list that offers a download (billing, turnaround, all cases), so the two buttons/labels/icon stay identical everywhere rather than five slightly-different copies. */
+/**
+ * One "Export" button opening a CSV/Excel choice, shared by every report/list that offers a
+ * download (billing, turnaround, all cases) — a single dropdown reads better than two separate
+ * buttons competing for the same spot, and keeps the choice consistent everywhere it appears.
+ */
 export function ExportButtons({ href }: ExportButtonsProps) {
   const separator = href.includes('?') ? '&' : '?';
+
   return (
-    <div className="flex gap-2">
-      <Button variant="outline" size="sm" asChild>
-        <Link href={`${href}${separator}format=csv`} prefetch={false}>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
           <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-          CSV
-        </Link>
-      </Button>
-      <Button variant="outline" size="sm" asChild>
-        <Link href={`${href}${separator}format=xlsx`} prefetch={false}>
-          <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-          Excel
-        </Link>
-      </Button>
-    </div>
+          Export
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link href={`${href}${separator}format=csv`} prefetch={false} className="flex items-center gap-2">
+            <FileText className="h-4 w-4" aria-hidden="true" />
+            CSV
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={`${href}${separator}format=xlsx`} prefetch={false} className="flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4" aria-hidden="true" />
+            Excel
+          </Link>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
