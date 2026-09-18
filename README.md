@@ -20,11 +20,17 @@ Requires Node 20+, a running Postgres instance, and a running Redis instance.
 
 ```bash
 npm install
-cp .env.example .env   # fill in POSTGRES_PASSWORD, DATABASE_URL, REDIS_PASSWORD, REDIS_URL, BETTER_AUTH_SECRET
+cp .env.example .env   # fill in POSTGRES_PASSWORD, AUDIT_DB_PASSWORD, APP_RUNTIME_DB_PASSWORD, DATABASE_URL, REDIS_PASSWORD, REDIS_URL, BETTER_AUTH_SECRET
 docker compose up -d postgres redis   # or point DATABASE_URL/REDIS_URL at your own instances
 npm run db:migrate:deploy
 npm run dev
 ```
+
+`AUDIT_DB_PASSWORD`/`APP_RUNTIME_DB_PASSWORD` are only needed here because the `postgres` container's
+own init script requires them to create those two roles — a plain `npm run dev` still connects as
+`ncb_medical_app` via `DATABASE_URL` either way, same as it always did, so any value works for local
+dev; only a real deployment needs them to actually be different, least-privileged credentials (see
+`DATABASE.md`'s "Security requirements" section).
 
 Open [http://localhost:3000](http://localhost:3000).
 
@@ -72,14 +78,18 @@ PLAYWRIGHT_BROWSER_CHANNEL=msedge npm run test:e2e   # or: chrome
 ## Run with Docker
 
 ```bash
-cp .env.example .env   # fill in POSTGRES_PASSWORD, REDIS_PASSWORD, BETTER_AUTH_SECRET, and APP_MASTER_KEY
+cp .env.example .env   # fill in POSTGRES_PASSWORD, AUDIT_DB_PASSWORD, APP_RUNTIME_DB_PASSWORD, REDIS_PASSWORD, and BETTER_AUTH_SECRET
 docker compose up -d --build
 ```
 
+All five are required — `docker-compose.yml` fails immediately with a
+"set X in .env" error for any of them left blank. `APP_MASTER_KEY` is the
+only one of the `.env.example` values that's genuinely optional (see below).
+
 This starts Postgres and Redis, runs Prisma migrations via a one-shot
 `migrate` service, then starts the app. The `./data` folder is mounted into
-the app container at `/app/data`, keeping the generated master key outside
-the image.
+the app container at `/app/apps/web/data`, keeping the generated master key
+outside the image.
 
 Open [http://localhost:3000](http://localhost:3000).
 
@@ -115,13 +125,17 @@ See `.env.example`. The application itself only reads:
 - `COOKIE_SECURE` — set `true` in any real deployment (served over HTTPS).
 - `SESSION_TIMEOUT_MINUTES` — inactivity timeout for authenticated sessions (5-480).
 - `DATABASE_URL` — standard Prisma/Postgres connection string.
+- `AUDIT_DATABASE_URL` — a separate connection string for `audit_events` only, using the
+  least-privileged `ncb_audit_writer` role (see `DATABASE.md`); falls back to `DATABASE_URL` if
+  unset, fine for quick local dev, not for a real deployment.
 - `REDIS_URL` — standard Redis connection string (sessions, login/action rate limiting).
 - `BETTER_AUTH_SECRET` — Better Auth's own signing secret; required, no fallback.
 - `BETTER_AUTH_URL` — the app's externally-reachable origin, e.g. `https://portal.example.com`. Falls back to `http://localhost:3000` for local dev; **must** be set explicitly in any real deployment, or Better Auth derives the origin from the incoming request's Host header instead, which a proxy/spoofed request could influence.
 
-`POSTGRES_PASSWORD`/`REDIS_PASSWORD` are read only by `docker-compose.yml`
-itself (to configure the Postgres/Redis containers) — the app reads the
-resulting `DATABASE_URL`/`REDIS_URL` instead.
+`POSTGRES_PASSWORD`/`AUDIT_DB_PASSWORD`/`APP_RUNTIME_DB_PASSWORD`/`REDIS_PASSWORD` are read only by
+`docker-compose.yml` itself (to configure the Postgres/Redis containers and the `web`/`migrate`
+services' own database roles) — a plain `npm run dev` outside Docker never reads any of these four,
+only the `DATABASE_URL`/`AUDIT_DATABASE_URL`/`REDIS_URL` connection strings above.
 
 SMTP settings, notification templates, portal branding, and SLA definitions
 are configured through the Settings admin UI and stored in the database, not
