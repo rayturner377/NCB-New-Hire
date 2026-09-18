@@ -37,7 +37,7 @@ export function CaseList({ cases, slaDefinitions = [] }: CaseListProps) {
         </div>
       )
     },
-    { key: 'stage', header: 'Stage', render: (row) => <span className="text-xs">{caseStageLabel(row.status)}</span> },
+    { key: 'stage', header: 'Stage', render: (row) => <span className="text-xs">{caseStageLabel(row.status, row.paymentStatus)}</span> },
     { key: 'caseType', header: 'Type', render: (row) => <span className="text-xs">{caseTypeLabel(row.payload?.caseType)}</span> },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
     ...(slaDefinitions.length

@@ -41,7 +41,7 @@ export async function GET(request: Request) {
   const rows: (string | number)[][] = cases.map((item) => [
     item.patient.fullName,
     item.patient.employeeId ?? '',
-    caseStageLabel(item.status),
+    caseStageLabel(item.status, item.paymentStatus),
     caseTypeLabel(item.payload?.caseType),
     item.status,
     caseRouteLabel(item.route),

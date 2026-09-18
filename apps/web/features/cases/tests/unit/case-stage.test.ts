@@ -23,15 +23,28 @@ describe('caseStageLabel', () => {
     ['sent_to_doctor', 'Medical office action'],
     ['review_pending', 'Medical office action'],
     ['doctor_submitted', 'HR review'],
-    ['reviewed', 'Completed'],
     ['canceled_by_doctor', 'Closed'],
     ['withdrawn', 'Closed'],
     ['archived', 'Closed']
-  ])('labels %s as %s', (status, expected) => {
-    expect(caseStageLabel(status)).toBe(expected);
+  ])('labels %s as %s regardless of payment status', (status, expected) => {
+    expect(caseStageLabel(status, null)).toBe(expected);
+    expect(caseStageLabel(status, 'paid')).toBe(expected);
+  });
+
+  it('labels a reviewed, unpaid case as "Unpaid" rather than a flat "Completed"', () => {
+    expect(caseStageLabel('reviewed', 'unpaid')).toBe('Unpaid');
+    expect(caseStageLabel('reviewed', null)).toBe('Unpaid');
+  });
+
+  it('labels a reviewed, paid case as "Paid"', () => {
+    expect(caseStageLabel('reviewed', 'paid')).toBe('Paid');
+  });
+
+  it('labels a reviewed case explicitly marked not payable', () => {
+    expect(caseStageLabel('reviewed', 'not_payable')).toBe('Not payable');
   });
 
   it('falls back to the raw value for an unknown status', () => {
-    expect(caseStageLabel('mystery_status')).toBe('mystery_status');
+    expect(caseStageLabel('mystery_status', null)).toBe('mystery_status');
   });
 });

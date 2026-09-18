@@ -110,7 +110,7 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
             {medicalCase.payload?.hidden ? <Badge variant="outline">Hidden from queues</Badge> : null}
           </div>
           <p className="text-sm text-muted-foreground">
-            {caseStageLabel(medicalCase.status)} · Case {medicalCase.id}
+            {caseStageLabel(medicalCase.status, medicalCase.paymentStatus)} · Case {medicalCase.id}
           </p>
         </div>
 
