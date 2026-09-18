@@ -2,6 +2,7 @@ import { auditRepository } from '@ncb/database';
 import { eventLabel } from '../../../../lib/audit-event-labels';
 import { roleLabel } from '../../../../lib/role-labels';
 import { LIST_PATH_BY_ROLE } from '../../../../lib/role-list-paths';
+import { caseActivityHref } from '../../../cases/case-navigation';
 import { derivedPaymentStatus } from '../../../cases/billing-status';
 import { hasDoctorSubmitted, isCancelledCase } from '../../../cases/case-workflow';
 import { listCasesWithPatient, REVIEW_QUEUE_STATUSES } from '../../../cases/services/cases-service';
@@ -67,6 +68,9 @@ const RECENT_UPDATE_EVENT_TYPES = new Set([
   'case_transition',
   'case_reassigned',
   'case_payment_confirmed',
+  'case_billing_updated',
+  'case_attachment_uploaded',
+  'case_attachment_deleted',
   'case_hidden',
   'case_unhidden',
   'user_created',
@@ -163,7 +167,7 @@ export async function getReviewerDashboardData(from: string, to: string): Promis
 
       if (event.entityType === 'case' && event.entityId) {
         const relatedCase = casesById.get(event.entityId)!;
-        return { ...base, href: `/cases/${relatedCase.id}`, impactedLabel: relatedCase.patient.fullName, impactedKind: 'Patient case' };
+        return { ...base, href: caseActivityHref(relatedCase.id, event.eventType, event.details), impactedLabel: relatedCase.patient.fullName, impactedKind: 'Patient case' };
       }
 
       if (event.entityType === 'user' && event.entityId) {
@@ -171,7 +175,9 @@ export async function getReviewerDashboardData(from: string, to: string): Promis
         const details = event.details as { displayName?: string; role?: string } | null;
         return {
           ...base,
-          href: LIST_PATH_BY_ROLE[targetUser?.role ?? details?.role ?? ''] ?? '/users',
+          href: targetUser && LIST_PATH_BY_ROLE[targetUser.role]
+            ? LIST_PATH_BY_ROLE[targetUser.role]!
+            : `/audit?type=${encodeURIComponent(event.eventType)}`,
           impactedLabel: targetUser?.displayName ?? details?.displayName ?? 'Unknown user',
           impactedKind: 'User account'
         };
@@ -181,7 +187,7 @@ export async function getReviewerDashboardData(from: string, to: string): Promis
         return { ...base, href: '/settings', impactedLabel: 'Settings', impactedKind: 'System settings' };
       }
 
-      return { ...base, href: '/cases', impactedLabel: '—', impactedKind: '—' };
+      return { ...base, href: `/audit?type=${encodeURIComponent(event.eventType)}`, impactedLabel: '—', impactedKind: '—' };
     });
 
   return {

@@ -96,7 +96,7 @@ describe('getAuditLog', () => {
 
       expect(rows[0]!.entityKind).toBe('Patient case');
       expect(rows[0]!.entityLabel).toBe('Jane Doe');
-      expect(rows[0]!.href).toBe('/cases/case_1');
+      expect(rows[0]!.href).toBe('/cases/case_1?tab=billing');
       expect(rows[0]!.detail).toContain('→');
     });
 
@@ -161,6 +161,7 @@ describe('getAuditLog', () => {
       const { rows } = await getAuditLog({}, 1, 20);
 
       expect(rows[0]!.detail).toBe('Paid on 2026-02-01');
+      expect(rows[0]!.href).toBe('/cases/case_1?tab=billing');
     });
 
     it('labels a case whose id no longer resolves as a deleted case with no link', async () => {
