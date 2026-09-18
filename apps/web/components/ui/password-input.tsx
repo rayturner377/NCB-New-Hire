@@ -19,7 +19,16 @@ export const PasswordInput = forwardRef<HTMLInputElement, Omit<ComponentProps<ty
 
     return (
       <div className="relative">
-        <Input ref={ref} type={visible ? 'text' : 'password'} className={cn('pr-9', className)} {...props} />
+        <Input
+          ref={ref}
+          type={visible ? 'text' : 'password'}
+          // Edge injects its own native reveal-password icon into any type="password" input once it
+          // has a value — left unsuppressed, it overlaps this component's own toggle button, showing
+          // two "eyes" at once. `::-ms-reveal`/`::-ms-clear` are the (Edge/IE-specific, harmless
+          // no-ops elsewhere) pseudo-elements that icon renders as.
+          className={cn('pr-9 [&::-ms-reveal]:hidden [&::-ms-clear]:hidden', className)}
+          {...props}
+        />
         <button
           type="button"
           onClick={() => setVisible((current) => !current)}

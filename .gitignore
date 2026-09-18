@@ -23,3 +23,7 @@ packages/database/src/generated/
 /NCB Email Guide.pdf
 /NCB PreEmployment Medical Assessment 2 (1).pdf
 /The Data Protection Act, 2020.pdf
+
+# Throwaway manual E2E/lifecycle scratch scripts (repo root only) — ad hoc Playwright driving scripts,
+# never meant to be committed or reused as a real test suite.
+/_lifecycle-*.mjs
