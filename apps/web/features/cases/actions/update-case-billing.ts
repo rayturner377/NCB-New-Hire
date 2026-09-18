@@ -30,12 +30,21 @@ export async function updateCaseBillingAction(formData: FormData): Promise<void>
   const caseId = String(formData.get('caseId') || '');
   if (!caseId) return;
 
-  // Mirrors the greyed-out state case-detail-container.tsx renders — nothing
-  // to bill before the doctor submits, and billing stays locked until HR
-  // actually completes review (see that file's `awaitingReview`) — enforced
-  // here too so it can't be bypassed by posting directly to this action.
+  // Mirrors the greyed-out state case-workspace-capabilities.ts's billingLocked renders — nothing
+  // to bill before the doctor submits, billing stays locked until HR actually completes review, and
+  // (once paid) locked again so this generic form can't be used to silently flip payment_status
+  // back to 'unpaid' as a side-channel around the reason-required reopen action (case-transitions.ts)
+  // or the dedicated payment-date correction (correct-case-payment-date.ts) — enforced here too so
+  // none of that can be bypassed by posting directly to this action.
   const medicalCase = await getCaseById(caseId);
-  if (!medicalCase || !hasDoctorSubmitted(medicalCase.status) || medicalCase.status === 'doctor_submitted') return;
+  if (
+    !medicalCase ||
+    !hasDoctorSubmitted(medicalCase.status) ||
+    medicalCase.status === 'doctor_submitted' ||
+    medicalCase.paymentStatus === 'paid'
+  ) {
+    return;
+  }
 
   const paymentStatus = String(formData.get('paymentStatus') || '');
   if (!isBillingStatus(paymentStatus)) return;

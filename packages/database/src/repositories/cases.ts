@@ -140,6 +140,20 @@ export function createCasesRepository(db: PrismaClient) {
       return { rows: rows.map((row) => ({ ...decryptCase<T>(row, masterKey), patient: row.patient })), total };
     },
 
+    /**
+     * The unpaginated equivalent of searchWithPatient — same filters, but every matching row (for
+     * an export, where "give me everything I filtered to" is the point, not just the visible page).
+     */
+    async searchAllWithPatient<T = unknown>(filters: CaseSearchFilters, masterKey: Buffer): Promise<CaseWithPatient<T>[]> {
+      const where = buildCaseSearchWhere(filters);
+      const rows = await db.medicalCase.findMany({
+        where,
+        include: { patient: { select: { id: true, fullName: true, employeeId: true } } },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }]
+      });
+      return rows.map((row) => ({ ...decryptCase<T>(row, masterKey), patient: row.patient }));
+    },
+
     /** Single case with the patient joined in, for the case detail workspace. */
     async findByIdWithPatient<T = unknown>(id: string, masterKey: Buffer): Promise<CaseWithPatient<T> | null> {
       const row = await db.medicalCase.findFirst({

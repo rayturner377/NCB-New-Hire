@@ -104,6 +104,17 @@ export async function OrganizationBillingReportContainer({ searchParams = {} }: 
     return search ? `/billing?${search}` : '/billing';
   }
 
+  function buildExportHref(): string {
+    const params = new URLSearchParams();
+    if (clinicianId) params.set('clinicianId', clinicianId);
+    if (billing) params.set('billing', billing);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    if (query) params.set('query', query);
+    const search = params.toString();
+    return search ? `/billing/export?${search}` : '/billing/export';
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <OrganizationBillingReport
@@ -113,6 +124,7 @@ export async function OrganizationBillingReportContainer({ searchParams = {} }: 
         filters={{ clinicianId, query, billing, fy: dropdownFy, from, to }}
         hasActiveFilters={hasActiveFilters}
         rangeLabel={formatRangeLabel(dropdownFy, from, to)}
+        exportHref={buildExportHref()}
         pagination={{ page: currentPage, totalPages, hrefForPage }}
       />
     </div>

@@ -49,6 +49,16 @@ describe('navItemsForRole', () => {
     expect(navItemsForRole(undefined)).toEqual([]);
     expect(navItemsForRole(null)).toEqual([]);
   });
+
+  it('groups Billing report and Turnaround under Reports, scoping Turnaround away from doctor (no doctor-scoped equivalent exists)', () => {
+    const reviewerReports = navItemsForRole('reviewer').find((item) => item.label === 'Reports');
+    expect(reviewerReports?.children?.some((child) => child.label === 'Billing report')).toBe(true);
+    expect(reviewerReports?.children?.some((child) => child.label === 'Turnaround')).toBe(true);
+
+    const doctorReports = navItemsForRole('clinician').find((item) => item.label === 'Reports');
+    expect(doctorReports?.children?.some((child) => child.label === 'Billing report')).toBe(true);
+    expect(doctorReports?.children?.some((child) => child.label === 'Turnaround')).toBe(false);
+  });
 });
 
 describe('navLabelForPathname', () => {

@@ -19,18 +19,32 @@ verified against the code.
   audit log.
 - **Audit log** (`/audit`) — filterable, paginated log of every case/user/settings/session event,
   independently of the billing/dashboard reports.
+- **Turnaround report** (`/reports/turnaround`, `apps/web/features/reports/services/turnaround-report-service.ts`'s
+  `getCaseTurnaroundReport`) — how long a case takes between any two of its own lifecycle
+  milestones (case created, patient submitted, reached doctor, doctor submitted, HR reviewed,
+  payment confirmed — see `case-milestones.ts`), picked via a "from"/"to" filter rather than fixed
+  to one pairing. Defaults to doctor-submitted → HR-reviewed (this report's original, HR-only
+  scope before it was generalized), with average/fastest/slowest stats and a case-level row list.
+  Admin/reviewer/auditor only — no doctor-scoped equivalent, this is purely an HR operations view.
+- **CSV and Excel export** — the doctor billing report, organization billing report (case-level
+  rows when drilled into one doctor, the per-doctor summary table otherwise), the turnaround
+  report, and the "All cases" list can each be exported as CSV or a real `.xlsx` workbook (via
+  `exceljs`), honoring whatever filters are currently applied rather than just the visible page.
+- **Reports nav group** — Billing report and Turnaround live under a single "Reports" entry in the
+  sidebar (mirrors the existing "Users" group), rather than as separate top-level links.
 
 ## Not implemented
 
 These were part of the original request below but don't exist today — noted here so this document
 doesn't imply they do:
 
-- A dedicated per-doctor turnaround-time report (min/max/average, grouped by doctor or office).
-- A standalone HR-review-turnaround report (only the org-wide average above exists).
+- A dedicated per-doctor turnaround-time report (min/max/average, grouped by doctor or office) —
+  the generalized Turnaround report above answers per-case turnaround for any milestone pair, but
+  doesn't group/aggregate by doctor or office.
 - A standalone "pending medicals" report (the reviewer dashboard's queue counts cover similar
   ground but aren't a dedicated report page).
-- CSV/Excel/PDF export of any report (case-level attachments have their own PDF export, unrelated
-  to reporting).
+- PDF export of any report (CSV/Excel export exists — see above; case-level attachments have their
+  own PDF export, unrelated to reporting).
 - Medical-office-level grouping in the billing report (grouping is per-doctor only).
 
 ---

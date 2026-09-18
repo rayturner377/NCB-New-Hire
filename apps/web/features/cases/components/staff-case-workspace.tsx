@@ -59,7 +59,8 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
     hidePositionFromViewer,
     hideNationalIdFromViewer,
     exportLockedMessage,
-    uploadLockedMessage
+    uploadLockedMessage,
+    isPaid
   } = capabilities;
 
   const slaStages = computeSlaStatus(
@@ -79,7 +80,12 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
     ? usersById.get(medicalCase.assignedClinicianId)?.displayName ?? 'Unknown doctor'
     : 'Unassigned';
   const historyEntries = formatCaseHistory(auditEvents, usersById);
-  const paymentConfirmedEvent = auditEvents.find((event) => event.eventType === 'case_payment_confirmed');
+  // Most-recent-first (see cases-service.ts's listCaseAuditEvents), so the first match of either
+  // type is the current payment record — a correction (case_payment_corrected) after the original
+  // confirmation should win, without needing to know which one actually happened last.
+  const paymentConfirmedEvent = auditEvents.find(
+    (event) => event.eventType === 'case_payment_confirmed' || event.eventType === 'case_payment_corrected'
+  );
   const paymentConfirmedDetails = (paymentConfirmedEvent?.details as Record<string, unknown>) ?? {};
   const paidOn = paymentConfirmedDetails.paidOn ? String(paymentConfirmedDetails.paidOn) : null;
   const paymentConfirmedByName = paymentConfirmedEvent?.actorUserId
@@ -104,7 +110,7 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
             {medicalCase.payload?.hidden ? <Badge variant="outline">Hidden from queues</Badge> : null}
           </div>
           <p className="text-sm text-muted-foreground">
-            {caseStageLabel(medicalCase.status)} · Case {medicalCase.id}
+            {caseStageLabel(medicalCase.status, medicalCase.paymentStatus)} · Case {medicalCase.id}
           </p>
         </div>
 
@@ -113,6 +119,7 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
           version={medicalCase.version}
           status={medicalCase.status}
           role={user.role}
+          isPaid={isPaid}
           canTransition={canTransition}
           canReassign={canReassign}
           doctors={doctors.map((doctor) => ({ id: doctor.id, displayName: doctor.displayName }))}

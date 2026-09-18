@@ -1,6 +1,7 @@
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { ExportButtons } from '../../../components/dashboard/export-buttons';
 import { RouteTabs } from '../../../components/dashboard/route-tabs';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { Pagination } from '../../../components/dashboard/pagination';
@@ -140,6 +141,17 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
       return `/cases?${params.toString()}`;
     }
 
+    function buildExportHref(): string {
+      const params = new URLSearchParams();
+      if (query) params.set('query', query);
+      if (status) params.set('status', status);
+      if (billing) params.set('billing', billing);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const search = params.toString();
+      return search ? `/cases/export?${search}` : '/cases/export';
+    }
+
     // Corrects the URL itself (a real redirect, not just a relabeled page number) rather than
     // showing 0 rows from the out-of-range page under a "Page N of M" label that implies real
     // rows exist there.
@@ -148,7 +160,11 @@ export async function CasesContainer({ searchParams = {} }: CasesContainerProps)
     }
 
     content = (
-      <SectionCard title="All cases" description={`${total} case${total === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}`}>
+      <SectionCard
+        title="All cases"
+        description={`${total} case${total === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}`}
+        action={<ExportButtons href={buildExportHref()} />}
+      >
         <div className="flex flex-col gap-4">
           <CasesFilters query={query} status={status} billing={billing} from={from} to={to} hasActiveFilters={hasActiveFilters} />
           <CaseList cases={pageRows} slaDefinitions={sla.definitions} />

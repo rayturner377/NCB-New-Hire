@@ -84,6 +84,17 @@ describe('deriveCaseWorkspaceCapabilities', () => {
     expect(capabilities.exportLockedMessage).toBeUndefined();
   });
 
+  it('locks billing again once a reviewed case is paid, pointing at the reopen/correction flows instead', () => {
+    const capabilities = deriveCaseWorkspaceCapabilities({ role: 'admin', id: 'usr_admin_1' } as never, {
+      ...baseCase,
+      status: 'reviewed',
+      paymentStatus: 'paid'
+    });
+
+    expect(capabilities.billingLocked).toBe(true);
+    expect(capabilities.billingLockedMessage).toMatch(/reopen/i);
+  });
+
   it('reports isPaid straight from paymentStatus', () => {
     expect(deriveCaseWorkspaceCapabilities({ role: 'admin', id: 'usr_admin_1' } as never, { ...baseCase, paymentStatus: 'paid' }).isPaid).toBe(
       true

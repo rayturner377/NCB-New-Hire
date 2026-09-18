@@ -17,8 +17,10 @@ export interface CaseActionDefinition {
   label: string;
   description: string;
   targetStatus: CaseStatus;
-  /** Whether choosing this action requires picking a doctor first (see components/case-action-menu.tsx's dialog). */
+  /** Whether choosing this action requires picking a doctor first (see components/case-actions-menu.tsx's dialog). */
   requiresDoctor: boolean;
+  /** Whether choosing this action requires typing a reason first, logged with the transition's audit event — reserved for reopening an already-paid case (see REOPEN_TO_DOCTOR/REOPEN_TO_PATIENT below), not the ordinary pre-payment moves. */
+  requiresReason: boolean;
 }
 
 const SEND_TO_DOCTOR: CaseActionDefinition = {
@@ -26,7 +28,8 @@ const SEND_TO_DOCTOR: CaseActionDefinition = {
   label: 'Send to doctor',
   description: 'Choose the doctor who should receive this case.',
   targetStatus: 'sent_to_doctor',
-  requiresDoctor: true
+  requiresDoctor: true,
+  requiresReason: false
 };
 
 const SEND_TO_PATIENT: CaseActionDefinition = {
@@ -34,7 +37,8 @@ const SEND_TO_PATIENT: CaseActionDefinition = {
   label: 'Send back to patient',
   description: 'Reopens the intake form for the same patient to edit and resubmit.',
   targetStatus: 'sent_to_patient',
-  requiresDoctor: false
+  requiresDoctor: false,
+  requiresReason: false
 };
 
 const COMPLETE_REVIEW: CaseActionDefinition = {
@@ -42,7 +46,8 @@ const COMPLETE_REVIEW: CaseActionDefinition = {
   label: 'Complete review',
   description: 'Marks HR review as done — this case is fully processed.',
   targetStatus: 'reviewed',
-  requiresDoctor: false
+  requiresDoctor: false,
+  requiresReason: false
 };
 
 const CANCEL: CaseActionDefinition = {
@@ -50,20 +55,50 @@ const CANCEL: CaseActionDefinition = {
   label: 'Cancel case',
   description: 'Marks this case as withdrawn — it will no longer be processed, and it drops out of the doctor/patient queues.',
   targetStatus: 'withdrawn',
-  requiresDoctor: false
+  requiresDoctor: false,
+  requiresReason: false
 };
 
 /**
- * Every action available from `status`, already filtered for `role` —
- * callers don't need to separately re-check "is this role allowed to make
- * this particular move," since a caller only ever sees the actions they're
- * actually allowed to take. A 'clinician' caller is restricted to sending a
- * case back to the patient and nothing else, regardless of status, matching
- * the current product decision to eventually let doctors do that one thing
- * (see lib/permissions.ts's comment on why MEDICAL_CASES_TRANSITION isn't
- * granted to them yet).
+ * A paid case reopened back to the doctor — same destination as SEND_TO_DOCTOR, but requires a
+ * reason (kept with the audit event) since it reverses a completed, paid case rather than moving
+ * one still in progress. transition_medical_case (see 0028_reset_payment_on_case_reopen) resets
+ * payment_status/payment_confirmed_at on this same move, so the case doesn't keep showing as paid
+ * while its assessment is being redone.
  */
-export function availableCaseActions(status: CaseStatus | string, role: string): CaseActionDefinition[] {
+const REOPEN_TO_DOCTOR: CaseActionDefinition = {
+  id: 'send_to_doctor',
+  label: 'Reopen: send to doctor',
+  description: 'This case has already been paid. Reopening it clears the payment record — it will need to be confirmed again once resolved. Explain why you’re reopening it.',
+  targetStatus: 'sent_to_doctor',
+  requiresDoctor: true,
+  requiresReason: true
+};
+
+const REOPEN_TO_PATIENT: CaseActionDefinition = {
+  id: 'send_to_patient',
+  label: 'Reopen: send back to patient',
+  description: 'This case has already been paid. Reopening it clears the payment record — it will need to be confirmed again once resolved. Explain why you’re reopening it.',
+  targetStatus: 'sent_to_patient',
+  requiresDoctor: false,
+  requiresReason: true
+};
+
+/**
+ * Every action available from `status`, already filtered for `role` and `isPaid` — callers don't
+ * need to separately re-check "is this role allowed to make this particular move" or "is this case
+ * locked by payment," since a caller only ever sees the actions they're actually allowed to take.
+ *
+ * A reviewed AND paid case is locked down to exactly two moves (reopen to doctor, reopen to
+ * patient), both requiring a reason, both restricted to admin/reviewer — no plain bounce-back, and
+ * no cancelling a case money has already moved for. An unpaid case (including one that's merely
+ * `reviewed`) keeps the ordinary, reason-free moves.
+ */
+export function availableCaseActions(status: CaseStatus | string, role: string, isPaid = false): CaseActionDefinition[] {
+  if (status === 'reviewed' && isPaid) {
+    return role === 'admin' || role === 'reviewer' ? [REOPEN_TO_DOCTOR, REOPEN_TO_PATIENT] : [];
+  }
+
   const all: CaseActionDefinition[] = (() => {
     switch (status) {
       case 'sent_to_patient':
@@ -88,6 +123,6 @@ export function availableCaseActions(status: CaseStatus | string, role: string):
   return all;
 }
 
-export function findCaseAction(status: CaseStatus | string, role: string, actionId: string): CaseActionDefinition | undefined {
-  return availableCaseActions(status, role).find((action) => action.id === actionId);
+export function findCaseAction(status: CaseStatus | string, role: string, actionId: string, isPaid = false): CaseActionDefinition | undefined {
+  return availableCaseActions(status, role, isPaid).find((action) => action.id === actionId);
 }

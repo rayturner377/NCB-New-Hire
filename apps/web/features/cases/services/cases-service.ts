@@ -89,6 +89,12 @@ export async function searchCasesWithPatient(filters: CaseSearchFilters, page: n
   return casesRepository.searchWithPatient<CasePayload>(filters, page, pageSize, masterKey);
 }
 
+/** The "All cases" tab's export — same filters as searchCasesWithPatient, every matching row instead of one page. */
+export async function searchAllCasesWithPatient(filters: CaseSearchFilters) {
+  const masterKey = loadMasterKey();
+  return casesRepository.searchAllWithPatient<CasePayload>(filters, masterKey);
+}
+
 export async function getCaseById(id: string) {
   const masterKey = loadMasterKey();
   return casesRepository.findById<CasePayload>(id, masterKey);
@@ -251,17 +257,21 @@ export async function transitionCase(
   caseId: string,
   expectedVersion: number,
   newStatus: CaseStatus,
-  actorId: string
+  actorId: string,
+  reason?: string
 ): Promise<number> {
   const masterKey = loadMasterKey();
   const before = await casesRepository.findById(caseId, masterKey);
   // A canceled case (whether HR withdraws it or a doctor declines it) is never payable — mirrors
-  // the legacy app's normalizeCasePaymentStatus. Applied inside transition_medical_case itself
-  // (the same stored procedure the version-checked transition below already runs through), not as
-  // a separate UPDATE afterward — a prior version did that as two statements, which could leave a
+  // the legacy app's normalizeCasePaymentStatus. A case reopened back to sent_to_doctor/
+  // sent_to_patient after being paid has its payment reset the same way (see
+  // 0028_reset_payment_on_case_reopen) — it shouldn't keep showing as paid while the assessment
+  // it was paid for is being redone. Both applied inside transition_medical_case itself (the same
+  // stored procedure the version-checked transition below already runs through), not as a separate
+  // UPDATE afterward — a prior version did the cancel-reset as two statements, which could leave a
   // withdrawn/canceled case with a stale payable payment_status if the second one failed.
   const newVersion = await casesRepository.transition(caseId, expectedVersion, newStatus, actorId);
-  await finalizeCaseTransition(caseId, actorId, before?.status ?? null, newStatus);
+  await finalizeCaseTransition(caseId, actorId, before?.status ?? null, newStatus, reason);
 
   return newVersion;
 }
@@ -272,20 +282,23 @@ export async function transitionCase(
  * (submissions-service.ts, whose transition already happened inside its own DB transaction via
  * submissionsRepository.saveAndTransition — this only runs after that transaction has committed).
  * Deliberately not run inside a DB transaction itself: an audit write and an outgoing email are
- * side effects of a committed transition, not part of the atomicity guarantee for it.
+ * side effects of a committed transition, not part of the atomicity guarantee for it. `reason` is
+ * only ever set for a paid-case reopen (case-transitions.ts's REOPEN_TO_DOCTOR/REOPEN_TO_PATIENT) —
+ * omitted from `details` entirely for an ordinary transition rather than stored as null noise.
  */
 export async function finalizeCaseTransition(
   caseId: string,
   actorId: string,
   previousStatus: string | null,
-  newStatus: CaseStatus
+  newStatus: CaseStatus,
+  reason?: string
 ): Promise<void> {
   await auditRepository.append({
     eventType: 'case_transition',
     actorUserId: actorId,
     entityType: 'case',
     entityId: caseId,
-    details: { from: previousStatus, to: newStatus }
+    details: { from: previousStatus, to: newStatus, ...(reason ? { reason } : {}) }
   });
 
   await notifyOnTransition(newStatus, caseId);
@@ -432,6 +445,25 @@ export async function confirmCasePayment(caseId: string, paidOn: string, actorId
     variables: { caseId, patientName: candidate?.fullName ?? 'the patient', paidOn },
     entityType: 'case',
     entityId: caseId
+  });
+}
+
+/**
+ * Fixes an already-confirmed payment date without touching paymentStatus or the case's own status
+ * — a plain re-run of confirmPayment's own DB write (still 'paid', just a different date) is exactly
+ * right here, but the audit trail deliberately uses its own case_payment_corrected event type
+ * (rather than another case_payment_confirmed) so a correction never reads as a second, separate
+ * confirmation, and always carries the reason it happened. No notification email — this is a
+ * paperwork fix, not a new payment event the doctor needs to hear about again.
+ */
+export async function correctCasePaymentDate(caseId: string, paidOn: string, reason: string, actorId: string): Promise<void> {
+  await casesRepository.confirmPayment(caseId, new Date(paidOn));
+  await auditRepository.append({
+    eventType: 'case_payment_corrected',
+    actorUserId: actorId,
+    entityType: 'case',
+    entityId: caseId,
+    details: { paidOn, reason }
   });
 }
 

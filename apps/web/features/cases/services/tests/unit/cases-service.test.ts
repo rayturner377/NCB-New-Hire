@@ -79,6 +79,7 @@ const {
   submitPatientCase,
   setCaseHidden,
   confirmCasePayment,
+  correctCasePaymentDate,
   setCaseBilling,
   listReviewQueueCases,
   countCasesForClinicians,
@@ -209,6 +210,19 @@ describe('cases service', () => {
     );
   });
 
+  it('transitionCase includes the reason in the audit details when one is given (a paid-case reopen)', async () => {
+    findById.mockResolvedValue({ status: 'reviewed' });
+    transition.mockResolvedValue(6);
+
+    await transitionCase('case_1', 5, 'sent_to_doctor', 'usr_reviewer_demo', 'Wrong candidate name on the form');
+
+    expect(auditAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: { from: 'reviewed', to: 'sent_to_doctor', reason: 'Wrong candidate name on the form' }
+      })
+    );
+  });
+
   it('transitionCase does not audit when the repository transition itself throws', async () => {
     findById.mockResolvedValue({ status: 'sent_to_doctor' });
     transition.mockRejectedValue(new Error('Medical case changed or does not exist'));
@@ -301,6 +315,24 @@ describe('cases service', () => {
 
     await confirmCasePayment('case_1', '2026-01-05', 'usr_reviewer_demo');
 
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it('correctCasePaymentDate re-confirms with the new date and audits a distinct case_payment_corrected event, with no notification', async () => {
+    confirmPayment.mockResolvedValue(undefined);
+
+    await correctCasePaymentDate('case_1', '2026-01-10', 'Original date was a typo', 'usr_reviewer_demo');
+
+    expect(confirmPayment).toHaveBeenCalledWith('case_1', new Date('2026-01-10'));
+    expect(auditAppend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'case_payment_corrected',
+        actorUserId: 'usr_reviewer_demo',
+        entityType: 'case',
+        entityId: 'case_1',
+        details: { paidOn: '2026-01-10', reason: 'Original date was a typo' }
+      })
+    );
     expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 

@@ -37,12 +37,18 @@ export function formatCaseHistory(events: AuditEvent[], usersById: Map<string, C
     if (event.eventType === 'case_transition') {
       from = details.from ? statusLabel(String(details.from)) : 'the start';
       to = statusLabel(String(details.to));
+      // Only ever set for a paid-case reopen (case-transitions.ts's REOPEN_TO_DOCTOR/
+      // REOPEN_TO_PATIENT) — an ordinary transition has nothing to explain here.
+      if (details.reason) to += ` — ${String(details.reason)}`;
     } else if (event.eventType === 'case_reassigned') {
       from = details.from ? usersById.get(String(details.from))?.displayName ?? 'a previous doctor' : 'Unassigned';
       to = usersById.get(String(details.to))?.displayName ?? 'Unknown doctor';
     } else if (event.eventType === 'case_payment_confirmed') {
       from = 'Unpaid';
       to = details.paidOn ? `Paid (${String(details.paidOn)})` : 'Paid';
+    } else if (event.eventType === 'case_payment_corrected') {
+      from = 'Paid';
+      to = details.paidOn ? `Paid (${String(details.paidOn)}) — ${String(details.reason ?? '')}` : 'Paid';
     }
 
     return {

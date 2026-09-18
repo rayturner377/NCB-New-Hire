@@ -1,4 +1,5 @@
 import { CheckCircle2, Clock, FileStack } from 'lucide-react';
+import { ExportButtons } from '../../../components/dashboard/export-buttons';
 import { Pagination } from '../../../components/dashboard/pagination';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { StatCard } from '../../../components/dashboard/stat-card';
@@ -15,6 +16,7 @@ export interface OrganizationBillingReportProps {
   filters: { clinicianId: string; query: string; billing: string; fy: string; from: string; to: string };
   hasActiveFilters: boolean;
   rangeLabel: string;
+  exportHref: string;
   pagination: { page: number; totalPages: number; hrefForPage: (page: number) => string };
 }
 
@@ -32,6 +34,7 @@ export function OrganizationBillingReport({
   filters,
   hasActiveFilters,
   rangeLabel,
+  exportHref,
   pagination
 }: OrganizationBillingReportProps) {
   const isDrilledDown = Boolean(filters.clinicianId);
@@ -54,6 +57,7 @@ export function OrganizationBillingReport({
       <SectionCard
         title={isDrilledDown ? `${selectedDoctorName}'s billed cases` : 'Billing by doctor'}
         description={isDrilledDown ? `${data.rows?.length ?? 0} case${data.rows?.length === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}` : undefined}
+        action={<ExportButtons href={exportHref} />}
       >
         <div className="flex flex-col gap-4">
           <OrganizationBillingFilters
