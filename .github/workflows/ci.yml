@@ -43,7 +43,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # jsdom (used by every DOM-based unit test here) pulls in undici ^8.x, which calls a Node
+          # internal (webidl.util.markAsUncloneable) only reliably present from Node 22 onward — on
+          # Node 20 it's undefined, crashing every jsdom-environment test worker at import time. That
+          # silently drops those files' branches out of the coverage total, which is why
+          # test:coverage's 85% branch threshold failed here even though nothing regressed.
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -96,7 +101,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
