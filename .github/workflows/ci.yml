@@ -8,20 +8,35 @@ on:
 jobs:
   build-test-lint:
     runs-on: ubuntu-latest
+    services:
+      # @ncb/redis's client connects eagerly at import time (a deliberate "fail loudly if
+      # infrastructure is unreachable" posture for the real running app — see client.ts's own doc
+      # comment), and at least one unit test (packages/auth's utils.test.ts, transitively) reaches
+      # it without mocking @ncb/redis. A syntactically-valid-but-unreachable REDIS_URL isn't enough
+      # here the way it is for DATABASE_URL (Prisma only connects lazily, on the first real query,
+      # which nothing in this job's unit tests actually issues) — ioredis's real, async connection
+      # errors against an unreachable host collide with Vitest's worker teardown and fail the run
+      # even though every assertion passed. No password, same reasoning as the integration-tests
+      # job's own redis service below: a GH Actions service container can't take a custom command
+      # line the way docker-compose's --requirepass does, and this only exists for one CI run.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       # @ncb/database's Prisma schema resolves DATABASE_URL at `prisma generate`
-      # time even though nothing in this job opens a real connection (unit
-      # tests mock the Prisma client) — a syntactically valid placeholder is
-      # enough. The real Postgres instance is only used by the
-      # integration-tests job below.
+      # time even though nothing in this job opens a real connection (Prisma
+      # connects lazily, on the first real query, and unit tests mock the
+      # Prisma client anyway) — a syntactically valid placeholder is enough.
+      # The real Postgres instance is only used by the integration-tests job
+      # below.
       DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
-      # `npm run build`'s next build step really imports/evaluates every
-      # route module (unlike tsc, which only type-checks) to collect page
-      # data, reaching @ncb/auth's and @ncb/redis's eager client
-      # construction — both throw if these are unset, regardless of whether
-      # anything real happens with them. Unit tests mock @ncb/redis
-      # entirely, so these are only needed for the build step below.
-      REDIS_URL: redis://placeholder:6379
+      REDIS_URL: redis://localhost:6379
       BETTER_AUTH_SECRET: ci-build-placeholder-not-a-real-secret
     steps:
       - uses: actions/checkout@v4
