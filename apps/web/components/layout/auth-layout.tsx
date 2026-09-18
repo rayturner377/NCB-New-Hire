@@ -39,7 +39,9 @@ export function AuthLayout({ children, imageSrc, logoSrc }: AuthLayoutProps) {
       <div className="relative hidden bg-primary/5 lg:block">
         {imageSrc ? (
           // unoptimized: the source is an uploaded/external asset whose host isn't known ahead of time for next/image's remotePatterns allowlist.
-          <Image src={imageSrc} alt="" fill unoptimized className="object-cover" />
+          // priority: this image is the page's LCP element (it fills the whole right panel, always above the fold on lg+) — priority
+          // makes next/image render it with loading="eager" plus a <link rel="preload">, instead of the lazy-loading it defaults to.
+          <Image src={imageSrc} alt="" fill unoptimized priority className="object-cover" />
         ) : (
           <Skeleton className="absolute inset-0 h-full w-full rounded-none" aria-label="Auth screen image placeholder" />
         )}
