@@ -148,6 +148,15 @@ export const NOTIFICATION_TEMPLATES: NotificationTemplateDefinition[] = [
     secretVariableNames: ['activationCode']
   },
   {
+    key: 'account_activated',
+    label: 'Account activated',
+    description: 'Sent after first activation and sign-in complete successfully.',
+    defaultSubject: '{{portalName}}: your account is ready',
+    defaultBody:
+      '<p>Hi {{recipientName}},</p><p>Your account has been activated and your password has been set. You are now signed in, and this browser will be recognized for future sign-ins.</p><p>If you did not activate this account, contact an administrator immediately.</p>',
+    variables: [{ name: 'recipientName', description: "The account holder's name" }]
+  },
+  {
     key: 'device_verification_code',
     label: 'New device verification code',
     description: 'Sent during sign-in when the browser/device isn’t recognized — must be entered before the sign-in completes.',

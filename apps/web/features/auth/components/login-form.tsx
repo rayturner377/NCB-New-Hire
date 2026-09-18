@@ -18,6 +18,8 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { PasswordInput } from '../../../components/ui/password-input';
+import { PasswordRequirements } from './password-requirements';
+import type { PasswordPolicy } from '../../settings/password-policy';
 import { checkSignInMethodAction } from '../actions/check-sign-in-method';
 import { login, type LoginResult } from '../actions/login';
 import { redeemAccessCodeAction, type RedeemAccessCodeResult } from '../actions/redeem-access-code';
@@ -195,6 +197,7 @@ function CodeStep({
 }
 
 interface NewPasswordStepProps {
+  passwordPolicy: PasswordPolicy;
   email: string;
   code: string;
   redeemFormAction: (formData: FormData) => void;
@@ -204,6 +207,7 @@ interface NewPasswordStepProps {
 }
 
 function NewPasswordStep({
+  passwordPolicy,
   email,
   code,
   redeemFormAction,
@@ -222,12 +226,15 @@ function NewPasswordStep({
           id="password"
           name="password"
           autoComplete="new-password"
-          minLength={12}
+          minLength={Math.max(12, passwordPolicy.minPasswordLength)}
+          maxLength={200}
+          aria-describedby="new-password-requirements"
           required
           autoFocus
           value={newPassword}
           onChange={onNewPasswordChange}
         />
+        <PasswordRequirements id="new-password-requirements" password={newPassword} policy={passwordPolicy} />
         {redeemState?.fieldErrors?.password ? (
           <p className="text-xs font-medium text-destructive">{redeemState.fieldErrors.password}</p>
         ) : null}
@@ -246,6 +253,7 @@ function NewPasswordStep({
 }
 
 interface LoginFlowStepsProps {
+  passwordPolicy: PasswordPolicy;
   email: string;
   initialStep: Exclude<Step, 'email'>;
   onChangeEmail: () => void;
@@ -260,7 +268,7 @@ interface LoginFlowStepsProps {
  * password) could still show an error/success left over from the previous
  * attempt's action call, for a completely unrelated email.
  */
-function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsProps) {
+function LoginFlowSteps({ email, initialStep, onChangeEmail, passwordPolicy }: LoginFlowStepsProps) {
   const [step, setStep] = useState<Step>(initialStep);
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -287,8 +295,8 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
   // re-triggers the action directly rather than looping back through this transition.
   useAdvanceStepOnSuccess(resetState, step, 'sendingCode', 'code', setStep);
   useAdvanceStepOnSuccess(verifyState, step, 'code', 'newPassword', setStep);
-  // The account holder just proved they own this code and chose a password — no reason to make them
-  // type it again immediately after.
+  // Activation redirects from the server action. Only password reset returns
+  // ok here and continues through ordinary login/device verification.
   useAdvanceStepOnSuccess(redeemState, step, 'newPassword', 'signingIn', setStep);
 
   // Split from the effect above: submitting here (once the 'signingIn' render has actually
@@ -319,6 +327,15 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
       // Let the input's own value commit before the form reads it.
       requestAnimationFrame(() => verifyFormRef.current?.requestSubmit());
     }
+  }
+
+  if (redeemState?.passwordSaved && step === 'newPassword') {
+    return (
+      <div className="flex flex-col gap-4">
+        <Alert tone="error">{redeemState.error}</Alert>
+        <button type="button" className="text-sm underline" onClick={() => setStep('password')}>Continue to sign in</button>
+      </div>
+    );
   }
 
   if (step === 'password') {
@@ -353,6 +370,7 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
   if (step === 'newPassword') {
     return (
       <NewPasswordStep
+        passwordPolicy={passwordPolicy}
         email={email}
         code={code}
         redeemFormAction={redeemFormAction}
@@ -389,7 +407,7 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
   );
 }
 
-export function LoginForm() {
+export function LoginForm({ passwordPolicy }: { passwordPolicy: PasswordPolicy }) {
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -449,5 +467,5 @@ export function LoginForm() {
     );
   }
 
-  return <LoginFlowSteps key={attempt} email={email} initialStep={step} onChangeEmail={goToEmailStep} />;
+  return <LoginFlowSteps key={attempt} email={email} initialStep={step} onChangeEmail={goToEmailStep} passwordPolicy={passwordPolicy} />;
 }

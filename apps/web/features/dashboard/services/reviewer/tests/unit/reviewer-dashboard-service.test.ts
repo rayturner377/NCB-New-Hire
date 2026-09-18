@@ -131,7 +131,7 @@ describe('getReviewerDashboardData', () => {
       action: 'Status change',
       actorName: 'Nordia Reid',
       actorRole: 'Reviewer',
-      href: '/cases/case_1',
+      href: '/cases/case_1?tab=history',
       impactedLabel: 'Jane Doe',
       impactedKind: 'Patient case'
     });
@@ -157,8 +157,15 @@ describe('getReviewerDashboardData', () => {
       action: 'User deleted',
       impactedLabel: 'Dr. Gone',
       impactedKind: 'User account',
-      href: '/doctors'
+      href: '/audit?type=user_deleted'
     });
+  });
+
+  it.each(['case_payment_confirmed', 'case_billing_updated'])('opens billing for %s', async (eventType) => {
+    listAllWithPatient.mockResolvedValue([caseRow()]);
+    auditList.mockResolvedValue([auditEvent({ eventType })]);
+    const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
+    expect(result.recentUpdates[0]?.href).toBe('/cases/case_1?tab=billing');
   });
 
   it('reports zero average turnaround when no case was completed in range', async () => {
@@ -202,7 +209,7 @@ describe('getReviewerDashboardData', () => {
 
     const result = await getReviewerDashboardData('2026-01-01', '2026-01-31');
 
-    expect(result.recentUpdates[0]).toMatchObject({ impactedKind: '—', impactedLabel: '—', href: '/cases' });
+    expect(result.recentUpdates[0]).toMatchObject({ impactedKind: '—', impactedLabel: '—', href: '/audit?type=case_created' });
   });
 
   it('labels an unauthenticated event as System, and an actor whose account is gone as Unknown user', async () => {

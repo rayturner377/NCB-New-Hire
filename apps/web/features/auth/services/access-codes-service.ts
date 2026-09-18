@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { accessCodesRepository, usersRepository, type AccessCodePurpose } from '@ncb/database';
+import { accessCodesRepository, usersRepository, MAX_ACCESS_CODE_ATTEMPTS, type AccessCodePurpose } from '@ncb/database';
 import { hashPassword } from '@ncb/auth/utils';
 import { generateAccessCode, hashAccessCode, verifyAccessCodeHash } from '@ncb/shared';
 
@@ -16,9 +16,6 @@ const DEFAULT_TTL_MS: Record<AccessCodePurpose, number> = {
   account_activation: 24 * 60 * 60 * 1000,
   password_reset: 20 * 60 * 1000
 };
-
-/** After this many wrong guesses on the same code, it's locked out (invalidated) rather than left guessable indefinitely — the 6-digit space (1,000,000 possibilities) is small enough that hash strength alone isn't sufficient protection; this bounds an online brute-force attempt against a single issued code to 5 tries. */
-const MAX_ATTEMPTS = 5;
 
 /**
  * Generates, hashes, and stores a new code for the given user/purpose,
@@ -68,23 +65,23 @@ const GENERIC_CODE_ERROR = 'That code is invalid or has expired. Request a new o
  */
 async function checkAccessCode(email: string, code: string): Promise<CheckAccessCodeResult> {
   const user = await usersRepository.findByEmail(email.toLowerCase());
-  if (!user) {
+  if (!user || user.active === false || user.deletedAt) {
     return { ok: false, error: GENERIC_CODE_ERROR };
   }
 
   const accessCode = await accessCodesRepository.findLatestActive(user.id);
-  if (!accessCode) {
+  if (!accessCode || (accessCode.purpose === 'account_activation' && user.emailVerified)) {
     return { ok: false, error: GENERIC_CODE_ERROR };
   }
 
-  if (accessCode.attemptCount >= MAX_ATTEMPTS) {
+  if (accessCode.attemptCount >= MAX_ACCESS_CODE_ATTEMPTS) {
     await accessCodesRepository.invalidate(accessCode.id);
     return { ok: false, error: GENERIC_CODE_ERROR };
   }
 
   if (!verifyAccessCodeHash(code, accessCode.codeHash)) {
     const updated = await accessCodesRepository.incrementAttempts(accessCode.id);
-    if (updated.attemptCount >= MAX_ATTEMPTS) {
+    if (updated.attemptCount >= MAX_ACCESS_CODE_ATTEMPTS) {
       await accessCodesRepository.invalidate(accessCode.id);
     }
     return { ok: false, error: GENERIC_CODE_ERROR };
@@ -106,11 +103,11 @@ async function checkAccessCode(email: string, code: string): Promise<CheckAccess
  */
 export async function hasLiveAccessCode(email: string): Promise<boolean> {
   const user = await usersRepository.findByEmail(email.toLowerCase());
-  if (!user) {
+  if (!user || user.active === false || user.deletedAt) {
     return false;
   }
   const accessCode = await accessCodesRepository.findLatestActive(user.id);
-  return accessCode !== null;
+  return accessCode !== null && !(accessCode.purpose === 'account_activation' && user.emailVerified);
 }
 
 /**
@@ -149,7 +146,7 @@ export interface RedeemAccessCodeResult {
  */
 export async function redeemAccessCode(email: string, code: string, newPassword: string): Promise<RedeemAccessCodeResult> {
   const checked = await checkAccessCode(email, code);
-  if (!checked.ok || !checked.userId || !checked.codeId) {
+  if (!checked.ok || !checked.userId || !checked.codeId || !checked.purpose) {
     return { ok: false, error: checked.error };
   }
 
@@ -157,6 +154,7 @@ export async function redeemAccessCode(email: string, code: string, newPassword:
   const claimed = await accessCodesRepository.claimCodeAndSetPassword({
     codeId: checked.codeId,
     userId: checked.userId,
+    purpose: checked.purpose,
     passwordHash
   });
   if (!claimed) {

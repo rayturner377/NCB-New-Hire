@@ -1,6 +1,7 @@
 import { Badge } from '../../../components/ui/badge';
 import { StatusBadge } from '../../../components/ui/status-badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
+import { TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
+import { CaseWorkspaceTabs } from './case-workspace-tabs';
 import { SlaBadge } from '../../../components/ui/sla-badge';
 import { getCandidateById } from '../../candidates/services/candidates-service';
 import { listActiveDoctors, listUsers } from '../../users/services/users-service';
@@ -129,7 +130,7 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
         />
       </div>
 
-      <Tabs defaultValue="overview">
+      <CaseWorkspaceTabs canViewHistory={canViewHistory}>
         <div className="overflow-x-auto">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -237,7 +238,7 @@ export async function StaffCaseWorkspace({ medicalCase, user }: StaffCaseWorkspa
           {canUploadDocuments ? <CaseAttachmentUpload caseId={medicalCase.id} lockedMessage={uploadLockedMessage} /> : null}
           <CaseAttachmentList caseId={medicalCase.id} attachments={documentSummaries} />
         </TabsContent>
-      </Tabs>
+      </CaseWorkspaceTabs>
     </div>
   );
 }

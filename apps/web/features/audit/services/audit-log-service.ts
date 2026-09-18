@@ -3,6 +3,7 @@ import { eventLabel } from '../../../lib/audit-event-labels';
 import { roleLabel } from '../../../lib/role-labels';
 import { LIST_PATH_BY_ROLE } from '../../../lib/role-list-paths';
 import { statusLabel } from '../../../lib/status-labels';
+import { caseActivityHref } from '../../cases/case-navigation';
 import { listCasesWithPatient } from '../../cases/services/cases-service';
 import { listUsers } from '../../users/services/users-service';
 
@@ -84,7 +85,7 @@ function resolveAuditEntity(
     return {
       entityKind: 'Patient case',
       entityLabel: relatedCase?.patient.fullName ?? 'Deleted case',
-      href: relatedCase ? `/cases/${relatedCase.id}` : null,
+      href: relatedCase ? caseActivityHref(relatedCase.id, event.eventType, details) : null,
       detail: describeCaseAuditEvent(event, details, usersById)
     };
   }
@@ -96,7 +97,7 @@ function resolveAuditEntity(
     return {
       entityKind: 'User account',
       entityLabel: displayName,
-      href: targetUser ? LIST_PATH_BY_ROLE[targetUser.role] ?? '/users' : null,
+      href: targetUser ? LIST_PATH_BY_ROLE[targetUser.role] ?? null : null,
       detail: role ? roleLabel(role) : ''
     };
   }

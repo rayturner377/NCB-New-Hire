@@ -3,10 +3,12 @@ import type { AccessCode, PrismaClient } from '../generated/client/index.js';
 import { prisma } from '../client.js';
 
 export type AccessCodePurpose = 'account_activation' | 'password_reset';
+export const MAX_ACCESS_CODE_ATTEMPTS = 5;
 
 export interface ClaimCodeAndSetPasswordInput {
   codeId: string;
   userId: string;
+  purpose: AccessCodePurpose;
   /** Already hashed — the CPU-bound scrypt work has no need to happen inside this transaction, and doing it before means the transaction (and whatever row locks it holds) stays as short as possible. */
   passwordHash: string;
 }
@@ -87,25 +89,39 @@ export function createAccessCodesRepository(db: PrismaClient) {
      *    not Postgres) a single Prisma transaction can't span.
      */
     async claimCodeAndSetPassword(input: ClaimCodeAndSetPasswordInput): Promise<boolean> {
-      return db.$transaction(async (tx) => {
-        const claim = await tx.accessCode.updateMany({
-          where: { id: input.codeId, usedAt: null, expiresAt: { gt: new Date() } },
-          data: { usedAt: new Date() }
-        });
-        if (claim.count === 0) return false;
-
-        const existingAccount = await tx.account.findFirst({ where: { userId: input.userId, providerId: 'credential' } });
-        if (existingAccount) {
-          await tx.account.update({ where: { id: existingAccount.id }, data: { password: input.passwordHash } });
-        } else {
-          await tx.account.create({
-            data: { id: randomUUID(), accountId: input.userId, providerId: 'credential', userId: input.userId, password: input.passwordHash }
+      const rejected = new Error('Access code is no longer redeemable');
+      try {
+        return await db.$transaction(async (tx) => {
+          // Lock the account first: concurrent activation/reset claims must not both
+          // authorize first activation. Throwing rolls this update back on a lost claim.
+          const eligible = await tx.appUser.updateMany({
+            where: {
+              id: input.userId, active: true, deletedAt: null,
+              ...(input.purpose === 'account_activation' ? { emailVerified: false } : {})
+            },
+            data: { mustChangePassword: false, emailVerified: true }
           });
-        }
-        await tx.appUser.update({ where: { id: input.userId }, data: { mustChangePassword: false } });
+          if (eligible.count !== 1) throw rejected;
+          const claim = await tx.accessCode.updateMany({
+            where: { id: input.codeId, userId: input.userId, purpose: input.purpose, usedAt: null, expiresAt: { gt: new Date() }, attemptCount: { lt: MAX_ACCESS_CODE_ATTEMPTS } },
+            data: { usedAt: new Date() }
+          });
+          if (claim.count !== 1) throw rejected;
 
-        return true;
-      });
+          const existingAccount = await tx.account.findFirst({ where: { userId: input.userId, providerId: 'credential' } });
+          if (existingAccount) {
+            await tx.account.update({ where: { id: existingAccount.id }, data: { password: input.passwordHash } });
+          } else {
+            await tx.account.create({
+              data: { id: randomUUID(), accountId: input.userId, providerId: 'credential', userId: input.userId, password: input.passwordHash }
+            });
+          }
+          return true;
+        });
+      } catch (error) {
+        if (error === rejected) return false;
+        throw error;
+      }
     }
   };
 }

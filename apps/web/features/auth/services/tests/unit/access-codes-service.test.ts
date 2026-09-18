@@ -10,6 +10,7 @@ const findByEmailMock = vi.fn();
 const hashPasswordMock = vi.fn();
 
 vi.mock('@ncb/database', () => ({
+  MAX_ACCESS_CODE_ATTEMPTS: 5,
   accessCodesRepository: {
     create: (...args: unknown[]) => createMock(...args),
     findLatestActive: (...args: unknown[]) => findLatestActiveMock(...args),
@@ -168,7 +169,7 @@ describe('redeemAccessCode and verifyAccessCode', () => {
 
     expect(result).toEqual({ ok: true, userId: 'usr_1', purpose: 'password_reset' });
     expect(hashPasswordMock).toHaveBeenCalledWith('NewPassword123!');
-    expect(claimCodeAndSetPasswordMock).toHaveBeenCalledWith({ codeId: 'code_1', userId: 'usr_1', passwordHash: 'hashed-password' });
+    expect(claimCodeAndSetPasswordMock).toHaveBeenCalledWith({ codeId: 'code_1', userId: 'usr_1', purpose: 'password_reset', passwordHash: 'hashed-password' });
   });
 
   it('fails generically when the atomic claim loses the race (someone else redeemed/expired it first)', async () => {
@@ -179,6 +180,13 @@ describe('redeemAccessCode and verifyAccessCode', () => {
     const result = await redeemAccessCode('user@example.com', '482913', 'NewPassword123!');
 
     expect(result.ok).toBe(false);
+  });
+
+  it.each([{ active: false }, { deletedAt: new Date() }, { emailVerified: true }])('rejects activation for an ineligible user: %j', async (fields) => {
+    findByEmailMock.mockResolvedValue({ id: 'usr_1', ...fields });
+    findLatestActiveMock.mockResolvedValue({ id: 'code_1', codeHash: 'hash(482913)', attemptCount: 0, purpose: 'account_activation' });
+    expect((await redeemAccessCode('user@example.com', '482913', 'NewPassword123!')).ok).toBe(false);
+    expect(claimCodeAndSetPasswordMock).not.toHaveBeenCalled();
   });
 
   it('verifyAccessCode succeeds on the correct code but never claims it, leaving it live for the later redeem', async () => {
