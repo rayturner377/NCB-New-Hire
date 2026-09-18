@@ -187,10 +187,16 @@ export function mergeWithDefaults(stored: Partial<AppSettings> | null): AppSetti
   };
 }
 
-/** The subset safe to read without an authenticated session — branding/theme need to apply on the login screen too. Never includes mail.password or anything else secret. */
+/** Public branding/theme and password requirements for the login screen. Never includes mail credentials or other private settings. */
 export function publicSettings(settings: AppSettings) {
   return {
     general: settings.general,
+    passwordPolicy: {
+      minPasswordLength: settings.userPolicy.minPasswordLength,
+      requireUppercase: settings.userPolicy.requireUppercase,
+      requireNumber: settings.userPolicy.requireNumber,
+      requireSymbol: settings.userPolicy.requireSymbol
+    },
     theme: settings.theme
   };
 }

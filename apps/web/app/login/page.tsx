@@ -12,7 +12,7 @@ export default async function LoginPage(props: { searchParams: Promise<{ reason?
     redirect('/');
   }
 
-  const { general } = await getPublicSettings();
+  const { general, passwordPolicy } = await getPublicSettings();
   const loginImageSrc = general.loginImageMode === 'url' ? general.loginImageUrl : general.loginImageDataUrl;
 
   return (
@@ -25,7 +25,7 @@ export default async function LoginPage(props: { searchParams: Promise<{ reason?
         </div>
       ) : null}
       <div className="mt-8">
-        <LoginForm />
+        <LoginForm passwordPolicy={passwordPolicy} />
       </div>
     </AuthLayout>
   );
