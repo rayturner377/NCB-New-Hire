@@ -287,8 +287,8 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
   // re-triggers the action directly rather than looping back through this transition.
   useAdvanceStepOnSuccess(resetState, step, 'sendingCode', 'code', setStep);
   useAdvanceStepOnSuccess(verifyState, step, 'code', 'newPassword', setStep);
-  // The account holder just proved they own this code and chose a password — no reason to make them
-  // type it again immediately after.
+  // Activation redirects from the server action. Only password reset returns
+  // ok here and continues through ordinary login/device verification.
   useAdvanceStepOnSuccess(redeemState, step, 'newPassword', 'signingIn', setStep);
 
   // Split from the effect above: submitting here (once the 'signingIn' render has actually
@@ -319,6 +319,15 @@ function LoginFlowSteps({ email, initialStep, onChangeEmail }: LoginFlowStepsPro
       // Let the input's own value commit before the form reads it.
       requestAnimationFrame(() => verifyFormRef.current?.requestSubmit());
     }
+  }
+
+  if (redeemState?.passwordSaved && step === 'newPassword') {
+    return (
+      <div className="flex flex-col gap-4">
+        <Alert tone="error">{redeemState.error}</Alert>
+        <button type="button" className="text-sm underline" onClick={() => setStep('password')}>Continue to sign in</button>
+      </div>
+    );
   }
 
   if (step === 'password') {

@@ -72,10 +72,10 @@ describe('access codes repository', () => {
 
   describe('claimCodeAndSetPassword()', () => {
     /** Same fakeDb-with-a-real-$transaction shape as cases.test.ts's own submitAndTransition tests. */
-    function fakeDb(overrides: { claimCount?: number; existingAccount?: { id: string } | null } = {}) {
+    function fakeDb(overrides: { claimCount?: number; eligibleCount?: number; existingAccount?: { id: string } | null } = {}) {
       const accountUpdate = vi.fn().mockResolvedValue({});
       const accountCreate = vi.fn().mockResolvedValue({});
-      const appUserUpdate = vi.fn().mockResolvedValue({});
+      const appUserUpdate = vi.fn().mockResolvedValue({ count: overrides.eligibleCount ?? 1 });
       const tx = {
         accessCode: { updateMany: vi.fn().mockResolvedValue({ count: overrides.claimCount ?? 1 }) },
         account: {
@@ -83,13 +83,13 @@ describe('access codes repository', () => {
           update: accountUpdate,
           create: accountCreate
         },
-        appUser: { update: appUserUpdate }
+        appUser: { updateMany: appUserUpdate }
       };
       const db = { $transaction: vi.fn((callback: (tx: unknown) => unknown) => callback(tx)) } as unknown as PrismaClient;
       return { db, tx, accountUpdate, accountCreate, appUserUpdate };
     }
 
-    const input = { codeId: 'code_1', userId: 'usr_1', passwordHash: 'hashed-password' };
+    const input = { codeId: 'code_1', userId: 'usr_1', purpose: 'account_activation' as const, passwordHash: 'hashed-password' };
 
     it('returns false without touching the account when the code is no longer claimable (lost the race)', async () => {
       const { db, accountUpdate, accountCreate, appUserUpdate } = fakeDb({ claimCount: 0 });
@@ -99,7 +99,7 @@ describe('access codes repository', () => {
       expect(result).toBe(false);
       expect(accountUpdate).not.toHaveBeenCalled();
       expect(accountCreate).not.toHaveBeenCalled();
-      expect(appUserUpdate).not.toHaveBeenCalled();
+      expect(appUserUpdate).toHaveBeenCalled(); // transaction rejects, rolling this provisional update back
     });
 
     it('claims the code, updates an existing credential account, and clears mustChangePassword', async () => {
@@ -109,12 +109,15 @@ describe('access codes repository', () => {
 
       expect(result).toBe(true);
       expect((tx.accessCode.updateMany as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith({
-        where: { id: 'code_1', usedAt: null, expiresAt: { gt: expect.any(Date) } },
+        where: { id: 'code_1', userId: 'usr_1', purpose: 'account_activation', usedAt: null, expiresAt: { gt: expect.any(Date) }, attemptCount: { lt: 5 } },
         data: { usedAt: expect.any(Date) }
       });
       expect(accountUpdate).toHaveBeenCalledWith({ where: { id: 'account_1' }, data: { password: 'hashed-password' } });
       expect(accountCreate).not.toHaveBeenCalled();
-      expect(appUserUpdate).toHaveBeenCalledWith({ where: { id: 'usr_1' }, data: { mustChangePassword: false } });
+      expect(appUserUpdate).toHaveBeenCalledWith({
+        where: { id: 'usr_1', active: true, deletedAt: null, emailVerified: false },
+        data: { mustChangePassword: false, emailVerified: true }
+      });
     });
 
     it('creates a credential account when the user has none yet', async () => {
@@ -126,6 +129,22 @@ describe('access codes repository', () => {
       expect(accountUpdate).not.toHaveBeenCalled();
       expect(accountCreate).toHaveBeenCalledWith({
         data: { id: expect.any(String), accountId: 'usr_1', providerId: 'credential', userId: 'usr_1', password: 'hashed-password' }
+      });
+    });
+
+    it('rejects an inactive, deleted or already activated account before claiming its code', async () => {
+      const { db, tx, accountCreate } = fakeDb({ eligibleCount: 0 });
+      expect(await createAccessCodesRepository(db).claimCodeAndSetPassword(input)).toBe(false);
+      expect(tx.accessCode.updateMany).not.toHaveBeenCalled();
+      expect(accountCreate).not.toHaveBeenCalled();
+    });
+
+    it('allows password reset after email verification', async () => {
+      const { db, appUserUpdate } = fakeDb();
+      expect(await createAccessCodesRepository(db).claimCodeAndSetPassword({ ...input, purpose: 'password_reset' })).toBe(true);
+      expect(appUserUpdate).toHaveBeenCalledWith({
+        where: { id: 'usr_1', active: true, deletedAt: null },
+        data: { mustChangePassword: false, emailVerified: true }
       });
     });
   });

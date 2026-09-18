@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auditAppend = vi.fn();
+const activateMock = vi.fn();
+const notifyMock = vi.fn();
+vi.mock('@ncb/auth', () => ({ auth: { api: { completeAccountActivation: (...args: unknown[]) => activateMock(...args) } } }));
+vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
+vi.mock('next/navigation', () => ({ redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); } }));
+vi.mock('../../../../notifications/services/notification-service', () => ({ sendNotification: (...args: unknown[]) => notifyMock(...args) }));
 const revokeAllSessionsForUserMock = vi.fn();
 const getSettingsMock = vi.fn();
 const redeemAccessCodeMock = vi.fn();
@@ -44,6 +50,8 @@ const validFields = { email: 'jane@example.com', code: '482913', password: valid
 describe('redeemAccessCodeAction', () => {
   beforeEach(() => {
     auditAppend.mockReset();
+    activateMock.mockReset().mockResolvedValue({ user: { id: 'usr_1', email: 'jane@example.com', name: 'Jane' } });
+    notifyMock.mockReset().mockResolvedValue(undefined);
     revokeAllSessionsForUserMock.mockReset();
     getSettingsMock.mockReset();
     getSettingsMock.mockResolvedValue({ userPolicy: { minPasswordLength: 12, requireUppercase: false, requireNumber: false, requireSymbol: false } });
@@ -103,7 +111,7 @@ describe('redeemAccessCodeAction', () => {
   it('passes the new password straight through to redeemAccessCode, which owns the atomic claim + password change', async () => {
     redeemAccessCodeMock.mockResolvedValue({ ok: true, userId: 'usr_1', purpose: 'account_activation' });
 
-    await redeemAccessCodeAction(null, formData(validFields));
+    await expect(redeemAccessCodeAction(null, formData(validFields))).rejects.toThrow('REDIRECT:/');
 
     expect(redeemAccessCodeMock).toHaveBeenCalledWith('jane@example.com', '482913', validPassword);
   });
@@ -111,9 +119,10 @@ describe('redeemAccessCodeAction', () => {
   it('on success, revokes every session and audits account_activated', async () => {
     redeemAccessCodeMock.mockResolvedValue({ ok: true, userId: 'usr_1', purpose: 'account_activation' });
 
-    const result = await redeemAccessCodeAction(null, formData(validFields));
-
-    expect(result.ok).toBe(true);
+    await expect(redeemAccessCodeAction(null, formData(validFields))).rejects.toThrow('REDIRECT:/');
+    expect(activateMock).toHaveBeenCalledWith({ body: { userId: 'usr_1' }, headers: expect.any(Headers) });
+    expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({ templateKey: 'account_activated' }));
+    expect(notifyMock).toHaveBeenCalledTimes(1);
     expect(revokeAllSessionsForUserMock).toHaveBeenCalledWith('usr_1');
     expect(clearAccessCodeAttemptsMock).toHaveBeenCalled();
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'account_activated', entityId: 'usr_1' }));
@@ -125,5 +134,33 @@ describe('redeemAccessCodeAction', () => {
     await redeemAccessCodeAction(null, formData(validFields));
 
     expect(auditAppend).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'password_reset_completed', entityId: 'usr_1' }));
+    expect(activateMock).not.toHaveBeenCalled();
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('offers ordinary sign-in when session creation fails after the password was saved', async () => {
+    redeemAccessCodeMock.mockResolvedValue({ ok: true, userId: 'usr_1', purpose: 'account_activation' });
+    activateMock.mockRejectedValue(new Error('storage unavailable'));
+    expect(await redeemAccessCodeAction(null, formData(validFields))).toEqual(expect.objectContaining({ ok: false, passwordSaved: true }));
+    expect(notifyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not create a session when revoking existing sessions fails', async () => {
+    redeemAccessCodeMock.mockResolvedValue({ ok: true, userId: 'usr_1', purpose: 'account_activation' });
+    revokeAllSessionsForUserMock.mockRejectedValue(new Error('storage unavailable'));
+    expect((await redeemAccessCodeAction(null, formData(validFields))).passwordSaved).toBe(true);
+    expect(activateMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps activation successful when its confirmation email cannot be queued', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      redeemAccessCodeMock.mockResolvedValue({ ok: true, userId: 'usr_1', purpose: 'account_activation' });
+      notifyMock.mockRejectedValue(new Error('mail unavailable'));
+      await expect(redeemAccessCodeAction(null, formData(validFields))).rejects.toThrow('REDIRECT:/');
+      expect(log).toHaveBeenCalledWith('Account activation confirmation could not be queued.');
+    } finally {
+      log.mockRestore();
+    }
   });
 });

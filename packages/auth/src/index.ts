@@ -8,6 +8,7 @@ import { prisma } from '@ncb/database';
 import { redis } from '@ncb/redis';
 import { hash, verify } from './password.js';
 import { sendOtpEmail } from './otp-email.js';
+import { accountActivation } from './account-activation.js';
 
 const secret = process.env.BETTER_AUTH_SECRET;
 if (!secret) {
@@ -126,7 +127,7 @@ export const auth = betterAuth({
          */
         before: async (session) => {
           const user = await prisma.appUser.findFirst({ where: { id: session.userId } });
-          if (!user || user.active === false) return false;
+          if (!user || user.active === false || user.deletedAt) return false;
         }
       }
     },
@@ -188,6 +189,7 @@ export const auth = betterAuth({
         sendOTP: async ({ user, otp }) => sendOtpEmail({ id: user.id, email: user.email, name: user.name }, otp)
       }
     }),
+    accountActivation(),
     nextCookies()
   ]
 });

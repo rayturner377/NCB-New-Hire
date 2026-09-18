@@ -22,7 +22,8 @@
     "@ncb/redis": "*",
     "@ncb/shared": "*",
     "@better-auth/redis-storage": "^1.7.4",
-    "better-auth": "^1.7.4"
+    "better-auth": "^1.7.4",
+    "zod": "4.6.2"
   },
   "devDependencies": {
     "@ncb/eslint-config": "*",

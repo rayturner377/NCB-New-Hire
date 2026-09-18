@@ -21,12 +21,10 @@ model AppUser {
   /// Set only for role === 'delegate' — the one doctor this assistant account acts on behalf of (1:1, not a list: a delegate supports exactly one doctor). Null for every other role. See matchesClinicianAssignment()'s ROLES.DELEGATE branch and the delegate dashboard query, both of which use this in place of the user's own id.
   delegateForClinicianId String? @map("delegate_for_clinician_id") @db.VarChar(80)
   mustChangePassword Boolean @default(false) @map("must_change_password")
-  /// Required by Better Auth's own core user schema (unconditional, not a plugin) — this app has
-  /// no email-verification flow (emailAndPassword.requireEmailVerification stays off), so this
-  /// stays false/unused, but the column has to exist for the Prisma adapter's field-selection to
-  /// work at all: it reads/writes every field Better Auth's schema declares for this model.
+  /// Set atomically when an emailed activation/reset code is redeemed. A first activation
+  /// requires false so a later activation code cannot bypass ordinary device verification.
   emailVerified  Boolean   @default(false) @map("email_verified")
-  /// Same reasoning as emailVerified — part of Better Auth's core user schema, unused by this app.
+  /// Part of Better Auth's core user schema, unused by this app.
   image          String?   @db.Text
   /// Required by Better Auth's `two-factor` plugin's own schema (OTP method) — @default(true) means
   /// every account, existing and new, is covered without a settings opt-in: this app enforces the
