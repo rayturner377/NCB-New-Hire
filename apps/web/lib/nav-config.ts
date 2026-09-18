@@ -1,4 +1,4 @@
-import { Briefcase, DollarSign, Gauge, LayoutDashboard, Mail, Settings, UserCog, Users, type LucideIcon } from 'lucide-react';
+import { Briefcase, FileBarChart, LayoutDashboard, Mail, Settings, UserCog, Users, type LucideIcon } from 'lucide-react';
 import { ROLES, type Role } from './permissions';
 
 export interface NavChildItem {
@@ -32,10 +32,23 @@ export interface NavItem {
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR, ROLES.DELEGATE, ROLES.PATIENT] },
-  { href: '/billing', label: 'Billing report', icon: DollarSign, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR] },
-  // REPORTS_VIEW-gated like the org billing report above — no doctor-scoped equivalent, this is
-  // purely an HR operations view (how long HR itself takes to review, not a doctor's own earnings).
-  { href: '/reports/hr-turnaround', label: 'HR turnaround', icon: Gauge, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
+  {
+    // Not a real route — same "group identifier only, never actually navigated to" convention as
+    // the Users group's own '/users' href below (nav-list.tsx never links to a group's own href,
+    // only uses it as a stable key/openGroup id). Deliberately not '/billing' (a child's own real
+    // href) to avoid the group and its child looking like the same destination.
+    href: '/reports',
+    label: 'Reports',
+    icon: FileBarChart,
+    // The group's own roles are the union of its children's — Billing report is a doctor's own
+    // earnings (identity-scoped, no REPORTS_VIEW check) as well as the admin/reviewer/auditor
+    // org-wide view, while Turnaround is REPORTS_VIEW-gated only, no doctor-scoped equivalent.
+    roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR],
+    children: [
+      { href: '/billing', label: 'Billing report', roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR, ROLES.DOCTOR] },
+      { href: '/reports/turnaround', label: 'Turnaround', roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] }
+    ]
+  },
   { href: '/cases', label: 'Cases', icon: Briefcase, roles: [ROLES.ADMIN, ROLES.REVIEWER, ROLES.AUDITOR] },
   // Doctor-only, standalone rather than a child of "Users": that group is deliberately
   // hidden from DOCTOR entirely (see its own comment below), and /delegates renders a

@@ -1,9 +1,8 @@
-import { CheckCircle2, Clock, Download, FileStack } from 'lucide-react';
-import Link from 'next/link';
+import { CheckCircle2, Clock, FileStack } from 'lucide-react';
+import { ExportButtons } from '../../../components/dashboard/export-buttons';
 import { Pagination } from '../../../components/dashboard/pagination';
 import { SectionCard } from '../../../components/dashboard/section-card';
 import { StatCard } from '../../../components/dashboard/stat-card';
-import { Button } from '../../../components/ui/button';
 import { formatCurrency } from '../../../lib/currency';
 import type { BillingReportData, BillingReportRow } from '../services/billing-report-service';
 import { BillingReportFilters } from './billing-report-filters';
@@ -37,14 +36,7 @@ export function BillingReport({ data, pageRows, filters, hasActiveFilters, range
       <SectionCard
         title="Billed cases"
         description={`${data.rows.length} case${data.rows.length === 1 ? '' : 's'}${hasActiveFilters ? ' matching these filters' : ''}`}
-        action={
-          <Button variant="outline" size="sm" asChild>
-            <Link href={exportHref} prefetch={false}>
-              <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-              Export CSV
-            </Link>
-          </Button>
-        }
+        action={<ExportButtons href={exportHref} />}
       >
         <div className="flex flex-col gap-4">
           <BillingReportFilters query={filters.query} billing={filters.billing} from={filters.from} to={filters.to} hasActiveFilters={hasActiveFilters} />

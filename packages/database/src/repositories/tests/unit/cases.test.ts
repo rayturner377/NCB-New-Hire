@@ -359,6 +359,22 @@ describe('cases repository', () => {
     });
   });
 
+  describe('searchAllWithPatient()', () => {
+    it('runs the same where clause as searchWithPatient, with no skip/take/count', async () => {
+      const findMany = vi.fn().mockResolvedValue([rowWithPatient]);
+      const db = { medicalCase: { findMany } } as unknown as PrismaClient;
+
+      const result = await createCasesRepository(db).searchAllWithPatient({ status: 'sent_to_doctor' }, masterKey);
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: buildCaseSearchWhere({ status: 'sent_to_doctor' }),
+        include: { patient: patientSelect },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }]
+      });
+      expect(result).toEqual([{ ...rowWithPatient, payload: null }]);
+    });
+  });
+
   describe('submitAndTransition()', () => {
     /** A minimal fake PrismaClient whose $transaction just invokes the callback with itself as `tx` — same pattern as submissions.test.ts's fakeDb. */
     function fakeDb(overrides: { caseStatus?: string | null; transitionRows?: { transition_medical_case: number }[] } = {}) {

@@ -89,6 +89,12 @@ export async function searchCasesWithPatient(filters: CaseSearchFilters, page: n
   return casesRepository.searchWithPatient<CasePayload>(filters, page, pageSize, masterKey);
 }
 
+/** The "All cases" tab's export — same filters as searchCasesWithPatient, every matching row instead of one page. */
+export async function searchAllCasesWithPatient(filters: CaseSearchFilters) {
+  const masterKey = loadMasterKey();
+  return casesRepository.searchAllWithPatient<CasePayload>(filters, masterKey);
+}
+
 export async function getCaseById(id: string) {
   const masterKey = loadMasterKey();
   return casesRepository.findById<CasePayload>(id, masterKey);

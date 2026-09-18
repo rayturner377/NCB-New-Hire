@@ -89,4 +89,17 @@ describe('GET /billing/export', () => {
     expect(getOrganizationBillingReportMock).toHaveBeenCalledWith({ billing: '', from: '', to: '', query: '', clinicianId: 'doc_1' });
     expect(body).toContain('Jane Doe');
   });
+
+  it('returns a real .xlsx workbook when format=xlsx is requested', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_doctor', role: 'clinician' } });
+    getDoctorBillingReportMock.mockResolvedValue({ rows: [sampleRow] });
+
+    const response = await GET(new Request('http://x/billing/export?format=xlsx'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    expect(response.headers.get('Content-Disposition')).toContain('billing-report.xlsx');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    expect(buffer.subarray(0, 2).toString()).toBe('PK');
+  });
 });
