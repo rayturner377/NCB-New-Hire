@@ -57,8 +57,25 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # @ncb/database's audit repository imports @ncb/redis eagerly (its independent chain-
+      # checkpoint — see audit.ts's own doc comment) — every integration test that touches it,
+      # not just the audit-specific ones, throws "REDIS_URL is not set" without a real Redis here.
+      # No password: unlike docker-compose.yml's own redis service (--requirepass, a real posture
+      # for anything long-lived), a GitHub Actions `services:` entry can't be given a custom command
+      # line at all, and this container only ever exists for the few minutes of this one job run on
+      # an isolated runner — not a real deployment, nothing worth authenticating against here.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://ncb_medical_app:ci_test_password@localhost:5432/ncb_medical_test?schema=public
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
 
@@ -68,6 +85,14 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # @ncb/database imports @ncb/shared and @ncb/redis by their compiled dist/ output (their own
+      # package.json "main" fields point there) — a fresh `npm ci` never builds anything, so without
+      # this, `npm run test:integration -w @ncb/database` (invoked directly here, bypassing turbo/its
+      # own ^build dependsOn) fails to resolve either package. `--filter=@ncb/database^...` builds
+      # exactly its workspace dependencies, not @ncb/database itself (its own build needs a real
+      # DATABASE_URL for `prisma generate`, which this step doesn't have yet).
+      - run: npx turbo run build --filter=@ncb/database^...
 
       - run: npm run migrate:deploy -w @ncb/database
 

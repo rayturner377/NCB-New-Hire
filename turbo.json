@@ -1,9 +1,9 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["DATABASE_URL", "AUDIT_DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "REDIS_URL", "BETTER_AUTH_SECRET"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {
