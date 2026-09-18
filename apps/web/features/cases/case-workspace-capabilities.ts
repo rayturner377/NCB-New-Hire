@@ -39,7 +39,12 @@ export function deriveCaseWorkspaceCapabilities(
 ): CaseWorkspaceCapabilities {
   const doctorHasSubmitted = hasDoctorSubmitted(medicalCase.status);
   const awaitingReview = medicalCase.status === 'doctor_submitted';
-  const billingLocked = !doctorHasSubmitted || awaitingReview;
+  const isPaid = medicalCase.paymentStatus === 'paid';
+  // Once paid, billing amount/status are locked from this form entirely — unpaying a case (to
+  // reopen it) or fixing its date now go through their own reason-required actions (case-
+  // transitions.ts's REOPEN_TO_DOCTOR/REOPEN_TO_PATIENT, and CasePaymentDateCorrection) instead of
+  // this generic billing-edit form silently flipping payment_status back to 'unpaid'.
+  const billingLocked = !doctorHasSubmitted || awaitingReview || isPaid;
 
   return {
     canUpdateBilling: hasPermission(user, PERMISSIONS.MEDICAL_CASES_BILLING_UPDATE),
@@ -55,7 +60,7 @@ export function deriveCaseWorkspaceCapabilities(
     canViewHistory: user.role !== ROLES.DOCTOR && user.role !== ROLES.DELEGATE,
     hidePositionFromViewer: user.role === ROLES.DOCTOR || user.role === ROLES.DELEGATE,
     hideNationalIdFromViewer: user.role === ROLES.DOCTOR || user.role === ROLES.DELEGATE,
-    isPaid: medicalCase.paymentStatus === 'paid',
+    isPaid,
     doctorHasSubmitted,
     awaitingReview,
     billingLocked,
@@ -63,7 +68,9 @@ export function deriveCaseWorkspaceCapabilities(
       ? "Available once the doctor's assessment has been submitted — there's nothing to pay before then."
       : awaitingReview
         ? 'Complete review above before confirming payment.'
-        : undefined,
+        : isPaid
+          ? 'This case has been paid — reopen it (Case actions) to change billing, or correct the payment date below.'
+          : undefined,
     // Export is further gated even after the doctor submits — forces HR to mark the case reviewed
     // first — but this never blocks the doctor's own authoring page (DoctorCaseForm never renders
     // while a case is anything but sent_to_doctor, so this gate has no effect there).

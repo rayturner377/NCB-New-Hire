@@ -3,6 +3,7 @@ import { Button } from '../../../components/ui/button';
 import { updateCaseBillingAction } from '../actions/update-case-billing';
 import { BILLING_STATUS_OPTIONS, derivedPaymentStatus } from '../billing-status';
 import { CasePaymentConfirmation } from './case-payment-confirmation';
+import { CasePaymentDateCorrection } from './case-payment-date-correction';
 import { CasePaymentSummary } from './case-payment-summary';
 import { CompleteReviewCard } from './complete-review-card';
 import { formatCurrency } from '../../../lib/currency';
@@ -20,22 +21,13 @@ export interface CaseBillingPanelProps {
   paymentConfirmedByName: string | null;
   capabilities: Pick<
     CaseWorkspaceCapabilities,
-    | 'awaitingReview'
-    | 'canTransition'
-    | 'canUpdateBilling'
-    | 'canViewBilling'
-    | 'canConfirmPayment'
-    | 'isPaid'
-    | 'billingLocked'
-    | 'billingLockedMessage'
-    | 'doctorHasSubmitted'
+    'awaitingReview' | 'canTransition' | 'canUpdateBilling' | 'canViewBilling' | 'canConfirmPayment' | 'isPaid' | 'billingLocked' | 'billingLockedMessage'
   >;
 }
 
 /** The case detail page's "Billing & status" tab content — review completion, the billing form (or its read-only equivalent), and payment confirmation/summary. */
 export function CaseBillingPanel({ caseId, version, status, payableAmount, paymentStatus, paidOn, paymentConfirmedByName, capabilities }: CaseBillingPanelProps) {
-  const { awaitingReview, canTransition, canUpdateBilling, canViewBilling, canConfirmPayment, isPaid, billingLocked, billingLockedMessage, doctorHasSubmitted } =
-    capabilities;
+  const { awaitingReview, canTransition, canUpdateBilling, canViewBilling, canConfirmPayment, isPaid, billingLocked, billingLockedMessage } = capabilities;
 
   return (
     <>
@@ -89,16 +81,16 @@ export function CaseBillingPanel({ caseId, version, status, payableAmount, payme
 
       {canUpdateBilling ? (
         <p className="text-xs text-muted-foreground">
-          {!doctorHasSubmitted
-            ? "Available once the doctor's assessment has been submitted — there's nothing to bill before then."
-            : awaitingReview
-              ? 'Complete review above before adjusting billing.'
-              : "Set automatically from the doctor's rate when they submit their assessment — adjusting it here doesn't change that doctor's own rate, only this case's billed amount."}
+          {billingLockedMessage ??
+            "Set automatically from the doctor's rate when they submit their assessment — adjusting it here doesn't change that doctor's own rate, only this case's billed amount."}
         </p>
       ) : null}
 
       {isPaid ? (
-        <CasePaymentSummary paidOn={paidOn} confirmedByName={paymentConfirmedByName} />
+        <div className="flex flex-col gap-2">
+          <CasePaymentSummary paidOn={paidOn} confirmedByName={paymentConfirmedByName} />
+          {canConfirmPayment ? <CasePaymentDateCorrection caseId={caseId} /> : null}
+        </div>
       ) : canConfirmPayment ? (
         <CasePaymentConfirmation caseId={caseId} lockedMessage={billingLockedMessage} />
       ) : null}

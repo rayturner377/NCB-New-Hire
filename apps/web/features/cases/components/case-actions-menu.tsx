@@ -14,6 +14,7 @@ import {
   DialogTitle
 } from '../../../components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../../components/ui/dropdown-menu';
+import { Label } from '../../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import { applyCaseActionAction, type ApplyCaseActionResult } from '../actions/apply-case-action';
 import { reassignClinicianAction, type ReassignClinicianResult } from '../actions/reassign-clinician';
@@ -25,6 +26,8 @@ export interface CaseActionsMenuProps {
   version: number;
   status: string;
   role: string;
+  /** Locks a reviewed case down to the two reason-required "Reopen" moves — see case-transitions.ts's availableCaseActions. */
+  isPaid: boolean;
   canTransition: boolean;
   canReassign: boolean;
   doctors: { id: string; displayName: string }[];
@@ -63,6 +66,7 @@ export function CaseActionsMenu({
   version,
   status,
   role,
+  isPaid,
   canTransition,
   canReassign,
   doctors,
@@ -74,6 +78,7 @@ export function CaseActionsMenu({
   const [quickActionId, setQuickActionId] = useState('');
   const [reassigning, setReassigning] = useState(false);
   const [clinicianId, setClinicianId] = useState(currentClinicianId ?? '');
+  const [reason, setReason] = useState('');
   const quickFormRef = useRef<HTMLFormElement>(null);
   const hideFormRef = useRef<HTMLFormElement>(null);
 
@@ -100,7 +105,7 @@ export function CaseActionsMenu({
     if (reassignState?.ok) setReassigning(false);
   }, [reassignState]);
 
-  const actions = canTransition ? availableCaseActions(status, role) : [];
+  const actions = canTransition ? availableCaseActions(status, role, isPaid) : [];
   const showReassign = canReassign && status === 'sent_to_doctor';
 
   if (actions.length === 0 && !showReassign && !canHide) {
@@ -108,8 +113,9 @@ export function CaseActionsMenu({
   }
 
   function selectAction(action: CaseActionDefinition) {
-    if (action.requiresDoctor) {
+    if (action.requiresDoctor || action.requiresReason) {
       setClinicianId(currentClinicianId ?? '');
+      setReason('');
       setPendingAction(action);
       return;
     }
@@ -170,31 +176,51 @@ export function CaseActionsMenu({
       {!pendingAction && !reassigning && applyState?.error ? <Alert tone="error">{applyState.error}</Alert> : null}
       {setHiddenState?.error ? <Alert tone="error">{setHiddenState.error}</Alert> : null}
 
-      <Dialog open={pendingAction?.requiresDoctor ?? false} onOpenChange={(open) => !open && setPendingAction(null)}>
+      <Dialog
+        open={Boolean(pendingAction?.requiresDoctor || pendingAction?.requiresReason)}
+        onOpenChange={(open) => !open && setPendingAction(null)}
+      >
         <DialogContent className="sm:max-w-sm">
           <form action={applyFormAction}>
             <input type="hidden" name="caseId" value={caseId} />
             <input type="hidden" name="version" value={version} />
             <input type="hidden" name="actionId" value={pendingAction?.id ?? ''} />
-            <input type="hidden" name="clinicianId" value={clinicianId} />
+            {pendingAction?.requiresDoctor ? <input type="hidden" name="clinicianId" value={clinicianId} /> : null}
+            {pendingAction?.requiresReason ? <input type="hidden" name="reason" value={reason} /> : null}
             <DialogHeader>
               <DialogTitle>{pendingAction?.label}</DialogTitle>
               <DialogDescription>{pendingAction?.description}</DialogDescription>
             </DialogHeader>
 
-            <div className="py-4">
-              <Select value={clinicianId} onValueChange={setClinicianId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a doctor…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {doctors.map((doctor) => (
-                    <SelectItem key={doctor.id} value={doctor.id}>
-                      {doctor.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col gap-4 py-4">
+              {pendingAction?.requiresDoctor ? (
+                <Select value={clinicianId} onValueChange={setClinicianId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a doctor…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {doctors.map((doctor) => (
+                      <SelectItem key={doctor.id} value={doctor.id}>
+                        {doctor.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+
+              {pendingAction?.requiresReason ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="case-action-reason">Reason</Label>
+                  <textarea
+                    id="case-action-reason"
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                    required
+                    rows={3}
+                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                </div>
+              ) : null}
             </div>
 
             {applyState?.error ? <Alert tone="error">{applyState.error}</Alert> : null}

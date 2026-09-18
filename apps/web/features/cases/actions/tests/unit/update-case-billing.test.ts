@@ -91,6 +91,15 @@ describe('updateCaseBillingAction', () => {
     expect(setCaseBillingMock).not.toHaveBeenCalled();
   });
 
+  it('rejects an edit once the case is already paid — that would silently flip payment_status back to unpaid outside the reason-required reopen/correction flows', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', role: 'admin' } });
+    getCaseByIdMock.mockResolvedValue({ id: 'case_1', status: 'reviewed', paymentStatus: 'paid' });
+
+    await updateCaseBillingAction(formData({ caseId: 'case_1', payableAmount: '200', paymentStatus: 'unpaid' }));
+
+    expect(setCaseBillingMock).not.toHaveBeenCalled();
+  });
+
   it('lets an admin clear the payable amount by leaving it blank', async () => {
     getSessionMock.mockResolvedValue({ user: { id: 'usr_admin_demo', role: 'admin' } });
 

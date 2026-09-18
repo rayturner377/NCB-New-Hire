@@ -55,9 +55,17 @@ export async function applyCaseActionAction(
     return { ok: false, error: 'Case not found.' };
   }
 
-  const action = findCaseAction(medicalCase.status, session.user.role, actionId);
+  const action = findCaseAction(medicalCase.status, session.user.role, actionId, medicalCase.paymentStatus === 'paid');
   if (!action) {
     return { ok: false, error: 'That action is no longer available for this case.' };
+  }
+
+  let reason: string | undefined;
+  if (action.requiresReason) {
+    reason = String(formData.get('reason') || '').trim();
+    if (!reason) {
+      return { ok: false, error: 'Explain why you’re reopening this case.' };
+    }
   }
 
   if (action.requiresDoctor) {
@@ -72,7 +80,7 @@ export async function applyCaseActionAction(
     await reassignClinician(caseId, clinicianId, session.user.id);
   }
 
-  await transitionCase(caseId, expectedVersion, action.targetStatus, session.user.id);
+  await transitionCase(caseId, expectedVersion, action.targetStatus, session.user.id, reason);
 
   revalidatePath(`/cases/${caseId}`);
   revalidatePath('/cases');

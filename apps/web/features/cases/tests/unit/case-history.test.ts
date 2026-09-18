@@ -66,4 +66,33 @@ describe('formatCaseHistory', () => {
     expect(entry?.actorName).toBe('System');
     expect(entry?.actorRole).toBe('—');
   });
+
+  it('appends the reason to a case_transition\'s "to" column when one was given (a paid-case reopen)', () => {
+    const [entry] = formatCaseHistory(
+      [auditEvent({ eventType: 'case_transition', details: { from: 'reviewed', to: 'sent_to_doctor', reason: 'Wrong candidate name' } })],
+      users
+    );
+
+    expect(entry?.to).toBe('Sent to doctor — Wrong candidate name');
+  });
+
+  it('does not append anything for an ordinary case_transition with no reason', () => {
+    const [entry] = formatCaseHistory(
+      [auditEvent({ eventType: 'case_transition', details: { from: 'sent_to_patient', to: 'sent_to_doctor' } })],
+      users
+    );
+
+    expect(entry?.to).toBe('Sent to doctor');
+  });
+
+  it('describes a case_payment_corrected event with the new date and reason', () => {
+    const [entry] = formatCaseHistory(
+      [auditEvent({ eventType: 'case_payment_corrected', details: { paidOn: '2026-01-10', reason: 'Original date was a typo' } })],
+      users
+    );
+
+    expect(entry?.eventLabel).toBe('Payment date corrected');
+    expect(entry?.from).toBe('Paid');
+    expect(entry?.to).toBe('Paid (2026-01-10) — Original date was a typo');
+  });
 });

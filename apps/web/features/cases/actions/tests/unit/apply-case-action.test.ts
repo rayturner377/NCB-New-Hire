@@ -94,7 +94,7 @@ describe('applyCaseActionAction', () => {
 
     expect(result.ok).toBe(true);
     expect(reassignClinicianMock).toHaveBeenCalledWith('case_1', 'usr_doctor_demo', 'usr_reviewer_demo');
-    expect(transitionCaseMock).toHaveBeenCalledWith('case_1', 1, 'sent_to_doctor', 'usr_reviewer_demo');
+    expect(transitionCaseMock).toHaveBeenCalledWith('case_1', 1, 'sent_to_doctor', 'usr_reviewer_demo', undefined);
     expect(calls).toEqual(['reassign', 'transition']);
   });
 
@@ -106,7 +106,53 @@ describe('applyCaseActionAction', () => {
 
     expect(result.ok).toBe(true);
     expect(reassignClinicianMock).not.toHaveBeenCalled();
-    expect(transitionCaseMock).toHaveBeenCalledWith('case_1', 3, 'sent_to_patient', 'usr_reviewer_demo');
+    expect(transitionCaseMock).toHaveBeenCalledWith('case_1', 3, 'sent_to_patient', 'usr_reviewer_demo', undefined);
     expect(revalidatePathMock).toHaveBeenCalledWith('/cases/case_1');
+  });
+
+  it('rejects reopening a paid, reviewed case with no reason given', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
+    getCaseByIdMock.mockResolvedValue({ id: 'case_1', status: 'reviewed', version: 5, paymentStatus: 'paid' });
+
+    const result = await applyCaseActionAction(null, formData({ caseId: 'case_1', version: '5', actionId: 'send_to_patient' }));
+
+    expect(result.ok).toBe(false);
+    expect(transitionCaseMock).not.toHaveBeenCalled();
+  });
+
+  it('reopens a paid, reviewed case once a reason is given, threading it through to transitionCase', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
+    getCaseByIdMock.mockResolvedValue({ id: 'case_1', status: 'reviewed', version: 5, paymentStatus: 'paid' });
+
+    const result = await applyCaseActionAction(
+      null,
+      formData({ caseId: 'case_1', version: '5', actionId: 'send_to_patient', reason: 'Wrong candidate name on the form' })
+    );
+
+    expect(result.ok).toBe(true);
+    expect(transitionCaseMock).toHaveBeenCalledWith('case_1', 5, 'sent_to_patient', 'usr_reviewer_demo', 'Wrong candidate name on the form');
+  });
+
+  it('rejects the ordinary (non-reopen) "cancel" action once a reviewed case is paid', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_reviewer_demo', role: 'reviewer' } });
+    getCaseByIdMock.mockResolvedValue({ id: 'case_1', status: 'reviewed', version: 5, paymentStatus: 'paid' });
+
+    const result = await applyCaseActionAction(null, formData({ caseId: 'case_1', version: '5', actionId: 'cancel', reason: 'anything' }));
+
+    expect(result.ok).toBe(false);
+    expect(transitionCaseMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reopening a paid case for a role other than admin/reviewer (e.g. an auditor holding MEDICAL_CASES_TRANSITION via an override)', async () => {
+    getSessionMock.mockResolvedValue({ user: { id: 'usr_auditor', role: 'auditor', permissions: ['medical_cases:transition'] } });
+    getCaseByIdMock.mockResolvedValue({ id: 'case_1', status: 'reviewed', version: 5, paymentStatus: 'paid' });
+
+    const result = await applyCaseActionAction(
+      null,
+      formData({ caseId: 'case_1', version: '5', actionId: 'send_to_patient', reason: 'anything' })
+    );
+
+    expect(result.ok).toBe(false);
+    expect(transitionCaseMock).not.toHaveBeenCalled();
   });
 });
